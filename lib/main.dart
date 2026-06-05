@@ -4,6 +4,7 @@ import 'package:remini_care_ai_app/home_screen.dart';
 import 'package:remini_care_ai_app/life_screen.dart';
 import 'package:remini_care_ai_app/music_screen.dart';
 import 'package:remini_care_ai_app/music_years_selection_screen.dart';
+import 'package:remini_care_ai_app/local_music_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -29,6 +30,10 @@ final GoRouter _router = GoRouter(
         final musicLanguage = state.pathParameters['musicLanguage'];
         return MusicYearsSelectionScreen(musicLanguage: musicLanguage);
       }
+    ),
+    GoRoute(
+      path: '/local_music_screen',
+      builder: (context, state) => const LocalMusicScreen(),
     ),
   ]
 );

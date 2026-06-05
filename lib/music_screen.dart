@@ -7,7 +7,18 @@ class MusicScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('音樂')),
+      appBar: AppBar(
+        title: const Text('音樂'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.folder_special),
+            tooltip: '我的自訂音樂',
+            onPressed: () {
+              context.push('/local_music_screen');
+            },
+          )
+        ],
+      ),
       body: Row(
         children: [
           Expanded(
