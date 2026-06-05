@@ -6,46 +6,43 @@ class MusicScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final double screenWidth = MediaQuery.sizeOf(context).width;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('音樂'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.folder_special),
-            tooltip: '我的自訂音樂',
-            onPressed: () {
-              context.push('/local_music_screen');
-            },
-          )
-        ],
-      ),
-      body: Row(
-        children: [
-          Expanded(
-            child: Column(
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    context.push('/music_years_selection_screen/國語歌');
-                  },
-                  child: Image.asset('assets/images/mandarin_songs.png'),
+      appBar: AppBar(title: const Text('音樂')),
+      body: Center(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            GestureDetector(
+              onTap: () {
+                context.push('/music_years_selection_screen/國語歌');
+              },
+              child: Container(
+                width: screenWidth * 0.35,
+                margin: const EdgeInsets.all(16.0),
+                child: Image.asset(
+                  'assets/images/mandarin_songs.png',
+                  fit: BoxFit.contain,
                 ),
-              ],
+              ),
             ),
-          ),
-          Expanded(
-            child: Column(
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    context.push('/music_years_selection_screen/台語歌');
-                  },
-                  child: Image.asset('assets/images/taiwanese_songs.png'),
+
+            GestureDetector(
+              onTap: () {
+                context.push('/music_years_selection_screen/台語歌');
+              },
+              child: Container(
+                width: screenWidth * 0.35,
+                margin: const EdgeInsets.all(16.0),
+                child: Image.asset(
+                  'assets/images/taiwanese_songs.png',
+                  fit: BoxFit.contain,
                 ),
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
