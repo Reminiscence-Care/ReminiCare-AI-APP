@@ -29,7 +29,7 @@ class HomeScreen extends StatelessWidget {
                 children: [
                   GestureDetector(
                     onTap: () {
-
+                      context.push("/life_screen");
                     },
                     child: Image.asset('assets/images/life_home.png'),
                   ),
