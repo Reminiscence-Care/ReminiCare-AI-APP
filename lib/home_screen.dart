@@ -8,7 +8,36 @@ class HomeScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Home')),
       body: Center(
-        child: Text('dksjffjklds'),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                children: [
+                  GestureDetector(
+                    onTap: () {
+
+                    },
+                    child: Image.asset('assets/images/music_home.png'),
+                  ),
+                  Text('以前愛聽的歌')
+                ],
+              ),
+            ),
+            Expanded(
+              child: Column(
+                children: [
+                  GestureDetector(
+                    onTap: () {
+
+                    },
+                    child: Image.asset('assets/images/life_home.png'),
+                  ),
+                  Text('以前的生活')
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
