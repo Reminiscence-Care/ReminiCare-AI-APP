@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:remini_care_ai_app/home_screen.dart';
-import 'package:remini_care_ai_app/life_screen.dart';
+import 'package:remini_care_ai_app/screens/life_screen/life_screen.dart';
 import 'package:remini_care_ai_app/music_screen.dart';
 import 'package:remini_care_ai_app/music_years_selection_screen.dart';
 import 'package:remini_care_ai_app/local_music_screen.dart';
