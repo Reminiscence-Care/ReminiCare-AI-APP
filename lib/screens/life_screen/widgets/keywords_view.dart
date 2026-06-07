@@ -1,6 +1,14 @@
 import 'package:flutter/material.dart';
 
-/// 關鍵詞展示區（支援白底細粉灰框、與灰底的新增提示詞，完美貼合 image_69eb18）
+/// 用於內部合併關鍵字並保留新舊狀態的資料結構
+class _KeywordItem {
+  final String word;
+  final bool isNew;
+
+  const _KeywordItem(this.word, this.isNew);
+}
+
+/// 關鍵詞展示區（支援白底細粉灰框、與灰底的新增提示詞，並完美置中對齊）
 class KeywordsView extends StatelessWidget {
   final bool isLoading;
   final List<String> originalKeywords;
@@ -38,34 +46,41 @@ class KeywordsView extends StatelessWidget {
       );
     }
 
+    // 1. 合併新舊關鍵字，並記錄其狀態
+    final List<_KeywordItem> combinedList = [
+      ...originalKeywords.map((word) => _KeywordItem(word, false)),
+      ...newKeywords.map((word) => _KeywordItem(word, true)),
+    ];
+
+    // 2. 確實套用 maxLength 限制，只取指定數量的關鍵字
+    final List<_KeywordItem> displayItems = combinedList.take(maxLength).toList();
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      // 3. 調整為高度自適應與置中的 Column/Row 排版，避免最左側擠壓
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min, // 縮減寬度至內容寬，達到真正的水平置中
         children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 8.0),
-            child: Text(
-              "提到的關鍵詞：",
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey[800],
-                fontWeight: FontWeight.w500,
-              ),
+          Text(
+            "提到的關鍵詞：",
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey[800],
+              fontWeight: FontWeight.w500,
             ),
           ),
           const SizedBox(width: 8),
-          Expanded(
+          Flexible(
             child: Wrap(
               spacing: 12.0,
               runSpacing: 10.0,
-              children: [
-                // 1. 原有的舊關鍵字 (白底細粉灰框)
-                ...originalKeywords.map((word) => _buildKeywordChip(word, isNew: false)),
-                // 2. 修改後新增的提示詞 (灰底框，呼應「提示灰色格是新的提示」)
-                ...newKeywords.map((word) => _buildKeywordChip(word, isNew: true)),
-              ],
+              alignment: WrapAlignment.center, // 讓包裹的標籤按鈕群體在中間對齊
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: displayItems.map((item) {
+                return _buildKeywordChip(item.word, isNew: item.isNew);
+              }).toList(),
             ),
           ),
         ],
