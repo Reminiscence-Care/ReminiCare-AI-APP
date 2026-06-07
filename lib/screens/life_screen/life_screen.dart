@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:audioplayers/audioplayers.dart'; // 新增語音播放套件
+import 'package:audioplayers/audioplayers.dart';
 
 // 匯入您自定義的子組件
 import 'widgets/language_selector.dart';
@@ -102,7 +102,7 @@ class _LifeScreenState extends State<LifeScreen> {
   // 🚀 核心 API 串接邏輯
   // ==========================================
 
-  /// 播放語音 API 串接 (透過 URL Stream 播放)
+  /// 播放語音 API 串接 (手動觸發)
   Future<void> _playVoice(String text, String language) async {
     if (text.isEmpty) return;
     try {
@@ -118,7 +118,7 @@ class _LifeScreenState extends State<LifeScreen> {
     }
   }
 
-  /// 當按下按鈕手動播放當下文字的語音
+  /// 當按下中文/台語播放按鈕時，手動播放當下文字的語音
   void _playCurrentContextVoice(String lang) {
     setState(() => _selectedLanguage = lang);
     String textToPlay = _aiGeneratedText;
@@ -145,8 +145,7 @@ class _LifeScreenState extends State<LifeScreen> {
         setState(() {
           _aiGeneratedText = data['question'];
         });
-        // 問題載入完成後自動唸出來！
-        _playVoice(_aiGeneratedText, _selectedLanguage);
+        // 💡 移除自動播放語音：現在不主動調用 _playVoice()
       } else {
         throw Exception("獲取初始問題失敗");
       }
@@ -155,7 +154,6 @@ class _LifeScreenState extends State<LifeScreen> {
       setState(() {
         _aiGeneratedText = "哈囉！小時候家裡最常吃什麼呢？";
       });
-      _playVoice(_aiGeneratedText, _selectedLanguage);
     } finally {
       setState(() { _isLoading = false; });
     }
@@ -215,8 +213,7 @@ class _LifeScreenState extends State<LifeScreen> {
         _chatHistory.add({"role": "user", "content": userMessage});
         _chatHistory.add({"role": "assistant", "content": data['reply']});
 
-        // AI 回覆產生後，自動播放新回覆的語音！
-        _playVoice(_aiGeneratedText, _selectedLanguage);
+        // 💡 移除自動播放語音：回覆時不再自動呼叫 _playVoice()
       } else {
         throw Exception("聊天與擷取 API 錯誤");
       }
@@ -226,7 +223,6 @@ class _LifeScreenState extends State<LifeScreen> {
       setState(() {
         _aiGeneratedText = "拍謝，我剛才恍神沒聽清楚，可以再說一次嗎？";
       });
-      _playVoice(_aiGeneratedText, _selectedLanguage);
     } finally {
       setState(() { _isExtractingKeywords = false; });
     }
@@ -251,8 +247,7 @@ class _LifeScreenState extends State<LifeScreen> {
           _currentImageUrl = data['image_url'];
           _chatStatus = ChatStatus.evaluation;
         });
-        // 進入評價畫面自動發音
-        _playVoice("這張圖符合您的回憶嗎？", _selectedLanguage);
+        // 💡 移除自動播放語音：進入評價畫面時不再主動發出聲音
       } else {
         throw Exception("生圖失敗");
       }
@@ -278,7 +273,7 @@ class _LifeScreenState extends State<LifeScreen> {
           _currentImageUrl = data['image_url'];
           _chatStatus = ChatStatus.dislikeEvaluation;
         });
-        _playVoice("這張圖符合您的回憶嗎？", _selectedLanguage);
+        // 💡 移除自動播放語音
       } else {
         throw Exception("修改生圖失敗");
       }
@@ -304,7 +299,7 @@ class _LifeScreenState extends State<LifeScreen> {
           _currentImageUrl = data['image_url'];
           _chatStatus = ChatStatus.evaluation;
         });
-        _playVoice("這張圖符合您的回憶嗎？", _selectedLanguage);
+        // 💡 移除自動播放語音
       } else {
         throw Exception("延伸話題生圖失敗");
       }
@@ -506,11 +501,11 @@ class _LifeScreenState extends State<LifeScreen> {
           onLanguageSelected: _playCurrentContextVoice,
           onLike: () {
             setState(() { _chatStatus = ChatStatus.likePrepare; });
-            _playVoice("這張圖片讓您想到什麼？", _selectedLanguage);
+            // 💡 移除自動播放語音："這張圖片讓您想到什麼？"
           },
           onDislike: () {
             setState(() { _chatStatus = ChatStatus.dislikePrepare; });
-            _playVoice("哪裡不對？", _selectedLanguage);
+            // 💡 移除自動播放語音："哪裡不對？"
           },
         );
       case ChatStatus.dislikePrepare:
@@ -542,7 +537,7 @@ class _LifeScreenState extends State<LifeScreen> {
         return DislikeEvaluationView(
           onContinueModify: () {
             setState(() { _chatStatus = ChatStatus.dislikePrepare; });
-            _playVoice("哪裡不對？", _selectedLanguage);
+            // 💡 移除自動播放語音
           },
           onFinished: _resetAllStates,
         );
