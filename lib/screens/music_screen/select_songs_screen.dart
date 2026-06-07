@@ -2,127 +2,84 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 class SelectSongsScreen extends StatelessWidget {
-  final String language;
-  final String year;
+  final String musicLanguage;
+  final String yearLabel;
 
   const SelectSongsScreen({
     super.key,
-    required this.language,
-    required this.year,
+    required this.musicLanguage,
+    required this.yearLabel,
   });
 
   @override
   Widget build(BuildContext context) {
-    // 模擬的歌曲清單資料
-    final List<Map<String, dynamic>> songs = [
+    // 根據傳入的年代與語言，模擬對應的歌單資料
+    final List<Map<String, String>> songs = [
       {'singer': '周璇', 'song': '夜上海', 'image': 'assets/images/zhouxuan.png'},
       {'singer': '葛蘭', 'song': '我要你的愛', 'image': 'assets/images/gelan.png'},
       {'singer': '靜婷', 'song': '明日之歌', 'image': 'assets/images/jingting.png'},
     ];
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5), // 淡淡的灰白背景
+      backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
-        title: Text('$year  $language'),
+        title: Text('$yearLabel  $musicLanguage'),
         centerTitle: true,
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           children: [
-            // 標題列 (歌手名字 / 歌名)
+            // 頂部欄位對齊標籤
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8.0),
               child: Row(
                 children: [
-                  const SizedBox(width: 80), // 預留給圖片的空間
-                  Expanded(
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[300],
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Text('歌手名字', style: TextStyle(fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[300],
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Text('歌名', style: TextStyle(fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 80), // 預留給按鈕的空間
+                  const SizedBox(width: 60), // 對齊大頭照寬度
+                  Expanded(child: Center(child: _buildHeaderTag('歌手名字'))),
+                  Expanded(child: Center(child: _buildHeaderTag('歌名'))),
+                  const SizedBox(width: 80), // 對齊按鈕寬度
                 ],
               ),
             ),
-
-            const SizedBox(height: 10),
-
-            // 歌曲列表
+            const SizedBox(height: 16),
+            // 歌單列表
             Expanded(
               child: ListView.separated(
                 itemCount: songs.length,
-                separatorBuilder: (context, index) => const Divider(height: 30),
+                separatorBuilder: (context, index) => const Divider(height: 24, color: Color(0xFFE0E0E0)),
                 itemBuilder: (context, index) {
-                  final song = songs[index];
+                  final item = songs[index];
                   return Row(
                     children: [
-                      // 歌手圖片
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: Image.asset(
-                          song['image'],
-                          width: 60,
-                          height: 60,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                              Container(width: 60, height: 60, color: Colors.grey, child: const Icon(Icons.person, color: Colors.white)),
+                          item['image']!, width: 60, height: 60, fit: BoxFit.cover,
+                          errorBuilder: (c, e, s) => Container(width: 60, height: 60, color: Colors.grey[300], child: const Icon(Icons.person, color: Colors.white)),
                         ),
                       ),
-
-                      // 歌手名字
-                      Expanded(
-                        child: Center(
-                          child: Text(song['singer'], style: const TextStyle(fontSize: 18)),
-                        ),
-                      ),
-
-                      // 歌名
-                      Expanded(
-                        child: Center(
-                          child: Text(song['song'], style: const TextStyle(fontSize: 18)),
-                        ),
-                      ),
-
-                      // 播放按鈕
+                      Expanded(child: Center(child: Text(item['singer']!, style: const TextStyle(fontSize: 20)))),
+                      Expanded(child: Center(child: Text(item['song']!, style: const TextStyle(fontSize: 20)))),
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.grey[300],
+                          backgroundColor: const Color(0xFFE0E0E0),
                           foregroundColor: Colors.black,
                           elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                         onPressed: () {
-                          // 將這首歌的資料與分類打包，傳給播放頁面
-                          final songData = {
-                            ...song,
-                            'language': language,
-                            'year': year,
-                          };
-                          context.push('/play_music_screen', extra: songData);
+                          // 💡 點擊後將選中的歌曲細節與分類打包，推入獨立播放頁面
+                          context.push('/play_music_screen', extra: {
+                            'singer': item['singer']!,
+                            'song': item['song']!,
+                            'image': item['image']!,
+                            'year': yearLabel,
+                            'language': musicLanguage,
+                          });
                         },
-                        child: const Text('播放'),
+                        child: const Text('播放', style: TextStyle(fontSize: 16)),
                       ),
                     ],
                   );
@@ -132,6 +89,14 @@ class SelectSongsScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildHeaderTag(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(12)),
+      child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black54)),
     );
   }
 }

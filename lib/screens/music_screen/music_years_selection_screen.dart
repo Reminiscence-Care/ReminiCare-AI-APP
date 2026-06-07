@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 class MusicYearsSelectionScreen extends StatelessWidget {
-  final String? musicLanguage; // 接收上一頁傳來的 '國語歌' 或 '台語歌'
+  final String? musicLanguage;
 
   const MusicYearsSelectionScreen({
     super.key,
@@ -11,11 +11,8 @@ class MusicYearsSelectionScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 💡 取得螢幕總寬度
     final double screenWidth = MediaQuery.sizeOf(context).width;
-
-    // 💡 設定單個按鈕的響應式寬度
-    final double buttonWidth = screenWidth > 600 ? screenWidth * 0.25 : screenWidth * 0.4;
+    final double buttonWidth = screenWidth > 600 ? screenWidth * 0.2 : screenWidth * 0.3;
 
     return Scaffold(
       appBar: AppBar(
@@ -40,7 +37,6 @@ class MusicYearsSelectionScreen extends StatelessWidget {
                 ),
               ),
 
-              // 💡 使用 Wrap 排版，放進獨立的三張圖片
               Wrap(
                 alignment: WrapAlignment.center,
                 spacing: 24.0, // 按鈕之間的水平間距
@@ -50,7 +46,7 @@ class MusicYearsSelectionScreen extends StatelessWidget {
                   // --- 1950-1960 年代按鈕 ---
                   _buildYearButton(
                     context: context,
-                    imagePath: 'assets/images/1950.png', // 👈 確認檔名與你的相符
+                    imagePath: 'assets/images/1950.png',
                     width: buttonWidth,
                     yearLabel: '1950-1960',
                   ),
@@ -80,7 +76,6 @@ class MusicYearsSelectionScreen extends StatelessWidget {
     );
   }
 
-  // 💡 乾淨單純的按鈕產生器（不需要複雜的裁切了）
   Widget _buildYearButton({
     required BuildContext context,
     required String imagePath,
@@ -110,7 +105,7 @@ class MusicYearsSelectionScreen extends StatelessWidget {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(16),
           child: Image.asset(
-            imagePath, // 👈 直接讀取你切好的獨立圖片
+            imagePath,
             fit: BoxFit.contain, // 讓圖片等比縮放不變形
 
             // 防呆機制：圖片還沒放進去時的替代畫面
