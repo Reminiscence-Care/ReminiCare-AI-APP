@@ -30,29 +30,51 @@ class MusicScreen extends StatelessWidget {
                   ),
                 ),
               ),
-
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 32.0, // 按鈕之間的水平間距
-                runSpacing: 32.0, // 螢幕太窄被擠到下一行時的垂直間距
+              Column(
                 children: [
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 32.0, // 按鈕之間的水平間距
+                    runSpacing: 32.0, // 螢幕太窄被擠到下一行時的垂直間距
+                    children: [
+                      // --- 國語歌按鈕 ---
+                      _buildLanguageButton(
+                        context: context,
+                        imagePath: 'assets/images/mandarin_songs.png',
+                        width: buttonWidth,
+                        languageLabel: '國語歌',
+                      ),
 
-                  // --- 國語歌按鈕 ---
-                  _buildLanguageButton(
-                    context: context,
-                    imagePath: 'assets/images/mandarin_songs.png',
-                    width: buttonWidth,
-                    languageLabel: '國語歌',
+                      // --- 台語歌按鈕 ---
+                      _buildLanguageButton(
+                        context: context,
+                        imagePath: 'assets/images/taiwanese_songs.png',
+                        width: buttonWidth,
+                        languageLabel: '台語歌',
+                      ),
+                    ],
                   ),
-
-                  // --- 台語歌按鈕 ---
-                  _buildLanguageButton(
-                    context: context,
-                    imagePath: 'assets/images/taiwanese_songs.png',
-                    width: buttonWidth,
-                    languageLabel: '台語歌',
-                  ),
-
+                  Padding(
+                    padding: EdgeInsetsGeometry.only(top:40),
+                    child: ElevatedButton(
+                      onPressed: () {
+                        context.push('/add_songs_data_screen');
+                      },
+                      style: ElevatedButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)
+                        )
+                      ),
+                      child: Text(
+                        '新增歌曲',
+                        style: const TextStyle(
+                            fontSize: 35,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF4E342E)
+                        ),
+                      ),
+                    ),
+                  )
                 ],
               ),
             ],

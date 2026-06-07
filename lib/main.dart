@@ -1,13 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:remini_care_ai_app/models/song_model.dart';
+import 'package:remini_care_ai_app/models/song_model.dart';
 import 'package:remini_care_ai_app/home_screen.dart';
 import 'package:remini_care_ai_app/screens/life_screen/life_screen.dart';
 import 'package:remini_care_ai_app/screens/music_screen/music_screen.dart';
 import 'package:remini_care_ai_app/screens/music_screen/music_years_selection_screen.dart';
 import 'package:remini_care_ai_app/screens//music_screen/select_songs_screen.dart';
 import 'package:remini_care_ai_app/screens//music_screen/play_music_screen.dart';
+import 'package:remini_care_ai_app/screens/music_screen/add_songs_data_screen.dart';
 
-void main() {
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Hive.initFlutter();
+  Hive.registerAdapter(SongModelAdapter());
+  await Hive.openBox<SongModel>('my_music_box');
   runApp(const MyApp());
 }
 final GoRouter _router = GoRouter(
@@ -53,6 +62,10 @@ final GoRouter _router = GoRouter(
           return PlayMusicScreen(songData: songData);
         }
     ),
+    GoRoute(
+      path: '/add_songs_data_screen',
+      builder: (context, state) =>  AddSongsDataScreen()
+    )
   ]
 );
 
