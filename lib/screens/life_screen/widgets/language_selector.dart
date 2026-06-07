@@ -1,17 +1,32 @@
 import 'package:flutter/material.dart';
 
+/// 語言選擇組件（台語/中文播放按鈕），支援水平與垂直排列
 class LanguageSelector extends StatelessWidget {
   final String selectedLanguage;
   final ValueChanged<String> onLanguageSelected;
+  final bool isVertical; // 是否啟用垂直排列（用於評價與修改頁面）
 
   const LanguageSelector({
     super.key,
     required this.selectedLanguage,
     required this.onLanguageSelected,
+    this.isVertical = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (isVertical) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildOption("中文"),
+          const SizedBox(height: 12),
+          _buildOption("台語"),
+        ],
+      );
+    }
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [

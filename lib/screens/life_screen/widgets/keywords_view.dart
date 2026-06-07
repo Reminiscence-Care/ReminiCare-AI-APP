@@ -1,14 +1,25 @@
 import 'package:flutter/material.dart';
 
+/// 用於內部合併關鍵字並保留新舊狀態的資料結構
+class _KeywordItem {
+  final String word;
+  final bool isNew;
+
+  const _KeywordItem(this.word, this.isNew);
+}
+
+/// 關鍵詞展示區（支援白底細粉灰框、與灰底的新增提示詞，並完美置中對齊）
 class KeywordsView extends StatelessWidget {
   final bool isLoading;
-  final List<String> keywords;
+  final List<String> originalKeywords;
+  final List<String> newKeywords;
   final int maxLength;
 
   const KeywordsView({
     super.key,
     required this.isLoading,
-    required this.keywords,
+    required this.originalKeywords,
+    required this.newKeywords,
     required this.maxLength,
   });
 
@@ -16,7 +27,6 @@ class KeywordsView extends StatelessWidget {
   Widget build(BuildContext context) {
     if (isLoading) {
       return Column(
-        key: const ValueKey<String>("keywords_loading"),
         mainAxisSize: MainAxisSize.min,
         children: [
           const SizedBox(
@@ -36,32 +46,41 @@ class KeywordsView extends StatelessWidget {
       );
     }
 
-    final displayKeywords = keywords.take(maxLength).toList();
+    // 1. 合併新舊關鍵字，並記錄其狀態
+    final List<_KeywordItem> combinedList = [
+      ...originalKeywords.map((word) => _KeywordItem(word, false)),
+      ...newKeywords.map((word) => _KeywordItem(word, true)),
+    ];
+
+    // 2. 確實套用 maxLength 限制，只取指定數量的關鍵字
+    final List<_KeywordItem> displayItems = combinedList.take(maxLength).toList();
 
     return Padding(
-      key: const ValueKey<String>("keywords_loaded"),
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      // 3. 調整為高度自適應與置中的 Column/Row 排版，避免最左側擠壓
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min, // 縮減寬度至內容寬，達到真正的水平置中
         children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 8.0),
-            child: Text(
-              "提到的關鍵詞：",
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey[800],
-                fontWeight: FontWeight.w500,
-              ),
+          Text(
+            "提到的關鍵詞：",
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey[800],
+              fontWeight: FontWeight.w500,
             ),
           ),
           const SizedBox(width: 8),
-          Expanded(
+          Flexible(
             child: Wrap(
               spacing: 12.0,
               runSpacing: 10.0,
-              children: displayKeywords.map((keyword) => _buildKeywordChip(keyword)).toList(),
+              alignment: WrapAlignment.center, // 讓包裹的標籤按鈕群體在中間對齊
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: displayItems.map((item) {
+                return _buildKeywordChip(item.word, isNew: item.isNew);
+              }).toList(),
             ),
           ),
         ],
@@ -69,14 +88,14 @@ class KeywordsView extends StatelessWidget {
     );
   }
 
-  Widget _buildKeywordChip(String word) {
+  Widget _buildKeywordChip(String word, {required bool isNew}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFFAF6F6),
-        borderRadius: BorderRadius.circular(2),
+        color: isNew ? Colors.grey[300] : const Color(0xFFFAF6F6),
+        borderRadius: BorderRadius.circular(6),
         border: Border.all(
-          color: const Color(0xFFD4C9C9),
+          color: isNew ? Colors.grey[400]! : const Color(0xFFD4C9C9),
           width: 0.8,
         ),
       ),
@@ -85,13 +104,14 @@ class KeywordsView extends StatelessWidget {
         style: TextStyle(
           fontSize: 15,
           color: Colors.grey[800],
-          fontWeight: FontWeight.w400,
+          fontWeight: isNew ? FontWeight.bold : FontWeight.w400,
         ),
       ),
     );
   }
 }
 
+/// 關鍵字確認生圖按鈕
 class KeywordsConfirmButton extends StatelessWidget {
   final bool isDisabled;
   final VoidCallback onConfirm;
@@ -105,7 +125,6 @@ class KeywordsConfirmButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      key: const ValueKey<String>("keywords_state_btn"),
       width: 150,
       height: 48,
       child: TextButton(
