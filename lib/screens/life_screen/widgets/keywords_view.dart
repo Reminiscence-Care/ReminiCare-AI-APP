@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 
+/// 關鍵詞展示區（支援白底細粉灰框、與灰底的新增提示詞，完美貼合 image_69eb18）
 class KeywordsView extends StatelessWidget {
   final bool isLoading;
-  final List<String> keywords;
+  final List<String> originalKeywords;
+  final List<String> newKeywords;
   final int maxLength;
 
   const KeywordsView({
     super.key,
     required this.isLoading,
-    required this.keywords,
+    required this.originalKeywords,
+    required this.newKeywords,
     required this.maxLength,
   });
 
@@ -16,7 +19,6 @@ class KeywordsView extends StatelessWidget {
   Widget build(BuildContext context) {
     if (isLoading) {
       return Column(
-        key: const ValueKey<String>("keywords_loading"),
         mainAxisSize: MainAxisSize.min,
         children: [
           const SizedBox(
@@ -36,10 +38,7 @@ class KeywordsView extends StatelessWidget {
       );
     }
 
-    final displayKeywords = keywords.take(maxLength).toList();
-
     return Padding(
-      key: const ValueKey<String>("keywords_loaded"),
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -61,7 +60,12 @@ class KeywordsView extends StatelessWidget {
             child: Wrap(
               spacing: 12.0,
               runSpacing: 10.0,
-              children: displayKeywords.map((keyword) => _buildKeywordChip(keyword)).toList(),
+              children: [
+                // 1. 原有的舊關鍵字 (白底細粉灰框)
+                ...originalKeywords.map((word) => _buildKeywordChip(word, isNew: false)),
+                // 2. 修改後新增的提示詞 (灰底框，呼應「提示灰色格是新的提示」)
+                ...newKeywords.map((word) => _buildKeywordChip(word, isNew: true)),
+              ],
             ),
           ),
         ],
@@ -69,14 +73,14 @@ class KeywordsView extends StatelessWidget {
     );
   }
 
-  Widget _buildKeywordChip(String word) {
+  Widget _buildKeywordChip(String word, {required bool isNew}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFFFAF6F6),
-        borderRadius: BorderRadius.circular(2),
+        color: isNew ? Colors.grey[300] : const Color(0xFFFAF6F6),
+        borderRadius: BorderRadius.circular(6),
         border: Border.all(
-          color: const Color(0xFFD4C9C9),
+          color: isNew ? Colors.grey[400]! : const Color(0xFFD4C9C9),
           width: 0.8,
         ),
       ),
@@ -85,13 +89,14 @@ class KeywordsView extends StatelessWidget {
         style: TextStyle(
           fontSize: 15,
           color: Colors.grey[800],
-          fontWeight: FontWeight.w400,
+          fontWeight: isNew ? FontWeight.bold : FontWeight.w400,
         ),
       ),
     );
   }
 }
 
+/// 關鍵字確認生圖按鈕
 class KeywordsConfirmButton extends StatelessWidget {
   final bool isDisabled;
   final VoidCallback onConfirm;
@@ -105,7 +110,6 @@ class KeywordsConfirmButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      key: const ValueKey<String>("keywords_state_btn"),
       width: 150,
       height: 48,
       child: TextButton(

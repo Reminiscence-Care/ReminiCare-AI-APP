@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+/// 中央 AI 問題文字區域或預留的佔位提示
 class QuestionArea extends StatelessWidget {
   final String questionText;
 
@@ -9,7 +10,6 @@ class QuestionArea extends StatelessWidget {
   Widget build(BuildContext context) {
     if (questionText.isEmpty) {
       return Container(
-        key: const ValueKey<String>("placeholder"),
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Text(
           "等待 AI 產生問題中...",
@@ -26,7 +26,6 @@ class QuestionArea extends StatelessWidget {
     }
 
     return Container(
-      key: ValueKey<String>(questionText),
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Text(
         questionText,
@@ -43,13 +42,13 @@ class QuestionArea extends StatelessWidget {
   }
 }
 
+/// 問題加載中的指示器
 class QuestionLoadingIndicator extends StatelessWidget {
   const QuestionLoadingIndicator({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      key: const ValueKey<String>("loading"),
       height: 42,
       alignment: Alignment.center,
       child: const SizedBox(

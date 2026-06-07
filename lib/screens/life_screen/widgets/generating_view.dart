@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+/// AI 生圖中的中置提示卡片組件（完美貼合 image_8be6e2）
 class GeneratingView extends StatelessWidget {
   const GeneratingView({super.key});
 
@@ -8,7 +9,7 @@ class GeneratingView extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 28),
       decoration: BoxDecoration(
-        color: const Color(0xFFD9D9D9), // 吻合 image_8be6e2 經典的淺灰卡片底色
+        color: const Color(0xFFD9D9D9),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
