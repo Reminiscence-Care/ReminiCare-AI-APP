@@ -21,13 +21,15 @@ class SongModelAdapter extends TypeAdapter<SongModel> {
       title: fields[1] as String,
       imagePath: fields[2] as String,
       audioPath: fields[3] as String,
+      language: fields[4] as String,
+      year: fields[5] as int,
     );
   }
 
   @override
   void write(BinaryWriter writer, SongModel obj) {
     writer
-      ..writeByte(4)
+      ..writeByte(6)
       ..writeByte(0)
       ..write(obj.singer)
       ..writeByte(1)
@@ -35,7 +37,11 @@ class SongModelAdapter extends TypeAdapter<SongModel> {
       ..writeByte(2)
       ..write(obj.imagePath)
       ..writeByte(3)
-      ..write(obj.audioPath);
+      ..write(obj.audioPath)
+      ..writeByte(4)
+      ..write(obj.language)
+      ..writeByte(5)
+      ..write(obj.year);
   }
 
   @override

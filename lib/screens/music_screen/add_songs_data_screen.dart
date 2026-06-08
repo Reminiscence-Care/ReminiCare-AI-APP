@@ -18,14 +18,19 @@ class AddSongsDataScreen extends StatefulWidget {
 class _AddSongsDataScreenState extends State<AddSongsDataScreen> {
   final TextEditingController _singerController = TextEditingController();
   final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _yearController = TextEditingController();
+  final List<String> _languageOptions = ['國語歌', '台語歌'];
 
   String? _savedImagePath;
   String? _savedAudioPath;
+
+  String? _selectedLanguage;
 
   String _imageFileName = "尚未選擇圖片";
   String _audioFileName = "尚未選擇音樂";
 
   bool _isImageAutoLoaded = false;
+
 
   Future<void> _pickAndSaveFile({
     required FileType type,
@@ -52,12 +57,23 @@ class _AddSongsDataScreenState extends State<AddSongsDataScreen> {
 
       // 呼叫 callback 把新路徑存起來並更新畫面
       setState(() {
-        // 如果可以直接從 file 提取出 <歌手名>-<歌名> 就直接更新
         String fileNameWithoutExtension = p.basenameWithoutExtension(fileName);
         List<String> patterned_string = fileNameWithoutExtension.split('-');
-        if(type == FileType.audio && patterned_string.length == 2) {
-          _singerController.text = patterned_string[0];
-          _titleController.text = patterned_string[1];
+        if(type == FileType.audio) {
+          // 如果可以直接從 file 提取出 <歌手名>-<歌名> 就直接更新
+          if(patterned_string.length == 2){
+            _singerController.text = patterned_string[0];
+            _titleController.text = patterned_string[1];
+          }
+          // 如果可以直接從 file 提取出 <語言>-<年代>-<歌手名>-<歌名> 就直接更新
+          else if(patterned_string.length == 4) {
+            _selectedLanguage = patterned_string[0];
+            if(_selectedLanguage!.contains("台語")) _selectedLanguage = _languageOptions[1];
+            else _selectedLanguage = _languageOptions[0];
+            _yearController.text = patterned_string[1];
+            _singerController.text = patterned_string[2];
+            _titleController.text = patterned_string[3];
+          }
         }
         // 如果使用者在自動帶入後，又手動去選了新照片
         // 我們就要把自動帶入標記設為 false，避免打字時又被洗掉
@@ -71,10 +87,14 @@ class _AddSongsDataScreenState extends State<AddSongsDataScreen> {
 
   // 3. 核心：將資料打包寫入 Hive 資料庫
   void _saveToDatabase() {
+    int? parsedYear = int.tryParse(_yearController.text.trim());
     if (_singerController.text.isEmpty ||
         _titleController.text.isEmpty ||
         _savedImagePath == null ||
-        _savedAudioPath == null) {
+        _savedAudioPath == null ||
+        _selectedLanguage == null ||
+        parsedYear == null
+    ) {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('請填寫所有欄位並選擇圖片與音樂！')),
@@ -88,6 +108,8 @@ class _AddSongsDataScreenState extends State<AddSongsDataScreen> {
       title: _titleController.text,
       imagePath: _savedImagePath!,
       audioPath: _savedAudioPath!,
+      language: _selectedLanguage!,
+      year: parsedYear,
     );
 
     // 打開箱子並丟進去！
@@ -143,6 +165,7 @@ class _AddSongsDataScreenState extends State<AddSongsDataScreen> {
     _singerController.removeListener(_autoCheckExistingSinger);
     _singerController.dispose();
     _titleController.dispose();
+    _yearController.dispose();
     super.dispose();
   }
 
@@ -158,6 +181,39 @@ class _AddSongsDataScreenState extends State<AddSongsDataScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // --- 語言分類選單 ---
+                DropdownButtonFormField<String>(
+                  value: _selectedLanguage,
+                  decoration: const InputDecoration(
+                    labelText: '歌曲語言分類',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.language),
+                  ),
+                  hint: const Text('請選擇國語歌或台語歌'),
+                  items: _languageOptions.map((lang) {
+                    return DropdownMenuItem(value: lang, child: Text(lang));
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedLanguage = value;
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // --- 年代 ---
+                TextField(
+                  controller: _yearController,
+                  keyboardType: TextInputType.number, // 彈出數字小鍵盤
+                  maxLength: 4, // 限制最多只能輸入 4 個數字
+                  decoration: const InputDecoration(
+                    labelText: '發行年份 (例如: 1978)',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.calendar_today),
+                    counterText: '', // 隱藏右下角的 0/4 字數提示
+                  ),
+                ),
+                const SizedBox(height: 32),
                 // --- 歌手輸入框 ---
                 TextField(
                   controller: _singerController,

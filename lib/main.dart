@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:remini_care_ai_app/models/song_model.dart';
-import 'package:remini_care_ai_app/models/song_model.dart';
 import 'package:remini_care_ai_app/home_screen.dart';
 import 'package:remini_care_ai_app/screens/life_screen/life_screen.dart';
 import 'package:remini_care_ai_app/screens/music_screen/music_screen.dart';

@@ -16,10 +16,18 @@ class SongModel extends HiveObject {
   @HiveField(3)
   String audioPath;
 
+  @HiveField(4)
+  String language;
+
+  @HiveField(5)
+  int year;
+
   SongModel({
     required this.singer,
     required this.title,
     required this.imagePath,
     required this.audioPath,
+    required this.language,
+    required this.year,
   });
 }
