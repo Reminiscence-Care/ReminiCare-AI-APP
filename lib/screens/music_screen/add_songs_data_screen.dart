@@ -43,13 +43,15 @@ class _AddSongsDataScreenState extends State<AddSongsDataScreen> {
 
     if (result != null && result.files.single.path != null) {
       String originalPath = result.files.single.path!;
-      String fileName = result.files.single.name;
+      String originalFileName = result.files.single.name;
 
       // 取得 App 的本機永久資料夾
-      final docDir = await getApplicationDocumentsDirectory();
+      final docDir = await getApplicationSupportDirectory();
 
-      // 建立新的永久路徑
-      String newPath = p.join(docDir.path, fileName);
+      // 例如原本叫 "葛蘭-我要你的愛.mp3"，在硬碟裡會變成 "1718000000.mp3"
+      String safeExtension = p.extension(originalFileName); // 抓出 .mp3 或 .jpg
+      String safeFileName = '${DateTime.now().millisecondsSinceEpoch}$safeExtension';
+      String newPath = p.join(docDir.path, safeFileName);
 
       // 把剛剛選的檔案複製過去
       File originalFile = File(originalPath);
@@ -57,7 +59,7 @@ class _AddSongsDataScreenState extends State<AddSongsDataScreen> {
 
       // 呼叫 callback 把新路徑存起來並更新畫面
       setState(() {
-        String fileNameWithoutExtension = p.basenameWithoutExtension(fileName);
+        String fileNameWithoutExtension = p.basenameWithoutExtension(originalFileName);
         List<String> patterned_string = fileNameWithoutExtension.split('-');
         if(type == FileType.audio) {
           // 如果可以直接從 file 提取出 <歌手名>-<歌名> 就直接更新
@@ -80,7 +82,7 @@ class _AddSongsDataScreenState extends State<AddSongsDataScreen> {
         if (type == FileType.image) {
           _isImageAutoLoaded = false;
         }
-        onSaved(newPath, fileName);
+        onSaved(newPath, originalFileName);
       });
     }
   }
