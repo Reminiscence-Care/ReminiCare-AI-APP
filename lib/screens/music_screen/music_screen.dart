@@ -71,7 +71,7 @@ class MusicScreen extends StatelessWidget {
   }) {
     return GestureDetector(
       onTap: () {
-        context.push('/music_years_selection_screen/$languageLabel');
+        context.push('/search_and_recommendation/$languageLabel');
       },
       child: Container(
         width: width,
