@@ -54,27 +54,6 @@ class MusicScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-                  Padding(
-                    padding: EdgeInsetsGeometry.only(top:40),
-                    child: ElevatedButton(
-                      onPressed: () {
-                        context.push('/add_songs_data_screen');
-                      },
-                      style: ElevatedButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)
-                        )
-                      ),
-                      child: Text(
-                        '新增歌曲',
-                        style: const TextStyle(
-                            fontSize: 35,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF4E342E)
-                        ),
-                      ),
-                    ),
-                  )
                 ],
               ),
             ],

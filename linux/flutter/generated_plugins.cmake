@@ -4,7 +4,9 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   audioplayers_linux
+  fullscreen_window
   record_linux
+  webview_win_floating
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

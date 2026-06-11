@@ -44,6 +44,8 @@ dependencies:
   http: ^1.6.0
   audioplayers: ^6.7.1
   just_audio_windows: ^0.2.3
+  webview_flutter: ^4.13.1
+  webview_win_floating: ^3.0.3
   record: ^6.2.1
   speech_to_text: ^7.4.0
   shared_preferences: ^2.5.5
