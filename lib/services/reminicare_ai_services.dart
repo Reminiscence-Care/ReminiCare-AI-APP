@@ -148,10 +148,10 @@ const String INITIAL_QUESTION_PROMPT = """
 
 /// 1. NVIDIA LLM 服務 (對話生成與關鍵字萃取)
 class NvidiaLlmService {
-  final String _rawUrl = "[https://integrate.api.nvidia.com/v1/chat/completions](https://integrate.api.nvidia.com/v1/chat/completions)";
+  final String _rawUrl = "https://integrate.api.nvidia.com/v1/chat/completions";
   final String _model = "meta/llama-3.1-8b-instruct";
 
-  String get _url => kIsWeb ? "[https://corsproxy.io/?$_rawUrl](https://corsproxy.io/?$_rawUrl)" : _rawUrl;
+  String get _url => kIsWeb ? "https://corsproxy.io/?$_rawUrl" : _rawUrl;
 
   /// 隨機產生開場白懷舊問題
   Future<String> generateInitialQuestion() async {

@@ -5,8 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
-// 引入您的純 Dart 服務層
-import 'package:remini_care_ai_app/services/reminicare_ai_services.dart';
+// 💡 引入我們的純 Dart 服務層
+import '../../services/reminicare_ai_services.dart';
 
 // 匯入您自定義的子組件
 import 'widgets/language_selector.dart';
@@ -65,13 +65,13 @@ class _LifeScreenState extends State<LifeScreen> {
   @override
   void initState() {
     super.initState();
-    // 💡 啟動時先動態讀取本地/SharedPreferences 金鑰，讀完才叫 LLM 出題
     _initializeConfigurationAndLoad();
   }
 
   /// 💡 初始化金鑰並獲取初始問題
   Future<void> _initializeConfigurationAndLoad() async {
     await ReminiCareConfig.loadConfig(); // 載入 SharedPreferences 優先的金鑰
+    if (!mounted) return;
     _fetchInitialQuestion();
     _initSpeechToText(); // 初始化語音助手
   }
@@ -82,6 +82,10 @@ class _LifeScreenState extends State<LifeScreen> {
   void _startTimer() {
     _recordTimer?.cancel();
     _recordTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
       setState(() { _recordSeconds++; });
     });
   }
@@ -92,6 +96,7 @@ class _LifeScreenState extends State<LifeScreen> {
   }
 
   void _resetAllStates() {
+    if (!mounted) return;
     setState(() {
       _chatStatus = ChatStatus.prepare;
       _recordSeconds = 0;
@@ -109,14 +114,15 @@ class _LifeScreenState extends State<LifeScreen> {
 
   @override
   void dispose() {
+    _isListening = false; // 💡 確保非同步監聽器不會重新觸發自動重新啟動
     _stopTimer();
     _audioPlayer.dispose();
-    _speechToText.stop();
+    _speechToText.cancel(); // 💡 相比 stop()，cancel() 更加強硬乾淨，能直接中斷所有系統原生監聽並釋放硬體
     super.dispose();
   }
 
   // ==========================================
-  // 🎙️ 語音助手與熱詞監聽邏輯 (免動手控制)
+  // 🎙️ 語音助手與熱詞監聽邏輯 (免動手控制 + 異常生命週期防護)
   // ==========================================
 
   /// 初始化語音助手
@@ -125,18 +131,21 @@ class _LifeScreenState extends State<LifeScreen> {
       bool available = await _speechToText.initialize(
         onStatus: (status) {
           debugPrint("[語音助手狀態] $status");
+          if (!mounted) return;
           if (status == 'notListening' && _isListening) {
             _restartListening();
           }
         },
         onError: (errorNotification) {
           debugPrint("[語音助手錯誤] $errorNotification");
+          if (!mounted) return;
           if (_isListening) {
             _restartListening();
           }
         },
       );
       if (available) {
+        if (!mounted) return;
         setState(() {
           _isSpeechInitialized = true;
         });
@@ -150,6 +159,8 @@ class _LifeScreenState extends State<LifeScreen> {
   /// 啟動監聽
   void _startVoiceAssistant() async {
     if (!_isSpeechInitialized) return;
+    if (!mounted) return;
+
     setState(() {
       _isListening = true;
       _lastWords = "";
@@ -157,6 +168,7 @@ class _LifeScreenState extends State<LifeScreen> {
 
     await _speechToText.listen(
       onResult: (result) {
+        if (!mounted) return; // 💡 防止使用者在辨識結果傳回的瞬間剛好退出頁面崩潰
         setState(() {
           _lastWords = result.recognizedWords;
         });
@@ -169,11 +181,15 @@ class _LifeScreenState extends State<LifeScreen> {
     );
   }
 
-  /// 自動重啟監聽
+  /// 自動重啟監聽 (帶有強大生命週期安全守護)
   void _restartListening() {
     if (!_isListening) return;
+    if (!mounted) return;
+
     _speechToText.stop().then((_) {
+      if (!mounted) return;
       Future.delayed(const Duration(milliseconds: 300), () {
+        if (!mounted) return; // 💡 徹底解決 Future 延時觸發時，生命週期已 Defunct 的閃退
         _startVoiceAssistant();
       });
     });
@@ -181,6 +197,7 @@ class _LifeScreenState extends State<LifeScreen> {
 
   /// 語音指令核心分流器
   void _handleVoiceCommands(String words) {
+    if (!mounted) return;
     final String cleanWords = words.replaceAll(" ", "");
     debugPrint("[語音助手監聽中] -> $cleanWords");
 
@@ -223,6 +240,7 @@ class _LifeScreenState extends State<LifeScreen> {
   // ==========================================
 
   void _voiceTriggerStartChat() {
+    if (!mounted) return;
     setState(() {
       _chatStatus = _chatStatus == ChatStatus.dislikePrepare
           ? ChatStatus.dislikeChatting
@@ -237,6 +255,7 @@ class _LifeScreenState extends State<LifeScreen> {
 
   void _voiceTriggerEndChat(String conversationText) {
     _stopTimer();
+    if (!mounted) return;
     setState(() {
       _chatStatus = _chatStatus == ChatStatus.dislikeChatting
           ? ChatStatus.dislikeCompleted
@@ -249,6 +268,7 @@ class _LifeScreenState extends State<LifeScreen> {
   }
 
   void _voiceTriggerRestartChat() {
+    if (!mounted) return;
     setState(() {
       _recordSeconds = 0;
       _chatStatus = _chatStatus == ChatStatus.dislikeCompleted
@@ -271,6 +291,7 @@ class _LifeScreenState extends State<LifeScreen> {
       if (kIsWeb) return;
       final Uint8List? audioBytes = await _ttsService.generateSpeech(text, language);
       if (audioBytes != null) {
+        if (!mounted) return;
         await _audioPlayer.play(BytesSource(audioBytes));
       }
     } catch (e) {
@@ -279,6 +300,7 @@ class _LifeScreenState extends State<LifeScreen> {
   }
 
   void _playCurrentContextVoice(String lang) {
+    if (!mounted) return;
     setState(() => _selectedLanguage = lang);
     String textToPlay = _aiGeneratedText;
 
@@ -294,23 +316,29 @@ class _LifeScreenState extends State<LifeScreen> {
   }
 
   Future<void> _fetchInitialQuestion() async {
+    if (!mounted) return;
     setState(() { _isLoading = true; });
     try {
       final String question = await _llmService.generateInitialQuestion();
+      if (!mounted) return;
       setState(() {
         _aiGeneratedText = question;
       });
     } catch (e) {
       debugPrint("初始問題獲取失敗: $e");
+      if (!mounted) return;
       setState(() {
         _aiGeneratedText = "哈囉！小時候家裡最常吃什麼呢？";
       });
     } finally {
-      setState(() { _isLoading = false; });
+      if (mounted) {
+        setState(() { _isLoading = false; });
+      }
     }
   }
 
   Future<void> _processAudioAndChat({String? manualText}) async {
+    if (!mounted) return;
     setState(() { _isExtractingKeywords = true; });
     String userMessage = "";
 
@@ -331,6 +359,7 @@ class _LifeScreenState extends State<LifeScreen> {
       final String reply = await _llmService.generateChatReply(userMessage, _chatHistory);
       final List<String> extracted = await _llmService.extractKeywords(userMessage);
 
+      if (!mounted) return;
       setState(() {
         _aiGeneratedText = reply;
         if (_chatStatus == ChatStatus.completed || _chatStatus == ChatStatus.keywords) {
@@ -345,15 +374,19 @@ class _LifeScreenState extends State<LifeScreen> {
 
     } catch (e) {
       debugPrint("陪伴與萃取流發生錯誤: $e");
+      if (!mounted) return;
       setState(() {
         _aiGeneratedText = "拍謝，我剛才恍神沒聽清楚，可以再說一次嗎？";
       });
     } finally {
-      setState(() { _isExtractingKeywords = false; });
+      if (mounted) {
+        setState(() { _isExtractingKeywords = false; });
+      }
     }
   }
 
   Future<void> _triggerImageGeneration() async {
+    if (!mounted) return;
     setState(() { _chatStatus = ChatStatus.generating; });
     try {
       String prompt = _originalKeywords.join("、");
@@ -365,6 +398,7 @@ class _LifeScreenState extends State<LifeScreen> {
         location: "Taiwan",
       );
 
+      if (!mounted) return;
       if (imageUrl != null) {
         setState(() {
           _currentImageUrl = imageUrl;
@@ -375,11 +409,13 @@ class _LifeScreenState extends State<LifeScreen> {
       }
     } catch (e) {
       debugPrint("生圖流程出錯: $e");
+      if (!mounted) return;
       setState(() { _chatStatus = ChatStatus.keywords; });
     }
   }
 
   Future<void> _triggerModifiedImageGeneration() async {
+    if (!mounted) return;
     setState(() { _chatStatus = ChatStatus.dislikeGenerating; });
     try {
       String combinedPrompt = _newKeywords.join("、");
@@ -390,6 +426,7 @@ class _LifeScreenState extends State<LifeScreen> {
         editInstruction: "將桌上的食物與細節修改或新增為: $combinedPrompt",
       );
 
+      if (!mounted) return;
       if (imageUrl != null) {
         setState(() {
           _currentImageUrl = imageUrl;
@@ -400,11 +437,13 @@ class _LifeScreenState extends State<LifeScreen> {
       }
     } catch (e) {
       debugPrint("改圖流程出錯: $e");
+      if (!mounted) return;
       setState(() { _chatStatus = ChatStatus.dislikeKeywords; });
     }
   }
 
   Future<void> _triggerLikeExtendedImageGeneration() async {
+    if (!mounted) return;
     setState(() { _chatStatus = ChatStatus.likeGenerating; });
     try {
       String combinedPrompt = [..._originalKeywords, ..._newKeywords].join("、");
@@ -415,6 +454,7 @@ class _LifeScreenState extends State<LifeScreen> {
         location: "Taiwan",
       );
 
+      if (!mounted) return;
       if (imageUrl != null) {
         setState(() {
           _currentImageUrl = imageUrl;
@@ -425,178 +465,9 @@ class _LifeScreenState extends State<LifeScreen> {
       }
     } catch (e) {
       debugPrint("延伸生圖流程出錯: $e");
+      if (!mounted) return;
       setState(() { _chatStatus = ChatStatus.likeKeywords; });
     }
-  }
-
-  // ==========================================
-  // ⚙️ 互動式自訂設定視窗 (完美修復：支援眼睛點擊查看與隱蔽)
-  // ==========================================
-  void _showSettingsDialog() {
-    final nvidiaController = TextEditingController(text: ReminiCareConfig.nvidiaApiKey);
-    final groqController = TextEditingController(text: ReminiCareConfig.groqApiKey);
-    final siliconFlowController = TextEditingController(text: ReminiCareConfig.siliconFlowApiKey);
-    final ttsTokenController = TextEditingController(text: ReminiCareConfig.nckuTtsToken);
-
-    // 💡 定義四個文字框對應的 obscureText 隱私開關狀態，預設皆為遮罩(true)
-    bool obscureNvidia = true;
-    bool obscureGroq = true;
-    bool obscureSilicon = true;
-    bool obscureTts = true;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false, // 必須手動點按鈕關閉
-      builder: (BuildContext context) {
-        // 💡 關鍵：使用 StatefulBuilder 來讓 Dialog 的 setStateDialog 觸發局部更新，解決 Dialog 無法重繪的問題
-        return StatefulBuilder(
-            builder: (context, setStateDialog) {
-              return AlertDialog(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                title: Row(
-                  children: const [
-                    Icon(Icons.settings, color: Colors.blueGrey),
-                    SizedBox(width: 8),
-                    Text("ReminiCare AI 金鑰配置", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                  ],
-                ),
-                content: SizedBox(
-                  width: double.maxFinite,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          "金鑰儲存於您手機的本機安全資料庫中，您的機密不會外洩。設定完成後立即套用生效！",
-                          style: TextStyle(fontSize: 13, color: Colors.grey, height: 1.4),
-                        ),
-                        const SizedBox(height: 16),
-                        // 💡 傳入 obscure 狀態，並在 onPressed 閉包中翻轉 boolean 值
-                        _buildSettingsField(
-                            "NVIDIA API KEY",
-                            nvidiaController,
-                            "nvapi-...",
-                            obscureNvidia,
-                                () {
-                              setStateDialog(() {
-                                obscureNvidia = !obscureNvidia;
-                              });
-                            }
-                        ),
-                        _buildSettingsField(
-                            "GROQ API KEY (STT)",
-                            groqController,
-                            "gsk_...",
-                            obscureGroq,
-                                () {
-                              setStateDialog(() {
-                                obscureGroq = !obscureGroq;
-                              });
-                            }
-                        ),
-                        _buildSettingsField(
-                            "SILICONFLOW KEY",
-                            siliconFlowController,
-                            "sk-...",
-                            obscureSilicon,
-                                () {
-                              setStateDialog(() {
-                                obscureSilicon = !obscureSilicon;
-                              });
-                            }
-                        ),
-                        _buildSettingsField(
-                            "NCKU TTS TOKEN",
-                            ttsTokenController,
-                            "Token...",
-                            obscureTts,
-                                () {
-                              setStateDialog(() {
-                                obscureTts = !obscureTts;
-                              });
-                            }
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text("取消", style: TextStyle(color: Colors.grey, fontSize: 16)),
-                  ),
-                  ElevatedButton(
-                    onPressed: () async {
-                      // 1. 永久保存到本地 SQLite / SharedPreferences
-                      await ReminiCareConfig.saveConfig(
-                        nvidia: nvidiaController.text,
-                        groq: groqController.text,
-                        siliconFlow: siliconFlowController.text,
-                        ttsToken: ttsTokenController.text,
-                      );
-
-                      if (context.mounted) {
-                        Navigator.of(context).pop();
-
-                        // 2. 貼心提示使用者金鑰已更新
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("🎉 金鑰更新成功！系統已立即載入新金鑰運作。"),
-                            backgroundColor: Colors.green,
-                            duration: Duration(seconds: 3),
-                          ),
-                        );
-
-                        // 3. 即時重新觸發取得問題，驗證新 Key
-                        _fetchInitialQuestion();
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueGrey[800],
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    child: const Text("儲存並套用", style: TextStyle(color: Colors.white, fontSize: 15)),
-                  ),
-                ],
-              );
-            }
-        );
-      },
-    );
-  }
-
-  /// 💡 自定義設定框組件：支持動態控制密碼顯隱
-  Widget _buildSettingsField(
-      String label,
-      TextEditingController controller,
-      String hint,
-      bool obscureText,
-      VoidCallback onToggleVisibility,
-      ) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      child: TextField(
-        controller: controller,
-        obscureText: obscureText, // 💡 使用動態傳入的布林值
-        style: const TextStyle(fontSize: 14),
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.blueGrey),
-          hintText: hint,
-          floatingLabelBehavior: FloatingLabelBehavior.always,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          suffixIcon: IconButton(
-            // 💡 依據 obscureText 的值動態更新眼睛圖示（開眼與閉眼）
-            icon: Icon(
-              obscureText ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-              size: 18,
-            ),
-            onPressed: onToggleVisibility, // 💡 觸發外界狀態更新
-          ),
-        ),
-      ),
-    );
   }
 
   // ==========================================
@@ -638,19 +509,14 @@ class _LifeScreenState extends State<LifeScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black87),
+          onPressed: () => Navigator.maybePop(context),
+        ),
         title: Text(
           appBarTitle,
           style: const TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
         ),
-        // 💡 頂部 AppBar 右側新增一個齒輪按鈕，方便隨時打開金鑰設定頁面
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_outlined, color: Colors.black87),
-            onPressed: _showSettingsDialog,
-            tooltip: "設定 API 金鑰",
-          ),
-          const SizedBox(width: 8),
-        ],
       ),
       body: SafeArea(
         child: LayoutBuilder(
@@ -827,6 +693,7 @@ class _LifeScreenState extends State<LifeScreen> {
         return CompletedView(
           onRestartChat: _voiceTriggerRestartChat,
           onEndChat: () {
+            if (!mounted) return;
             setState(() { _chatStatus = ChatStatus.keywords; });
           },
         );
@@ -839,9 +706,11 @@ class _LifeScreenState extends State<LifeScreen> {
           selectedLanguage: _selectedLanguage,
           onLanguageSelected: _playCurrentContextVoice,
           onLike: () {
+            if (!mounted) return;
             setState(() { _chatStatus = ChatStatus.likePrepare; });
           },
           onDislike: () {
+            if (!mounted) return;
             setState(() { _chatStatus = ChatStatus.dislikePrepare; });
           },
         );
@@ -864,7 +733,10 @@ class _LifeScreenState extends State<LifeScreen> {
       case ChatStatus.dislikeCompleted:
         return CompletedView(
           onRestartChat: _voiceTriggerRestartChat,
-          onEndChat: () { setState(() { _chatStatus = ChatStatus.dislikeKeywords; }); },
+          onEndChat: () {
+            if (!mounted) return;
+            setState(() { _chatStatus = ChatStatus.dislikeKeywords; });
+          },
         );
       case ChatStatus.dislikeKeywords:
         return KeywordsConfirmButton(isDisabled: _isExtractingKeywords, onConfirm: _triggerModifiedImageGeneration);
@@ -873,6 +745,7 @@ class _LifeScreenState extends State<LifeScreen> {
       case ChatStatus.dislikeEvaluation:
         return DislikeEvaluationView(
           onContinueModify: () {
+            if (!mounted) return;
             setState(() { _chatStatus = ChatStatus.dislikePrepare; });
           },
           onFinished: _resetAllStates,
@@ -896,7 +769,10 @@ class _LifeScreenState extends State<LifeScreen> {
       case ChatStatus.likeCompleted:
         return CompletedView(
           onRestartChat: _voiceTriggerRestartChat,
-          onEndChat: () { setState(() { _chatStatus = ChatStatus.likeKeywords; }); },
+          onEndChat: () {
+            if (!mounted) return;
+            setState(() { _chatStatus = ChatStatus.likeKeywords; });
+          },
         );
       case ChatStatus.likeKeywords:
         return KeywordsConfirmButton(isDisabled: _isExtractingKeywords, onConfirm: _triggerLikeExtendedImageGeneration);
