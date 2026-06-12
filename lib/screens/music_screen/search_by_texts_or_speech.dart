@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:remini_care_ai_app/services/reminicare_ai_services.dart';
 import 'package:remini_care_ai_app/services/spotify_api_services.dart';
 
 
@@ -15,6 +16,8 @@ class SearchByTextsOrSpeech extends StatefulWidget {
 class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
   // 使用 Controller 來管理輸入框的文字
   final TextEditingController _textController = TextEditingController(text: '我要你的愛');
+  final String spotifyClientId = ReminiCareConfig.spotifyClientId;
+  final String spotifyClientSecret = ReminiCareConfig.spotifyClientSecret;
   late String? artistName;
   late String? trackName;
   late String? artistUrl;
@@ -26,7 +29,10 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
   }
 
   Future<void> _setEmbedUrls(String query) async {
-    final spotifyApiServices = SpotifyApiServices('6cc1c1a7458d4f72a70ef54490ac3ef3', '0db242c057aa444ea6c9fef50786ed60');
+    final spotifyApiServices = SpotifyApiServices(
+      spotifyClientId,
+      spotifyClientSecret
+    );
     final List<String>? spotifySearchResults = await spotifyApiServices.getArtistAndTracks(query) as List<String>;
     artistName = spotifySearchResults?[0];
     trackName = spotifySearchResults?[1];

@@ -110,6 +110,16 @@ class ReminiCareConfig {
         displayName: 'NCKU STT TOKEN (成大 ASR)',
         hintText: 'Token...'
     ),
+    const ConfigField(
+        apiKey: 'SPOTIFY_CLIENT_ID',
+        displayName: 'Spotify Client Id',
+        hintText: 'Token...'
+    ),
+    const ConfigField(
+        apiKey: 'SPOTIFY_CLIENT_SECRET',
+        displayName: 'Spotify Client Secret',
+        hintText: 'Token...'
+    ),
     // 💡 語音助理自訂提示詞配置欄位，預設為明文顯示不遮罩，且已加上 default 設定
     const ConfigField(
       apiKey: 'WAKE_WORDS_START',
@@ -143,7 +153,8 @@ class ReminiCareConfig {
   static String get siliconFlowApiKey => _configs['SILICONFLOW_API_KEY'] ?? "";
   static String get nckuTtsToken => _configs['NCKU_TTS_TOKEN'] ?? "";
   static String get nckuSttToken => _configs['NCKU_STT_TOKEN'] ?? "";
-
+  static String get spotifyClientId => _configs['SPOTIFY_CLIENT_ID'] ?? "";
+  static String get spotifyClientSecret => _configs['SPOTIFY_CLIENT_SECRET'] ?? "";
   // 💡 4. 關鍵字動態解析 Getter (相容半形逗號與全形逗號，貼心處理空白)
   static List<String> get startWakeWords => _getWordsList('WAKE_WORDS_START', ["開始錄音", "開始聊天", "開始", "來聊", "錄音"]);
   static List<String> get endWakeWords => _getWordsList('WAKE_WORDS_END', ["結束錄音", "結束聊天", "結束錄影", "結束錄像", "結束", "完成"]);
