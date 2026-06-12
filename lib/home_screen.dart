@@ -50,7 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: const [
                     Icon(Icons.settings, color: Colors.blueGrey),
                     SizedBox(width: 8),
-                    Text("ReminiCare AI 金鑰配置", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                    Text("ReminiCare AI 配置", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                   ],
                 ),
                 content: SizedBox(
@@ -60,12 +60,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const Text(
-                          "金鑰儲存於您手機的本機安全資料庫中，您的機密不會外洩。設定完成後立即套用生效！",
+                          "金鑰與指令儲存於您手機的本機安全資料庫中，您的機密不會外洩。設定完成後立即套用生效！",
                           style: TextStyle(fontSize: 13, color: Colors.grey, height: 1.4),
                         ),
                         const SizedBox(height: 16),
 
-                        // 💡 3. 完全動態生成欄位！不管有 5 個、6 個、10 個金鑰，此處 1 行程式碼全部自動建置
+                        // 💡 3. 完全動態生成欄位！不管有 5 個、8 個金鑰，此處 1 行程式碼全部自動動態建置
                         ...ReminiCareConfig.fields.map((field) {
                           final controller = controllers[field.apiKey]!;
                           final isObscured = obscureStates[field.apiKey] ?? true;
@@ -75,6 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             controller,
                             field.hintText,
                             isObscured,
+                            field.isSecure, // 💡 傳入是否需要安全眼睛遮蔽 (API key 要，喚醒詞不要)
                                 () {
                               // 點擊右側小眼睛，動態切換單個輸入框的遮罩顯隱
                               setStateDialog(() {
@@ -120,7 +121,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         // 貼心提示
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text("🎉 金鑰更新成功！系統已立即載入新配置。"),
+                            content: Text("🎉 配置更新成功！已立即套用至系統。"),
                             backgroundColor: Colors.green,
                             duration: Duration(seconds: 2),
                           ),
@@ -141,19 +142,20 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// 自定義設定框組件：支持動態控制密碼顯隱
+  /// 💡 自定義設定框組件：支持動態控制安全欄位與明文欄位
   Widget _buildSettingsField(
       String label,
       TextEditingController controller,
       String hint,
       bool obscureText,
+      bool isSecure, // 💡 新增：決定此輸入框是否提供遮罩與小眼睛
       VoidCallback onToggleVisibility,
       ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: TextField(
         controller: controller,
-        obscureText: obscureText, // 使用動態傳入的布林值
+        obscureText: isSecure ? obscureText : false, // 💡 喚醒字明文輸入，方便查看與修改
         style: const TextStyle(fontSize: 14),
         decoration: InputDecoration(
           labelText: label,
@@ -162,14 +164,16 @@ class _HomeScreenState extends State<HomeScreen> {
           floatingLabelBehavior: FloatingLabelBehavior.always,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          suffixIcon: IconButton(
+          suffixIcon: isSecure
+              ? IconButton(
             // 依據 obscureText 的值動態更新眼睛圖示（開眼與閉眼）
             icon: Icon(
               obscureText ? Icons.visibility_off_outlined : Icons.visibility_outlined,
               size: 18,
             ),
             onPressed: onToggleVisibility, // 觸發外界狀態更新
-          ),
+          )
+              : null, // 明文欄位不需要眼睛圖示
         ),
       ),
     );
@@ -181,10 +185,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final double buttonWidth = screenWidth > 600 ? screenWidth * 0.35 : screenWidth * 0.75;
 
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('首頁'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        title: const Text('首頁', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
         centerTitle: true,
-        // 💡 頂部 AppBar 右側新增一個齒輪按鈕，方便使用者先在此設定好 API 金鑰，防範未然！
+        // 頂部 AppBar 右側新增一個齒輪按鈕，方便使用者先在此設定好 API 金鑰，防範未然！
         actions: [
           IconButton(
             icon: const Icon(Icons.settings_outlined, color: Colors.black87),
