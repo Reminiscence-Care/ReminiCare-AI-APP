@@ -121,7 +121,7 @@ class _LifeScreenState extends State<LifeScreen> {
     _recordTimer = null;
   }
 
-  void _resetAllStates() {
+  void _resetAllStates() async {
     if (!mounted) return;
     setState(() {
       _chatStatus = ChatStatus.prepare;
@@ -134,7 +134,7 @@ class _LifeScreenState extends State<LifeScreen> {
       _isLoading = true;
       _stopTimer();
     });
-    _voiceManager.stopActiveAudioOperations();
+    await _voiceManager.stopActiveAudioOperations(); // 💡 確保安全釋放
     _voiceManager.checkCompletedCommands = false;
     _fetchInitialQuestion();
     _voiceManager.startBackgroundWakeWordCycle(); // 重新回到背景監聽
@@ -167,7 +167,7 @@ class _LifeScreenState extends State<LifeScreen> {
 
   /// 一、開始聊天（關閉喚醒輪詢，開啟滾動切片累積錄製）
   void _triggerStartChatFlow() async {
-    _voiceManager.stopActiveAudioOperations();
+    await _voiceManager.stopActiveAudioOperations(); // 💡 確保安全釋放後重啟
 
     setState(() {
       if (_chatStatus == ChatStatus.dislikePrepare || _chatStatus == ChatStatus.dislikeCompleted) {
@@ -181,7 +181,7 @@ class _LifeScreenState extends State<LifeScreen> {
       _startTimer();
     });
 
-    _voiceManager.startChatFlow(); // 💡 調用獨立經理人啟動
+    _voiceManager.startChatFlow(); // 調用獨立經理人啟動
   }
 
   /// 二、手動按鈕結束聊天（關閉 VAD 與滾動，彙整現有全部段落並發送）
@@ -191,7 +191,6 @@ class _LifeScreenState extends State<LifeScreen> {
     final currentStatus = _chatStatus;
     if (!mounted) return;
     setState(() {
-      // 💡 成功修復型別錯誤：將原先誤寫的「currentStatus == ChatStatus.completed」修正為正確的「ChatStatus.completed」
       _chatStatus = currentStatus == ChatStatus.dislikeChatting
           ? ChatStatus.dislikeCompleted
           : currentStatus == ChatStatus.likeChatting
@@ -199,7 +198,7 @@ class _LifeScreenState extends State<LifeScreen> {
           : ChatStatus.completed;
     });
 
-    await _voiceManager.forceEndChat(); // 💡 調用獨立經理人強制結束與合成
+    await _voiceManager.forceEndChat(); // 調用獨立經理人強制結束與合成
   }
 
   /// 三、彙整整段對話，一次性提交 AI 陪伴與生圖
@@ -218,7 +217,7 @@ class _LifeScreenState extends State<LifeScreen> {
 
     _processAudioAndChat(audioPath: mergedWavPath);
 
-    // 💡 開啟「完成指令」喚醒監聽，等待使用者講重新錄音或結束
+    // 開啟「完成指令」喚醒監聽，等待使用者講重新錄音或結束
     _voiceManager.checkCompletedCommands = true;
     _voiceManager.startBackgroundWakeWordCycle();
   }
@@ -307,7 +306,7 @@ class _LifeScreenState extends State<LifeScreen> {
         } else if (_chatStatus == ChatStatus.dislikeCompleted) {
           userMessage = "這張不像啦，桌上只有一鍋蕃薯粥配醃蘿蔔而已。";
         } else {
-          userMessage = "兄弟姊妹都會去山上摸魚.。";
+          userMessage = "兄弟姊妹都會去山上摸魚。";
         }
       }
 

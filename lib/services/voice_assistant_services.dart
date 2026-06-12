@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 // 💡 引入全域金鑰與 ASR 服務
 import 'reminicare_ai_services.dart';
 
-/// 💡 用於動態解析 WAV 音訊區塊的內部資料結構 (成功從 services 檔案抽離)
+/// 用於動態解析 WAV 音訊區塊的內部資料結構
 class WavInfo {
   final List<int> header;          // 包含 data 區塊大小標記之前的完整標頭
   final List<int> pcm;             // 純淨的 PCM 音訊數據
@@ -22,8 +22,8 @@ class WavInfo {
 }
 
 // =========================================================================
-// 🎙️ 💡 獨立語音助手核心控制器 (VoiceAssistantManager) - 獨立成檔
-//      封裝了背景喚醒、VAD 滾動切片、WAV 二進位動態無損拼接
+// 🎙️ 💡 獨立語音助手核心控制器 (VoiceAssistantManager)
+//      已修復：徹底移除了延遲 Future 內部的二次 stop()，根除第一次錄音無辨識的時序競態 Bug
 // =========================================================================
 class VoiceAssistantManager {
   final AudioRecorder _audioRecorder = AudioRecorder();
@@ -39,16 +39,22 @@ class VoiceAssistantManager {
   void Function()? onEndChatFlow;
   void Function(String mergedAudioPath)? onSpeechCompleted;
 
-  // 💡 是否需要檢測「重新錄音/結束聊天」完成指令 (預設為 false 僅監聽開始錄音)
+  // 是否需要檢測「重新錄音/結束聊天」完成指令 (預設為 false 僅監聽開始錄音)
   bool checkCompletedCommands = false;
 
   bool get isListening => _isRollingWakeWord || _isRollingChatRecord;
 
-  /// 一、重置與安全釋放所有語音/錄音資源
-  void stopActiveAudioOperations() {
+  /// 一、重置與安全釋放所有語音/錄音資源 (將 _isRolling 旗標置為 false，並在硬體層面強行關閉)
+  Future<void> stopActiveAudioOperations() async {
     _isRollingWakeWord = false;
     _isRollingChatRecord = false;
-    _audioRecorder.stop();
+    try {
+      if (await _audioRecorder.isRecording()) {
+        await _audioRecorder.stop();
+      }
+    } catch (e) {
+      debugPrint("[助理] 停止錄音硬體釋放異常: $e");
+    }
     _clearTemporaryChunks();
   }
 
@@ -63,7 +69,9 @@ class VoiceAssistantManager {
   }
 
   void dispose() {
-    stopActiveAudioOperations();
+    _isRollingWakeWord = false;
+    _isRollingChatRecord = false;
+    _audioRecorder.stop();
     _audioRecorder.dispose();
   }
 
@@ -84,6 +92,11 @@ class VoiceAssistantManager {
         final directory = await getTemporaryDirectory();
         final String path = '${directory.path}/reminicare_wake_${DateTime.now().millisecondsSinceEpoch}.wav';
 
+        // 防禦安全鎖：如果不知何故錄音器還在轉，先強力關閉
+        if (await _audioRecorder.isRecording()) {
+          await _audioRecorder.stop();
+        }
+
         await _audioRecorder.start(
           const RecordConfig(
             encoder: AudioEncoder.wav,
@@ -95,8 +108,11 @@ class VoiceAssistantManager {
 
         // 每隔 3.5 秒錄製一次
         await Future.delayed(const Duration(milliseconds: 3500));
+
+        // 💡 關鍵修正：若在延時 3.5 秒期間狀態已被外部 stopActiveAudioOperations() 設為 false，
+        // 說明外部已將 _audioRecorder 關閉，這裡直接 return 退出循環即可！
+        // 絕對不能再呼叫 _audioRecorder.stop()，防範其捏熄或干擾此時剛剛發起的新對話錄音！
         if (!_isRollingWakeWord) {
-          await _audioRecorder.stop();
           return;
         }
 
@@ -159,7 +175,7 @@ class VoiceAssistantManager {
   // 🎙️ 輪詢 B：滾動對話切片累積錄製與 WAV 拼接
   // ==========================================
   Future<void> startChatFlow() async {
-    stopActiveAudioOperations();
+    await stopActiveAudioOperations(); // 確保前一個背景監聽完全釋放後才開始主動錄音
     _recordedChunkPaths.clear();
     _isRollingChatRecord = true;
     _runSingleChatRecordCycle();
@@ -185,8 +201,10 @@ class VoiceAssistantManager {
 
         // 每隔 5 秒無痛錄製一個對話切片
         await Future.delayed(const Duration(milliseconds: 5000));
+
+        // 💡 關鍵修正：若在延時 5 秒期間被手動結束或強行中斷，
+        // 說明外部已呼叫 _audioRecorder.stop()，這裡直接 return 即可，絕不進行二次 stop() 二度破壞！
         if (!_isRollingChatRecord) {
-          await _audioRecorder.stop();
           return;
         }
 

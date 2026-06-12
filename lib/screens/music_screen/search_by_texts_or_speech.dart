@@ -29,24 +29,25 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
   bool _isRecording = false;
   String? speechText;
   void _initVoiceAssistant() {
-    // 2. 綁定語音指令回調
-    _voiceManager.onStartChatFlow = () {
-      _startRecordingSession(); // 語音喚醒 -> 自動開始錄製
+    _voiceManager.onStartChatFlow = () async {
+      await _voiceManager.stopActiveAudioOperations();
+      _startRecordingSession();
     };
 
     _voiceManager.onSpeechCompleted = (mergedWavPath) {
-      _processMergedAudio(mergedWavPath); // 語音結束（或手動結束） -> 取得拼接完成的完整音軌
+      _processMergedAudio(mergedWavPath);
     };
 
-    _voiceManager.onRestartChatFlow = () {
-      _startRecordingSession(); // 說「重新錄音」-> 重啟錄音
+    _voiceManager.onRestartChatFlow = () async {
+      await _voiceManager.stopActiveAudioOperations();
+      _startRecordingSession();
     };
 
-    _voiceManager.onEndChatFlow = () {
-      _navigateToNextPage(); // 說「結束對話」-> 切換頁面
+    _voiceManager.onEndChatFlow = () async {
+      await _voiceManager.stopActiveAudioOperations();
+      _navigateToNextPage();
     };
 
-    // 3. 開始背景喚醒監聽
     _voiceManager.startBackgroundWakeWordCycle();
   }
 
@@ -58,12 +59,20 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
   Future<void> _processMergedAudio(String path) async {
     setState(() { _isRecording = false; });
     print("取得無損拼接回憶 WAV 檔: $path");
-    // 此處可直接調用 ASR 解析：
-    speechText = await _nckuSpeechService.transcribe(path);
 
-    // 💡 解析完畢後，若需要讓背景繼續監聽「重新錄音」或「結束聊天」
-    _voiceManager.checkCompletedCommands = true;
-    _voiceManager.startBackgroundWakeWordCycle();
+    // 💡 呼叫成大自研 ASR 代理伺服器
+    final result = await _nckuSpeechService.transcribe(path);
+
+    if (result != null && result.isNotEmpty) {
+      speechText = result;
+      _textController.text = result;
+
+      _navigateToNextPage();
+    } else {
+      // 如果是靜音或辨識失敗，重啟背景監聽
+      _voiceManager.checkCompletedCommands = false;
+      _voiceManager.startBackgroundWakeWordCycle();
+    }
   }
 
   void _navigateToNextPage() async {
@@ -209,10 +218,17 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           IconButton(
-            icon: const Icon(Icons.mic, size: 40, color: Colors.black87),
+            icon: Icon(
+              _isRecording ? Icons.stop : Icons.mic,
+              size: 40,
+              color: _isRecording ? Colors.red : Colors.black87,
+            ),
             onPressed: () {
               // 這裡可以觸發開啟麥克風的邏輯
               if(_isRecording) {
+                setState(() {
+                  _isRecording = false;
+                });
                 _voiceManager.forceEndChat();
               }
               else {
