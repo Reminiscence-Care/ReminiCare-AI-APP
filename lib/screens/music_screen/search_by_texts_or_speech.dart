@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:remini_care_ai_app/services/spotify_api_services.dart';
+
 
 class SearchByTextsOrSpeech extends StatefulWidget {
   final String? texts_or_speech;
@@ -11,13 +13,25 @@ class SearchByTextsOrSpeech extends StatefulWidget {
 }
 
 class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
-  // 使用 Controller 來管理輸入框的文字，並預設填入截圖中的字
+  // 使用 Controller 來管理輸入框的文字
   final TextEditingController _textController = TextEditingController(text: '我要你的愛');
-
+  late String? artistName;
+  late String? trackName;
+  late String? artistUrl;
+  late String? trackUrl;
   @override
   void dispose() {
     _textController.dispose(); // 記得釋放資源
     super.dispose();
+  }
+
+  Future<void> _setEmbedUrls(String query) async {
+    final spotifyApiServices = SpotifyApiServices('6cc1c1a7458d4f72a70ef54490ac3ef3', '0db242c057aa444ea6c9fef50786ed60');
+    final List<String>? spotifySearchResults = await spotifyApiServices.getArtistAndTracks(query) as List<String>;
+    artistName = spotifySearchResults?[0];
+    trackName = spotifySearchResults?[1];
+    artistUrl = spotifySearchResults?[2];
+    trackUrl = spotifySearchResults?[3];
   }
 
   @override
@@ -81,13 +95,21 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
         textInputAction: TextInputAction.search,
 
         // 當使用者按下鍵盤的搜尋/確認鍵時觸發
-        onSubmitted: (String value) {
+        onSubmitted: (String value) async {
           // 防呆機制：如果使用者沒打字就按搜尋，可以直接 return 不做任何事
           if (value.trim().isEmpty) return;
-
+          await _setEmbedUrls(value);
           // 這裡放你的跳轉邏輯，並把輸入的文字 (value) 帶過去
           // 假設你的下一個頁面路由叫做 /search_results
-          context.push('/search_results/$value/$languageLabel');
+          final queryParams = {
+            'artistUrl': artistUrl,
+            'trackUrl': trackUrl,
+          };
+          final uri = Uri(
+            path: '/search_results/$artistName/$trackName/$languageLabel',
+            queryParameters: queryParams
+          ).toString();
+          context.push(uri);
         },
 
         decoration: InputDecoration(

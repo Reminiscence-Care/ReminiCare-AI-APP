@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -10,10 +12,14 @@ import 'package:remini_care_ai_app/screens/music_screen/search_and_recommendatio
 import 'package:remini_care_ai_app/screens/music_screen/search_by_texts_or_speech.dart';
 import 'package:remini_care_ai_app/screens/music_screen/search_options.dart';
 import 'package:remini_care_ai_app/screens/music_screen/search_results.dart';
+import 'package:webview_win_floating/webview_plugin.dart';
 
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (Platform.isWindows) {
+    WindowsWebViewPlatform.registerWith();
+  }
   await Hive.initFlutter();
   Hive.registerAdapter(SongModelAdapter());
   await Hive.openBox<SongModel>('my_music_box');
@@ -58,17 +64,21 @@ final GoRouter _router = GoRouter(
       },
     ),
     GoRoute(
-      path: '/search_results/:value/:languageLabel',
+      path: '/search_results/:artistName/:trackName/:languageLabel',
       builder: (context, state) {
-        final value = state.pathParameters['value'];
-        final languageLabel = state.pathParameters['languageLabel'];
-        return SearchResults(value: value, languageLabel: languageLabel);
+        final artistName = state.pathParameters['artistName'];
+        final trackName = state.pathParameters['trackName'];
+
+        final artistUrl = state.uri.queryParameters['artistUrl'];
+        final trackUrl = state.uri.queryParameters['trackUrl'];
+        final languageLabel = state.uri.queryParameters['languageLabel'];
+        return SearchResults(artistName: artistName, trackName: trackName, artistUrl: artistUrl, trackUrl: trackUrl, languageLabel: languageLabel);
       }
     ),
     GoRoute(
-      path: '/play_music/:embedUrl',
+      path: '/play_music',
       builder: (context, state) {
-        var embedUrl = state.pathParameters['embedUrl'];
+        var embedUrl = state.uri.queryParameters['embedUrl'];
         if(embedUrl == "" || embedUrl == null){
           embedUrl = 'https://open.spotify.com/embed';
         }

@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 class SearchResults extends StatelessWidget {
-  final String? value;
+  final String? artistName;
+  final String? trackName;
+  final String? artistUrl;
+  final String? trackUrl;
   final String? languageLabel;
 
-  const SearchResults({super.key, this.value, this.languageLabel});
+  const SearchResults({
+    super.key, this.artistName, this.trackName,
+    this.artistUrl, this.trackUrl, this.languageLabel
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +76,7 @@ class SearchResults extends StatelessWidget {
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(4),
                         child: Image.network(
-                          'http://googleusercontent.com/image_collection/image_retrieval/5495305988097026397', // 使用抓取的復古頭像
+                          artistUrl ?? 'http://googleusercontent.com/image_collection/image_retrieval/5495305988097026397',
                           fit: BoxFit.cover,
                           errorBuilder: (context, error, stackTrace) =>
                           const Icon(Icons.person, color: Colors.grey),
@@ -82,14 +89,14 @@ class SearchResults extends StatelessWidget {
                     Expanded(
                       flex: 2,
                       child: Text(
-                        '葛蘭',
+                        artistName ?? '葛蘭',
                         style: const TextStyle(fontSize: 14, color: Colors.black),
                       ),
                     ),
                     Expanded(
                       flex: 3,
                       child: Text(
-                        value ?? '我要你的愛',
+                        trackName ?? '我要你的愛',
                         style: const TextStyle(fontSize: 14, color: Colors.black),
                       ),
                     ),
@@ -105,7 +112,22 @@ class SearchResults extends StatelessWidget {
                           borderRadius: BorderRadius.circular(20),
                         ),
                       ),
-                      child: const Text('播放', style: TextStyle(fontSize: 12)),
+                      child: TextButton(
+                        onPressed: () {
+                          final params = {
+                            'embedUrl': trackUrl,
+                          };
+                          final uri = Uri(
+                            path: '/play_music',
+                            queryParameters: params
+                          ).toString();
+                          context.push(uri);
+                        },
+                        child: const Text(
+                          '播放',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
                     ),
                   ],
                 ),

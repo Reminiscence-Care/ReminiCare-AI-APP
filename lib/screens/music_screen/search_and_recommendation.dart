@@ -136,6 +136,7 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
                   thickness: 6.0,
                   radius: const Radius.circular(8),
                   child: ListView.builder(
+                    primary: true,
                     itemCount: songs.length,
                     itemBuilder: (context, index) {
                       final song = songs[index];

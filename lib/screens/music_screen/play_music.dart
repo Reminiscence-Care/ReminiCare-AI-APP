@@ -18,28 +18,24 @@ class _PlayMusicState extends State<PlayMusic> {
   void initState() {
     super.initState();
 
-    // 1：如果作業系統是 Windows，強制註冊 webview_win_floating 作為底層引擎
+    late final PlatformWebViewControllerCreationParams params;
     if (Platform.isWindows) {
-      WindowsWebViewPlatform.registerWith();
+      params = WindowsWebViewControllerCreationParams();
+    } else {
+      params = const PlatformWebViewControllerCreationParams();
     }
 
-    // 2：初始化 WebViewController
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted) // Spotify 依賴大量 JS，必須全開
-      ..setBackgroundColor(Colors.transparent)         // 讓背景透明，融入你的 App UI
-      ..loadRequest(Uri.parse(widget.embedUrl));       // 載入網址
+    _controller = WebViewController.fromPlatformCreationParams(params)
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..loadRequest(Uri.parse(widget.embedUrl));
   }
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 152,
-      width: double.infinity,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12), // 幫 Webview 加上漂亮的圓角
-        child: WebViewWidget(controller: _controller),
-      ),
+    return Scaffold(
+      appBar: AppBar(title: Text('音樂播放')),
+      body:
+        WebViewWidget(controller: _controller),
     );
   }
-
 }
