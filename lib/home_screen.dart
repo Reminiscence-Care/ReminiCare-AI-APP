@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-// 💡 引入金鑰管理器服務
+// 引入金鑰管理器服務
 import '../../services/reminicare_ai_services.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -15,30 +15,33 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // 💡 啟動時即在首頁默默讀取本地金鑰配置，為稍後的使用做足準備！
+    // 💡 啟動時即在首頁默默加載本地金鑰配置，為稍後的使用做足準備！
     ReminiCareConfig.loadConfig();
   }
 
-  // ==========================================
-  // ⚙️ 互動式自訂設定視窗 (支援眼睛點擊查看與隱蔽)
-  // ==========================================
+  // =========================================================================
+  // ⚙️ 互動式自訂設定視窗 (💡 升級：完全由 ReminiCareConfig 宣告欄位動態渲染)
+  // =========================================================================
   void _showSettingsDialog() {
-    final nvidiaController = TextEditingController(text: ReminiCareConfig.nvidiaApiKey);
-    final groqController = TextEditingController(text: ReminiCareConfig.groqApiKey);
-    final siliconFlowController = TextEditingController(text: ReminiCareConfig.siliconFlowApiKey);
-    final ttsTokenController = TextEditingController(text: ReminiCareConfig.nckuTtsToken);
+    // 💡 1. 根據 ReminiCareConfig 宣告的 fields 清單，動態建立與映射 TextEditingController
+    final Map<String, TextEditingController> controllers = {};
+    for (var field in ReminiCareConfig.fields) {
+      controllers[field.apiKey] = TextEditingController(
+        text: ReminiCareConfig.getValue(field.apiKey),
+      );
+    }
 
-    // 定義四個文字框對應的 obscureText 隱私開關狀態，預設皆為遮罩(true)
-    bool obscureNvidia = true;
-    bool obscureGroq = true;
-    bool obscureSilicon = true;
-    bool obscureTts = true;
+    // 💡 2. 根據 fields 清單，動態建立眼睛遮罩 obscureText 狀態 (預設皆為遮罩 true)
+    final Map<String, bool> obscureStates = {};
+    for (var field in ReminiCareConfig.fields) {
+      obscureStates[field.apiKey] = true;
+    }
 
     showDialog(
       context: context,
       barrierDismissible: false, // 必須手動點按鈕關閉
       builder: (BuildContext context) {
-        // 使用 StatefulBuilder 讓 Dialog 的 setStateDialog 觸發局部更新，解決 Dialog 內眼睛按鈕點擊沒反應的問題
+        // 使用 StatefulBuilder 提供 Dialog 的局部 setState 狀態更新
         return StatefulBuilder(
             builder: (context, setStateDialog) {
               return AlertDialog(
@@ -61,77 +64,63 @@ class _HomeScreenState extends State<HomeScreen> {
                           style: TextStyle(fontSize: 13, color: Colors.grey, height: 1.4),
                         ),
                         const SizedBox(height: 16),
-                        // 傳入 obscure 狀態，並在 onPressed 閉包中翻轉 boolean 值
-                        _buildSettingsField(
-                            "NVIDIA API KEY",
-                            nvidiaController,
-                            "nvapi-...",
-                            obscureNvidia,
+
+                        // 💡 3. 完全動態生成欄位！不管有 5 個、6 個、10 個金鑰，此處 1 行程式碼全部自動建置
+                        ...ReminiCareConfig.fields.map((field) {
+                          final controller = controllers[field.apiKey]!;
+                          final isObscured = obscureStates[field.apiKey] ?? true;
+
+                          return _buildSettingsField(
+                            field.displayName,
+                            controller,
+                            field.hintText,
+                            isObscured,
                                 () {
+                              // 點擊右側小眼睛，動態切換單個輸入框的遮罩顯隱
                               setStateDialog(() {
-                                obscureNvidia = !obscureNvidia;
+                                obscureStates[field.apiKey] = !isObscured;
                               });
-                            }
-                        ),
-                        _buildSettingsField(
-                            "GROQ API KEY (STT)",
-                            groqController,
-                            "gsk_...",
-                            obscureGroq,
-                                () {
-                              setStateDialog(() {
-                                obscureGroq = !obscureGroq;
-                              });
-                            }
-                        ),
-                        _buildSettingsField(
-                            "SILICONFLOW KEY",
-                            siliconFlowController,
-                            "sk-...",
-                            obscureSilicon,
-                                () {
-                              setStateDialog(() {
-                                obscureSilicon = !obscureSilicon;
-                              });
-                            }
-                        ),
-                        _buildSettingsField(
-                            "NCKU TTS TOKEN",
-                            ttsTokenController,
-                            "Token...",
-                            obscureTts,
-                                () {
-                              setStateDialog(() {
-                                obscureTts = !obscureTts;
-                              });
-                            }
-                        ),
+                            },
+                          );
+                        }).toList(),
                       ],
                     ),
                   ),
                 ),
                 actions: [
                   TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
+                    onPressed: () {
+                      // 安全釋放控制器內存，防範記憶體洩漏
+                      for (var controller in controllers.values) {
+                        controller.dispose();
+                      }
+                      Navigator.of(context).pop();
+                    },
                     child: const Text("取消", style: TextStyle(color: Colors.grey, fontSize: 16)),
                   ),
                   ElevatedButton(
                     onPressed: () async {
-                      // 1. 永久保存到本地 SQLite / SharedPreferences
-                      await ReminiCareConfig.saveConfig(
-                        nvidia: nvidiaController.text,
-                        groq: groqController.text,
-                        siliconFlow: siliconFlowController.text,
-                        ttsToken: ttsTokenController.text,
-                      );
+                      // 💡 4. 動態收集所有 Controllers 當下的最新輸入值並寫入 Map
+                      final Map<String, String> updatedData = {};
+                      controllers.forEach((key, controller) {
+                        updatedData[key] = controller.text;
+                      });
+
+                      // 💡 5. 一鍵永久儲存至本機快取與熱更替
+                      await ReminiCareConfig.saveConfig(updatedData);
+
+                      // 釋放內存
+                      for (var controller in controllers.values) {
+                        controller.dispose();
+                      }
 
                       if (context.mounted) {
                         Navigator.of(context).pop();
 
-                        // 2. 貼心提示使用者金鑰已更新
+                        // 貼心提示
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text("🎉 金鑰更新成功！"),
+                            content: Text("🎉 金鑰更新成功！系統已立即載入新配置。"),
                             backgroundColor: Colors.green,
                             duration: Duration(seconds: 2),
                           ),
