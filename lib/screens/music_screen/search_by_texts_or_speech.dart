@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:remini_care_ai_app/services/reminicare_ai_services.dart';
 import 'package:remini_care_ai_app/services/spotify_api_services.dart';
-
+import 'package:remini_care_ai_app/services/voice_assistant_services.dart';
 
 class SearchByTextsOrSpeech extends StatefulWidget {
   final String? texts_or_speech;
@@ -22,9 +22,77 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
   late String? trackName;
   late String? artistUrl;
   late String? trackUrl;
+  String? languageLabel;
+
+  final _nckuSpeechService = NckuSpeechService();
+  final _voiceManager = VoiceAssistantManager();
+  bool _isRecording = false;
+  String? speechText;
+  void _initVoiceAssistant() {
+    // 2. 綁定語音指令回調
+    _voiceManager.onStartChatFlow = () {
+      _startRecordingSession(); // 語音喚醒 -> 自動開始錄製
+    };
+
+    _voiceManager.onSpeechCompleted = (mergedWavPath) {
+      _processMergedAudio(mergedWavPath); // 語音結束（或手動結束） -> 取得拼接完成的完整音軌
+    };
+
+    _voiceManager.onRestartChatFlow = () {
+      _startRecordingSession(); // 說「重新錄音」-> 重啟錄音
+    };
+
+    _voiceManager.onEndChatFlow = () {
+      _navigateToNextPage(); // 說「結束對話」-> 切換頁面
+    };
+
+    // 3. 開始背景喚醒監聽
+    _voiceManager.startBackgroundWakeWordCycle();
+  }
+
+  void _startRecordingSession() {
+    setState(() { _isRecording = true; });
+    _voiceManager.startChatFlow(); // 啟動助理錄製
+  }
+
+  Future<void> _processMergedAudio(String path) async {
+    setState(() { _isRecording = false; });
+    print("取得無損拼接回憶 WAV 檔: $path");
+    // 此處可直接調用 ASR 解析：
+    speechText = await _nckuSpeechService.transcribe(path);
+
+    // 💡 解析完畢後，若需要讓背景繼續監聽「重新錄音」或「結束聊天」
+    _voiceManager.checkCompletedCommands = true;
+    _voiceManager.startBackgroundWakeWordCycle();
+  }
+
+  void _navigateToNextPage() async {
+    // 這裡放你的跳轉邏輯，並把輸入的文字 (value) 帶過去
+    // 假設你的下一個頁面路由叫做 /search_results
+    if(speechText == null) speechText = "";
+    await _setEmbedUrls(speechText!);
+    final queryParams = {
+      'artistUrl': artistUrl,
+      'trackUrl': trackUrl,
+    };
+    final uri = Uri(
+        path: '/search_results/$artistName/$trackName/$languageLabel',
+        queryParameters: queryParams
+    ).toString();
+    context.push(uri);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _initVoiceAssistant();
+    languageLabel = widget.languageLabel;
+  }
+
   @override
   void dispose() {
     _textController.dispose(); // 記得釋放資源
+    _voiceManager.dispose();
     super.dispose();
   }
 
@@ -71,14 +139,10 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
                 _buildTextInputUI(currentLanguage)
               else
                 _buildSpeechInputUI(currentLanguage),
-
-              const SizedBox(height: 32),
-
-              // 3. 條件渲染區塊：底部提示文字
-              Text(
-                isTextMode ? '文字輸入中' : '語音輸入中',
-                style: const TextStyle(fontSize: 30, color: Colors.black87),
-              ),
+              SizedBox(height: 40),
+              Text(_isRecording ? "手動結束錄音" : "手動開始錄音"),
+              SizedBox(height: 40),
+              Text(_isRecording ? "🎙️ 正在錄製故事中..." : "🤖 背景語音助理監聽中..."),
             ],
           ),
         ),
@@ -141,17 +205,24 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
         color: Colors.grey[300],
         shape: BoxShape.circle, // 圓形背景
       ),
-      child: IconButton(
-        icon: const Icon(Icons.mic, size: 40, color: Colors.black87),
-        onPressed: () {
-          // 這裡可以觸發開啟麥克風的邏輯
-          String value = "123";
-          if(value == "") {
-            // 要 UI 提示重講
-          }
-          context.push('/search_results/$value/$languageLabel');
-        },
-      ),
+      child:Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.mic, size: 40, color: Colors.black87),
+            onPressed: () {
+              // 這裡可以觸發開啟麥克風的邏輯
+              if(_isRecording) {
+                _voiceManager.forceEndChat();
+              }
+              else {
+                _startRecordingSession();
+              }
+            },
+          ),
+        ],
+      )
     );
   }
+
 }
