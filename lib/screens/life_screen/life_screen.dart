@@ -3,8 +3,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:path_provider/path_provider.dart';
 
-// 💡 完美對齊：同時引入 restored 的 AI 服務檔與獨立語音助理檔
+// 完美對齊：同時引入 restored 的 AI 服務檔與獨立語音助理檔
 import '../../services/reminicare_ai_services.dart';
 import '../../services/voice_assistant_services.dart';
 
@@ -30,15 +31,12 @@ class LifeScreen extends StatefulWidget {
 }
 
 class _LifeScreenState extends State<LifeScreen> {
-  // 實例化純 Dart AI 客戶端服務 (成功自 reminicare_ai_services.dart 中恢復使用)
   final NvidiaLlmService _llmService = NvidiaLlmService();
   final SiliconFlowImageService _imageService = SiliconFlowImageService();
   final NckuSpeechService _nckuSpeechService = NckuSpeechService();
 
-  // 💡 宣告獨立語音助理管理器
   final VoiceAssistantManager _voiceManager = VoiceAssistantManager();
 
-  // 狀態變數與播放器
   String _aiGeneratedText = "";
   String _selectedLanguage = "台語";
   ChatStatus _chatStatus = ChatStatus.prepare;
@@ -53,11 +51,11 @@ class _LifeScreenState extends State<LifeScreen> {
   List<String> _originalKeywords = [];
   List<String> _newKeywords = [];
 
-  // 保留對話紀錄以維持上下文
   final List<Map<String, String>> _chatHistory = [];
   String _currentImageUrl = "";
 
   final AudioPlayer _audioPlayer = AudioPlayer();
+  int _currentPlaySessionId = 0;
 
   @override
   void initState() {
@@ -65,13 +63,11 @@ class _LifeScreenState extends State<LifeScreen> {
     _initializeConfigurationAndLoad();
   }
 
-  /// 💡 初始化金鑰並綁定語音助理回調
   Future<void> _initializeConfigurationAndLoad() async {
-    await ReminiCareConfig.loadConfig(); // 載入 SharedPreferences 優先的金鑰
+    await ReminiCareConfig.loadConfig();
     if (!mounted) return;
     _fetchInitialQuestion();
 
-    // 💡 設定語音助理事件綁定 (從 UI 完美抽離！)
     _voiceManager.onStartChatFlow = () {
       _triggerStartChatFlow();
     };
@@ -82,6 +78,7 @@ class _LifeScreenState extends State<LifeScreen> {
 
     _voiceManager.onEndChatFlow = () {
       if (mounted) {
+        _stopAudioSequence();
         setState(() {
           if (_chatStatus == ChatStatus.dislikeCompleted) {
             _chatStatus = ChatStatus.dislikeKeywords;
@@ -99,7 +96,7 @@ class _LifeScreenState extends State<LifeScreen> {
       _submitMergedAudioToAI(mergedWavPath);
     };
 
-    _voiceManager.startBackgroundWakeWordCycle(); // 啟動：背景自動喚醒監聽
+    _voiceManager.startBackgroundWakeWordCycle();
   }
 
   // ==========================================
@@ -123,6 +120,7 @@ class _LifeScreenState extends State<LifeScreen> {
 
   void _resetAllStates() async {
     if (!mounted) return;
+    _stopAudioSequence();
     setState(() {
       _chatStatus = ChatStatus.prepare;
       _recordSeconds = 0;
@@ -134,13 +132,12 @@ class _LifeScreenState extends State<LifeScreen> {
       _isLoading = true;
       _stopTimer();
     });
-    await _voiceManager.stopActiveAudioOperations(); // 💡 確保安全釋放
+    await _voiceManager.stopActiveAudioOperations();
     _voiceManager.checkCompletedCommands = false;
     _fetchInitialQuestion();
-    _voiceManager.startBackgroundWakeWordCycle(); // 重新回到背景監聽
+    _voiceManager.startBackgroundWakeWordCycle();
   }
 
-  /// 💡 判斷當前狀態是否為「需要語音助理/監聽」的活動狀態
   bool _isVoiceActiveStatus(ChatStatus status) {
     return status == ChatStatus.prepare ||
         status == ChatStatus.chatting ||
@@ -155,19 +152,114 @@ class _LifeScreenState extends State<LifeScreen> {
 
   @override
   void dispose() {
-    _voiceManager.dispose(); // 安全釋放助理與錄音資源
+    _voiceManager.dispose();
     _stopTimer();
     _audioPlayer.dispose();
     super.dispose();
   }
 
   // ==========================================
+  // 🔊 雙語交替序列播放引擎
+  // ==========================================
+
+  void _stopAudioSequence() {
+    _currentPlaySessionId++;
+    _audioPlayer.stop();
+    _audioPlayer.release();
+  }
+
+  Future<void> _playAlternatingSequence(String text) async {
+    _stopAudioSequence();
+    await _voiceManager.stopActiveAudioOperations();
+
+    if (text.isEmpty) return;
+    if (kIsWeb) return;
+
+    final sessionId = _currentPlaySessionId;
+    final sequence = ["台語", "中文", "台語", "中文"];
+    final Map<String, String> localTtsCachePaths = {};
+
+    for (final lang in sequence) {
+      if (!mounted || sessionId != _currentPlaySessionId) return;
+
+      try {
+        String? filePath;
+
+        if (localTtsCachePaths.containsKey(lang)) {
+          filePath = localTtsCachePaths[lang];
+          debugPrint("[NCKU TTS] 成功快取命中 '$lang'，重複利用實體音檔！");
+        } else {
+          Uint8List? audioBytes = await _nckuSpeechService.generateSpeech(text, lang);
+          if (audioBytes != null) {
+            final tempDir = await getTemporaryDirectory();
+            final file = File('${tempDir.path}/tts_cache_${lang}_${DateTime.now().millisecondsSinceEpoch}.wav');
+            await file.writeAsBytes(audioBytes);
+            filePath = file.path;
+            localTtsCachePaths[lang] = filePath;
+          }
+        }
+
+        if (filePath != null && mounted && sessionId == _currentPlaySessionId) {
+          setState(() {
+            _selectedLanguage = lang;
+          });
+
+          await _audioPlayer.setSourceDeviceFile(filePath);
+          Duration? duration = await _audioPlayer.getDuration();
+          await _audioPlayer.resume();
+
+          int waitMs = (duration?.inMilliseconds ?? 4000) + 300;
+          int elapsed = 0;
+
+          while (elapsed < waitMs) {
+            if (!mounted || sessionId != _currentPlaySessionId) {
+              await _audioPlayer.stop();
+              await _audioPlayer.release();
+              return;
+            }
+            await Future.delayed(const Duration(milliseconds: 100));
+            elapsed += 100;
+          }
+          await _audioPlayer.stop();
+        }
+      } catch (e) {
+        debugPrint("[交替序列播放異常]: $e");
+      }
+    }
+
+    await _audioPlayer.release();
+
+    if (mounted && sessionId == _currentPlaySessionId && _isVoiceActiveStatus(_chatStatus)) {
+      debugPrint("[TTS 播放完成] 系統處於語音狀態下，安全重啟語音助理背景監聽...");
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted && sessionId == _currentPlaySessionId && _isVoiceActiveStatus(_chatStatus)) {
+          _voiceManager.startBackgroundWakeWordCycle();
+        }
+      });
+    }
+  }
+
+  void _triggerCurrentContextSequencePlayback() {
+    String textToPlay = _aiGeneratedText;
+
+    if (_chatStatus == ChatStatus.evaluation || _chatStatus == ChatStatus.dislikeEvaluation) {
+      textToPlay = "這張圖符合您的回憶嗎？";
+    } else if (_chatStatus == ChatStatus.dislikePrepare || _chatStatus == ChatStatus.dislikeChatting || _chatStatus == ChatStatus.dislikeCompleted) {
+      textToPlay = "哪裡不對？";
+    } else if (_chatStatus == ChatStatus.likePrepare || _chatStatus == ChatStatus.likeChatting || _chatStatus == ChatStatus.likeCompleted) {
+      textToPlay = "這張圖片讓您想到什麼？";
+    }
+
+    _playAlternatingSequence(textToPlay);
+  }
+
+  // ==========================================
   // 🚀 雙模智慧對話流程控制器
   // ==========================================
 
-  /// 一、開始聊天（關閉喚醒輪詢，開啟滾動切片累積錄製）
   void _triggerStartChatFlow() async {
-    await _voiceManager.stopActiveAudioOperations(); // 💡 確保安全釋放後重啟
+    _stopAudioSequence();
+    await _voiceManager.stopActiveAudioOperations();
 
     setState(() {
       if (_chatStatus == ChatStatus.dislikePrepare || _chatStatus == ChatStatus.dislikeCompleted) {
@@ -181,10 +273,9 @@ class _LifeScreenState extends State<LifeScreen> {
       _startTimer();
     });
 
-    _voiceManager.startChatFlow(); // 調用獨立經理人啟動
+    _voiceManager.startChatFlow();
   }
 
-  /// 二、手動按鈕結束聊天（關閉 VAD 與滾動，彙整現有全部段落並發送）
   Future<void> _handleEndChat() async {
     _stopTimer();
 
@@ -198,10 +289,9 @@ class _LifeScreenState extends State<LifeScreen> {
           : ChatStatus.completed;
     });
 
-    await _voiceManager.forceEndChat(); // 調用獨立經理人強制結束與合成
+    await _voiceManager.forceEndChat();
   }
 
-  /// 三、彙整整段對話，一次性提交 AI 陪伴與生圖
   void _submitMergedAudioToAI(String mergedWavPath) {
     _stopTimer();
 
@@ -217,7 +307,6 @@ class _LifeScreenState extends State<LifeScreen> {
 
     _processAudioAndChat(audioPath: mergedWavPath);
 
-    // 開啟「完成指令」喚醒監聽，等待使用者講重新錄音或結束
     _voiceManager.checkCompletedCommands = true;
     _voiceManager.startBackgroundWakeWordCycle();
   }
@@ -226,23 +315,61 @@ class _LifeScreenState extends State<LifeScreen> {
   // 🚀 純 Dart 業務呼叫邏輯 (UI 串接)
   // ==========================================
 
-  Future<void> _playVoice(String text, String language) async {
+  Future<void> _playSingleVoice(String text, String language) async {
+    _stopAudioSequence();
+    await _voiceManager.stopActiveAudioOperations();
+
     if (text.isEmpty) return;
     try {
       if (kIsWeb) return;
+      setState(() {
+        _selectedLanguage = language;
+      });
       final Uint8List? audioBytes = await _nckuSpeechService.generateSpeech(text, language);
       if (audioBytes != null) {
         if (!mounted) return;
-        await _audioPlayer.play(BytesSource(audioBytes));
+
+        final sessionId = _currentPlaySessionId;
+
+        final tempDir = await getTemporaryDirectory();
+        final file = File('${tempDir.path}/tts_single_${DateTime.now().millisecondsSinceEpoch}.wav');
+        await file.writeAsBytes(audioBytes);
+
+        await _audioPlayer.setSourceDeviceFile(file.path);
+        Duration? duration = await _audioPlayer.getDuration();
+        await _audioPlayer.resume();
+
+        int waitMs = (duration?.inMilliseconds ?? 4000) + 300;
+        int elapsed = 0;
+
+        while (elapsed < waitMs) {
+          if (!mounted || sessionId != _currentPlaySessionId) {
+            await _audioPlayer.stop();
+            await _audioPlayer.release();
+            return;
+          }
+          await Future.delayed(const Duration(milliseconds: 100));
+          elapsed += 100;
+        }
+        await _audioPlayer.stop();
       }
     } catch (e) {
-      debugPrint("[播放錯誤]: $e");
+      debugPrint("[單次播放錯誤]: $e");
+    } finally {
+      await _audioPlayer.release();
+
+      if (mounted && _isVoiceActiveStatus(_chatStatus)) {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted && _isVoiceActiveStatus(_chatStatus)) {
+            _voiceManager.startBackgroundWakeWordCycle();
+          }
+        });
+      }
     }
   }
 
   void _playCurrentContextVoice(String lang) {
     if (!mounted) return;
-    setState(() => _selectedLanguage = lang);
     String textToPlay = _aiGeneratedText;
 
     if (_chatStatus == ChatStatus.evaluation || _chatStatus == ChatStatus.dislikeEvaluation) {
@@ -253,9 +380,10 @@ class _LifeScreenState extends State<LifeScreen> {
       textToPlay = "這張圖片讓您想到什麼？";
     }
 
-    _playVoice(textToPlay, lang);
+    _playSingleVoice(textToPlay, lang);
   }
 
+  /// 💡 已更新：點擊「換一個問題」按鈕後，會直接呼叫此函數重新生成
   Future<void> _fetchInitialQuestion() async {
     if (!mounted) return;
     setState(() { _isLoading = true; });
@@ -265,12 +393,14 @@ class _LifeScreenState extends State<LifeScreen> {
       setState(() {
         _aiGeneratedText = question;
       });
+      _triggerCurrentContextSequencePlayback();
     } catch (e) {
       debugPrint("初始問題獲取失敗: $e");
       if (!mounted) return;
       setState(() {
         _aiGeneratedText = "哈囉！小時候家裡最常吃什麼呢？";
       });
+      _triggerCurrentContextSequencePlayback();
     } finally {
       if (mounted) {
         setState(() { _isLoading = false; });
@@ -278,7 +408,6 @@ class _LifeScreenState extends State<LifeScreen> {
     }
   }
 
-  /// 處理對話回覆與關鍵字擷取 (100% 採用成大 ASR 客戶端進行辨識)
   Future<void> _processAudioAndChat({String? audioPath, String? manualText}) async {
     if (!mounted) return;
     setState(() { _isExtractingKeywords = true; });
@@ -326,12 +455,15 @@ class _LifeScreenState extends State<LifeScreen> {
       _chatHistory.add({"role": "user", "content": userMessage});
       _chatHistory.add({"role": "assistant", "content": reply});
 
+      _triggerCurrentContextSequencePlayback();
+
     } catch (e) {
       debugPrint("陪伴與智慧分析流發生錯誤: $e");
       if (!mounted) return;
       setState(() {
         _aiGeneratedText = "阿公阿嬤拍謝，我剛才不小心恍神了，可以再跟我說一次嗎？";
       });
+      _triggerCurrentContextSequencePlayback();
     } finally {
       if (mounted) {
         setState(() { _isExtractingKeywords = false; });
@@ -341,6 +473,7 @@ class _LifeScreenState extends State<LifeScreen> {
 
   Future<void> _triggerImageGeneration() async {
     if (!mounted) return;
+    _stopAudioSequence();
     setState(() { _chatStatus = ChatStatus.generating; });
     try {
       String prompt = _originalKeywords.join("、");
@@ -358,6 +491,7 @@ class _LifeScreenState extends State<LifeScreen> {
           _currentImageUrl = imageUrl;
           _chatStatus = ChatStatus.evaluation;
         });
+        _triggerCurrentContextSequencePlayback();
       } else {
         throw Exception("生圖出錯");
       }
@@ -370,6 +504,7 @@ class _LifeScreenState extends State<LifeScreen> {
 
   Future<void> _triggerModifiedImageGeneration() async {
     if (!mounted) return;
+    _stopAudioSequence();
     setState(() { _chatStatus = ChatStatus.dislikeGenerating; });
     try {
       String combinedPrompt = _newKeywords.join("、");
@@ -386,6 +521,7 @@ class _LifeScreenState extends State<LifeScreen> {
           _currentImageUrl = imageUrl;
           _chatStatus = ChatStatus.dislikeEvaluation;
         });
+        _triggerCurrentContextSequencePlayback();
       } else {
         throw Exception("改圖出錯");
       }
@@ -398,6 +534,7 @@ class _LifeScreenState extends State<LifeScreen> {
 
   Future<void> _triggerLikeExtendedImageGeneration() async {
     if (!mounted) return;
+    _stopAudioSequence();
     setState(() { _chatStatus = ChatStatus.likeGenerating; });
     try {
       String combinedPrompt = [..._originalKeywords, ..._newKeywords].join("、");
@@ -414,6 +551,7 @@ class _LifeScreenState extends State<LifeScreen> {
           _currentImageUrl = imageUrl;
           _chatStatus = ChatStatus.evaluation;
         });
+        _triggerCurrentContextSequencePlayback();
       } else {
         throw Exception("延伸話題生圖出錯");
       }
@@ -508,7 +646,34 @@ class _LifeScreenState extends State<LifeScreen> {
                               duration: const Duration(milliseconds: 200),
                               child: _isLoading
                                   ? const QuestionLoadingIndicator()
-                                  : QuestionArea(questionText: _aiGeneratedText),
+                                  : Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  QuestionArea(questionText: _aiGeneratedText),
+                                  // 💡 新增：換一個問題的按鈕 (僅在 ChatStatus.prepare 時顯示)
+                                  if (_chatStatus == ChatStatus.prepare) ...[
+                                    const SizedBox(height: 16),
+                                    ElevatedButton.icon(
+                                      onPressed: () {
+                                        _stopAudioSequence();
+                                        _fetchInitialQuestion();
+                                      },
+                                      icon: const Icon(Icons.refresh, size: 20),
+                                      label: const Text("換一個問題", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                      style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.orange[50],
+                                          foregroundColor: Colors.orange[800],
+                                          elevation: 0,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(20),
+                                            side: BorderSide(color: Colors.orange[200]!),
+                                          ),
+                                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8)
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ),
                             const Spacer(flex: 1),
                           ],
@@ -536,7 +701,6 @@ class _LifeScreenState extends State<LifeScreen> {
                             child: _buildControlSection(),
                           ),
 
-                          // 💡 僅在語音互動為活動狀態下，才顯示底端指示
                           if (_isVoiceActiveStatus(_chatStatus))
                             _buildVoiceAssistantIndicator(),
 
@@ -650,8 +814,9 @@ class _LifeScreenState extends State<LifeScreen> {
           onRestartChat: _triggerStartChatFlow,
           onEndChat: () {
             if (!mounted) return;
+            _stopAudioSequence();
             setState(() { _chatStatus = ChatStatus.keywords; });
-            _voiceManager.stopActiveAudioOperations(); // 進入非語音關鍵字確認頁，暫停錄製
+            _voiceManager.stopActiveAudioOperations();
           },
         );
       case ChatStatus.keywords:
@@ -666,13 +831,15 @@ class _LifeScreenState extends State<LifeScreen> {
             if (!mounted) return;
             setState(() { _chatStatus = ChatStatus.likePrepare; });
             _voiceManager.checkCompletedCommands = false;
-            _voiceManager.startBackgroundWakeWordCycle(); // 重新進入對話狀態，重啟背景喚醒監聽！
+            _voiceManager.startBackgroundWakeWordCycle();
+            _triggerCurrentContextSequencePlayback();
           },
           onDislike: () {
             if (!mounted) return;
             setState(() { _chatStatus = ChatStatus.dislikePrepare; });
             _voiceManager.checkCompletedCommands = false;
-            _voiceManager.startBackgroundWakeWordCycle(); // 重新進入對話狀態，重啟背景喚醒監聽！
+            _voiceManager.startBackgroundWakeWordCycle();
+            _triggerCurrentContextSequencePlayback();
           },
         );
       case ChatStatus.dislikePrepare:
@@ -693,8 +860,9 @@ class _LifeScreenState extends State<LifeScreen> {
           onRestartChat: _triggerStartChatFlow,
           onEndChat: () {
             if (!mounted) return;
+            _stopAudioSequence();
             setState(() { _chatStatus = ChatStatus.dislikeKeywords; });
-            _voiceManager.stopActiveAudioOperations(); // 進入非語音關鍵字確認頁，暫停錄製
+            _voiceManager.stopActiveAudioOperations();
           },
         );
       case ChatStatus.dislikeKeywords:
@@ -707,7 +875,8 @@ class _LifeScreenState extends State<LifeScreen> {
             if (!mounted) return;
             setState(() { _chatStatus = ChatStatus.dislikePrepare; });
             _voiceManager.checkCompletedCommands = false;
-            _voiceManager.startBackgroundWakeWordCycle(); // 重新進入對話狀態，重啟背景喚醒監聽！
+            _voiceManager.startBackgroundWakeWordCycle();
+            _triggerCurrentContextSequencePlayback();
           },
           onFinished: _resetAllStates,
         );
@@ -729,8 +898,9 @@ class _LifeScreenState extends State<LifeScreen> {
           onRestartChat: _triggerStartChatFlow,
           onEndChat: () {
             if (!mounted) return;
+            _stopAudioSequence();
             setState(() { _chatStatus = ChatStatus.likeKeywords; });
-            _voiceManager.stopActiveAudioOperations(); // 進入非語音關鍵字確認頁，暫停錄製
+            _voiceManager.stopActiveAudioOperations();
           },
         );
       case ChatStatus.likeKeywords:

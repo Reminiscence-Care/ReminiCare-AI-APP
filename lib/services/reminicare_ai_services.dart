@@ -15,16 +15,16 @@ class ConfigField {
   final String displayName;  // 顯示在設定彈窗中的標題 (例如: NVIDIA API KEY)
   final String hintText;     // 文字框內的預留提示字 (例如: nvapi-...)
   final bool isSecure;       // 標記是否為隱私金鑰 (控制小眼睛遮罩顯隱)
-  final bool hasDefaultValue; // 💡 新增：標記此欄位是否具有開箱即用的預設值
-  final String defaultValue;  // 💡 新增：定義此欄位的預設值內容
+  final bool hasDefaultValue; // 標記此欄位是否具有開箱即用的預設值
+  final String defaultValue;  // 定義此欄位的預設值內容
 
   const ConfigField({
     required this.apiKey,
     required this.displayName,
     required this.hintText,
-    this.isSecure = true,     // 預設皆為安全金鑰，開啟圓點遮罩
-    this.hasDefaultValue = false, // 💡 預設為否，不隨意覆寫金鑰欄位
-    this.defaultValue = "",       // 💡 預設為空字串
+    this.isSecure = true,
+    this.hasDefaultValue = false,
+    this.defaultValue = "",
   });
 }
 
@@ -62,28 +62,27 @@ const String EXTRACTOR_SYSTEM_PROMPT = """
 絕對不要包含任何 Markdown 標記（如 ```json）、解釋說明或其他多餘文字。
 """;
 
+// 💡 擴展開場白主題範圍，讓問題具備更強烈的發散性
 const String INITIAL_QUESTION_PROMPT = """
 # Role
 你是一位溫慢、有耐心且充滿親切感的「長輩回憶傾聽者」。
 
 # Task
-請隨機生成「一句」簡短、口語化且充滿台灣在地懷舊感的問題，用來當作與長輩聊天的開場白。
-話題可以隨機圍繞在：小時候的童玩、以前的年夜飯、過去的灶腳、年輕時的約會、家鄉的風景、或是以前的零嘴。
+請「隨機」想一個台灣早期 (民國40-70年代) 的生活場景，並生成「一句」簡短、口語化且充滿懷舊感的問題，用來當作與長輩聊天的開場白。
+話題範圍請極度發散，可以包括：農代節慶、廟口野台戲、冰果室、嫁妝、眷村或三合院生活、以前的交通工具(野雞車、鐵馬)、裁縫車、收音機、老電視、防空洞、或是颱風天的記憶等等。請每次都挑選完全不同的主題！
 
 # Restrictions
-- 只能輸出一句話，字數盡量控制在 15 到 20 字以內。
+- 只能輸出一句話，字數控制在 15 到 25 字以內。
 - 絕對不要加引號、問候語或任何多餘的解釋。
-- 語氣要像對自己的阿公阿嬤說話（例如：阿公，以前小時候都玩些什麼遊戲呀？）。
+- 語氣要像對自己的阿公阿嬤說話（例如：阿嬤，以前你們那個年代，過年都怎麼準備年夜飯的呀？）。
 """;
 
 // =========================================================================
 // 🔑 ReminiCare AI 全域金鑰與動態配置清單 (完全宣告式動態配置引擎)
 // =========================================================================
 class ReminiCareConfig {
-  // 1. 記憶體金鑰快取 (一律使用 Map 進行動態管理)
   static final Map<String, String> _configs = {};
 
-  // 💡 2. 宣告式配置清單：未來要新增任何金鑰，只需在這裡加一行，首頁 UI 與儲存邏輯將自動同步建置！
   static final List<ConfigField> fields = [
     const ConfigField(
         apiKey: 'NVIDIA_API_KEY',
@@ -111,17 +110,6 @@ class ReminiCareConfig {
         hintText: 'Token...'
     ),
     const ConfigField(
-        apiKey: 'SPOTIFY_CLIENT_ID',
-        displayName: 'Spotify Client Id',
-        hintText: 'Token...'
-    ),
-    const ConfigField(
-        apiKey: 'SPOTIFY_CLIENT_SECRET',
-        displayName: 'Spotify Client Secret',
-        hintText: 'Token...'
-    ),
-    // 💡 語音助理自訂提示詞配置欄位，預設為明文顯示不遮罩，且已加上 default 設定
-    const ConfigField(
       apiKey: 'WAKE_WORDS_START',
       displayName: '語音指令：開始對話 (以逗號隔開)',
       hintText: '開始錄音,開始聊天,開始,來聊,錄音',
@@ -147,7 +135,6 @@ class ReminiCareConfig {
     ),
   ];
 
-  // 3. 保留核心 Getters 以完美向下相容
   static String get nvidiaApiKey => _configs['NVIDIA_API_KEY'] ?? "";
   static String get groqApiKey => _configs['GROQ_API_KEY'] ?? "";
   static String get siliconFlowApiKey => _configs['SILICONFLOW_API_KEY'] ?? "";
@@ -164,27 +151,22 @@ class ReminiCareConfig {
     final val = getValue(key);
     if (val.isEmpty) return defaults;
     return val
-        .replaceAll("，", ",") // 相容中文全形逗號
+        .replaceAll("，", ",")
         .split(',')
         .map((s) => s.trim())
         .where((s) => s.isNotEmpty)
         .toList();
   }
 
-  /// 提供外界依據 key 動態取得金鑰的接口
   static String getValue(String apiKey) => _configs[apiKey] ?? "";
 
-  /// 🔄 一、動態加載金鑰：優先讀取使用者手動在 UI 輸入的金鑰，若無則讀取本地 .env 檔案，最後再 fallback 到欄位預設值
   static Future<void> loadConfig() async {
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      // 1. 動態從 SharedPreferences 本機資料庫讀取所有已定義的金鑰
       for (var field in fields) {
         String savedVal = prefs.getString(field.apiKey) ?? "";
 
-        // 💡 核心優化：如果 SharedPreferences 中沒有任何快取，且此欄位具有預設值
-        // 則自動將預設值寫入記憶體，並在本地永久保存，確保第一次在 UI 設定開啟時就具備預設字串！
         if (savedVal.isEmpty && field.hasDefaultValue) {
           savedVal = field.defaultValue;
           await prefs.setString(field.apiKey, savedVal);
@@ -195,7 +177,6 @@ class ReminiCareConfig {
 
       debugPrint("[金鑰管理] 動態加載手機本地快取金鑰完成。");
 
-      // 2. 如果發現還有尚未配置的金鑰，且處於開發測試環境，則動態解析本地 .env 檔案
       bool hasEmptyConfig = _configs.values.any((val) => val.isEmpty);
       if (hasEmptyConfig && !kIsWeb) {
         final envFile = File('.env');
@@ -210,7 +191,6 @@ class ReminiCareConfig {
               final key = parts[0].trim();
               final value = parts.sublist(1).join('=').trim();
 
-              // 僅在 Map 中包含該 key，且使用者/預設值尚未寫入（或為空）時才載入
               if (_configs.containsKey(key) && (_configs[key]?.isEmpty ?? true)) {
                 _configs[key] = value;
               }
@@ -223,17 +203,15 @@ class ReminiCareConfig {
     }
   }
 
-  /// 💾 二、動態儲存金鑰：接收動態 Map 鍵值對，一次性永久儲存至 SharedPreferences
   static Future<void> saveConfig(Map<String, String> newConfigs) async {
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      // 動態循環寫入 SharedPreferences
       for (var entry in newConfigs.entries) {
         final String key = entry.key;
         final String val = entry.value.trim();
 
-        _configs[key] = val; // 更新記憶體快取
+        _configs[key] = val;
         await prefs.setString(key, val);
       }
 
@@ -245,7 +223,7 @@ class ReminiCareConfig {
 }
 
 // ==========================================
-// 🧠 NVIDIA LLM 服務 (對話生成與關鍵字萃取) - 💡 成功復原
+// 🧠 NVIDIA LLM 服務 (對話生成與關鍵字萃取)
 // ==========================================
 class NvidiaLlmService {
   final String _rawUrl = "https://integrate.api.nvidia.com/v1/chat/completions";
@@ -253,7 +231,6 @@ class NvidiaLlmService {
 
   String get _url => kIsWeb ? "https://corsproxy.io/?$_rawUrl" : _rawUrl;
 
-  /// 隨機產生開場白懷舊問題
   Future<String> generateInitialQuestion() async {
     try {
       final response = await http.post(
@@ -265,16 +242,18 @@ class NvidiaLlmService {
           body: jsonEncode({
             "model": _model,
             "messages": [
-              {"role": "user", "content": INITIAL_QUESTION_PROMPT}
+              {"role": "system", "content": INITIAL_QUESTION_PROMPT},
+              // 💡 傳入包含時間戳記的干擾碼，保證每次對話歷史都不同，打破 LLM 快取
+              {"role": "user", "content": "請隨機挑選一個全新的懷舊主題來問我。(隨機碼：${DateTime.now().millisecondsSinceEpoch})"}
             ],
-            "temperature": 0.8,
+            "temperature": 0.9, // 💡 提高至 0.9，讓問題更發散
             "max_tokens": 50
           })
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
-        print("[NVIDIA] 初始出題成功！");
+        print("[NVIDIA] 初始隨機出題成功！");
         return data['choices'][0]['message']['content'].toString().trim();
       } else {
         debugPrint("[NVIDIA] 初始出題失敗。狀態碼: ${response.statusCode}");
@@ -362,7 +341,7 @@ class NvidiaLlmService {
 }
 
 // ==========================================
-// 🎙️ Groq Whisper 語音辨識服務 (STT - 作為備用) - 💡 成功復原
+// 🎙️ Groq Whisper 語音辨識服務 (STT - 作為備用)
 // ==========================================
 class GroqSttService {
   final String _rawUrl = "https://api.groq.com/openai/v1/audio/transcriptions";
@@ -399,7 +378,7 @@ class GroqSttService {
 }
 
 // ==========================================
-// 🎨 SiliconFlow 影像生成與修改服務 (Qwen-Image) - 💡 成功復原
+// 🎨 SiliconFlow 影像生成與修改服務 (Qwen-Image)
 // ==========================================
 class SiliconFlowImageService {
   final String _rawBaseUrl = "https://api.siliconflow.com/v1";

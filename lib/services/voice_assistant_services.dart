@@ -23,7 +23,7 @@ class WavInfo {
 
 // =========================================================================
 // 🎙️ 💡 獨立語音助手核心控制器 (VoiceAssistantManager)
-//      已修復：徹底移除了延遲 Future 內部的二次 stop()，根除第一次錄音無辨識的時序競態 Bug
+//      已修復：引入線程會話鎖 (Session ID)，並改用記憶體狀態鎖，徹底根除 Windows ASR 頻道死鎖 Bug
 // =========================================================================
 class VoiceAssistantManager {
   final AudioRecorder _audioRecorder = AudioRecorder();
@@ -32,6 +32,13 @@ class VoiceAssistantManager {
   bool _isRollingWakeWord = false;
   bool _isRollingChatRecord = false;
   final List<String> _recordedChunkPaths = [];
+
+  // 💡 核心修正：使用記憶體狀態旗標，徹底避開 Windows WASAPI .isRecording() 頻道死鎖
+  bool _isRecordingOnHardware = false;
+
+  // 背景喚醒與對話錄製專屬會話 ID (線程安全鎖)
+  int _wakeWordSessionId = 0;
+  int _chatRecordSessionId = 0;
 
   // 外部狀態與指示回調事件
   void Function()? onStartChatFlow;
@@ -44,13 +51,18 @@ class VoiceAssistantManager {
 
   bool get isListening => _isRollingWakeWord || _isRollingChatRecord;
 
-  /// 一、重置與安全釋放所有語音/錄音資源 (將 _isRolling 旗標置為 false，並在硬體層面強行關閉)
+  /// 一、重置與安全釋放所有語音/錄音資源 (💡 升級：安全變更 state 使舊 Session 失效)
   Future<void> stopActiveAudioOperations() async {
     _isRollingWakeWord = false;
     _isRollingChatRecord = false;
+    _wakeWordSessionId++;      // 使所有先前未完工的喚醒延時線程立刻失效
+    _chatRecordSessionId++;    // 使所有先前未完工的錄音延時線程立刻失效
+
     try {
-      if (await _audioRecorder.isRecording()) {
+      // 💡 核心修正：使用記憶體狀態鎖，避免呼叫 isRecording()
+      if (_isRecordingOnHardware) {
         await _audioRecorder.stop();
+        _isRecordingOnHardware = false;
       }
     } catch (e) {
       debugPrint("[助理] 停止錄音硬體釋放異常: $e");
@@ -71,7 +83,12 @@ class VoiceAssistantManager {
   void dispose() {
     _isRollingWakeWord = false;
     _isRollingChatRecord = false;
-    _audioRecorder.stop();
+    _wakeWordSessionId++;
+    _chatRecordSessionId++;
+    if (_isRecordingOnHardware) {
+      _audioRecorder.stop();
+      _isRecordingOnHardware = false;
+    }
     _audioRecorder.dispose();
   }
 
@@ -81,21 +98,26 @@ class VoiceAssistantManager {
   Future<void> startBackgroundWakeWordCycle() async {
     if (_isRollingWakeWord) return;
     _isRollingWakeWord = true;
-    _runSingleWakeWordCycle();
+    _wakeWordSessionId++; // 每次啟動，遞增會話識別碼
+    _runSingleWakeWordCycle(_wakeWordSessionId);
   }
 
-  Future<void> _runSingleWakeWordCycle() async {
-    if (!_isRollingWakeWord) return;
+  Future<void> _runSingleWakeWordCycle(int sessionId) async {
+    // 驗證會話：如果發現非當前活躍會話，立即無條件 return，絕不干擾！
+    if (!_isRollingWakeWord || sessionId != _wakeWordSessionId) return;
 
     try {
       if (await _audioRecorder.hasPermission()) {
         final directory = await getTemporaryDirectory();
         final String path = '${directory.path}/reminicare_wake_${DateTime.now().millisecondsSinceEpoch}.wav';
 
-        // 防禦安全鎖：如果不知何故錄音器還在轉，先強力關閉
-        if (await _audioRecorder.isRecording()) {
+        // 💡 核心修正：防禦安全鎖使用 _isRecordingOnHardware 記憶體旗標
+        if (_isRecordingOnHardware) {
           await _audioRecorder.stop();
+          _isRecordingOnHardware = false;
         }
+
+        if (!_isRollingWakeWord || sessionId != _wakeWordSessionId) return;
 
         await _audioRecorder.start(
           const RecordConfig(
@@ -105,34 +127,39 @@ class VoiceAssistantManager {
           ),
           path: path,
         );
+        _isRecordingOnHardware = true; // 標記硬體正在錄音
 
         // 每隔 3.5 秒錄製一次
         await Future.delayed(const Duration(milliseconds: 3500));
 
-        // 💡 關鍵修正：若在延時 3.5 秒期間狀態已被外部 stopActiveAudioOperations() 設為 false，
-        // 說明外部已將 _audioRecorder 關閉，這裡直接 return 退出循環即可！
-        // 絕對不能再呼叫 _audioRecorder.stop()，防範其捏熄或干擾此時剛剛發起的新對話錄音！
-        if (!_isRollingWakeWord) {
+        // 關鍵修正：延時結束後，再次確認會話。如果已被外部 stop 掉或產生新會話，安全退出，不執行 stop 破壞！
+        if (!_isRollingWakeWord || sessionId != _wakeWordSessionId) {
           return;
         }
 
         final String? savedPath = await _audioRecorder.stop();
-        if (savedPath != null) {
-          _transcribeAndCheckWakeWord(savedPath);
+        _isRecordingOnHardware = false; // 標記硬體已停止錄音
+
+        if (savedPath != null && _isRollingWakeWord && sessionId == _wakeWordSessionId) {
+          _transcribeAndCheckWakeWord(savedPath, sessionId);
         }
       }
     } catch (e) {
       debugPrint("[喚醒器] 輪詢異常: $e");
-      if (_isRollingWakeWord) {
-        Future.delayed(const Duration(seconds: 2), _runSingleWakeWordCycle);
+      _isRecordingOnHardware = false;
+      if (_isRollingWakeWord && sessionId == _wakeWordSessionId) {
+        Future.delayed(const Duration(seconds: 2), () => _runSingleWakeWordCycle(sessionId));
       }
     }
   }
 
-  Future<void> _transcribeAndCheckWakeWord(String audioPath) async {
+  Future<void> _transcribeAndCheckWakeWord(String audioPath, int sessionId) async {
     try {
       final String? transcript = await _nckuSpeechService.transcribe(audioPath);
       try { File(audioPath).deleteSync(); } catch (_) {}
+
+      // 翻譯完畢後，仍需確保會話對齊
+      if (!_isRollingWakeWord || sessionId != _wakeWordSessionId) return;
 
       if (transcript != null) {
         final String cleanText = transcript.replaceAll(" ", "");
@@ -166,8 +193,8 @@ class VoiceAssistantManager {
       debugPrint("[喚醒器] 翻譯出錯: $e");
     }
 
-    if (_isRollingWakeWord) {
-      _runSingleWakeWordCycle();
+    if (_isRollingWakeWord && sessionId == _wakeWordSessionId) {
+      _runSingleWakeWordCycle(sessionId);
     }
   }
 
@@ -178,17 +205,26 @@ class VoiceAssistantManager {
     await stopActiveAudioOperations(); // 確保前一個背景監聽完全釋放後才開始主動錄音
     _recordedChunkPaths.clear();
     _isRollingChatRecord = true;
-    _runSingleChatRecordCycle();
+    _chatRecordSessionId++; // 遞增錄音會話 ID
+    _runSingleChatRecordCycle(_chatRecordSessionId);
   }
 
-  Future<void> _runSingleChatRecordCycle() async {
-    if (!_isRollingChatRecord) return;
+  Future<void> _runSingleChatRecordCycle(int sessionId) async {
+    if (!_isRollingChatRecord || sessionId != _chatRecordSessionId) return;
 
     try {
       if (await _audioRecorder.hasPermission()) {
         final directory = await getTemporaryDirectory();
         final String path = '${directory.path}/reminicare_chat_chunk_${DateTime.now().millisecondsSinceEpoch}.wav';
         _recordedChunkPaths.add(path);
+
+        // 💡 核心修正：使用 _isRecordingOnHardware 記憶體旗標
+        if (_isRecordingOnHardware) {
+          await _audioRecorder.stop();
+          _isRecordingOnHardware = false;
+        }
+
+        if (!_isRollingChatRecord || sessionId != _chatRecordSessionId) return;
 
         await _audioRecorder.start(
           const RecordConfig(
@@ -198,32 +234,40 @@ class VoiceAssistantManager {
           ),
           path: path,
         );
+        _isRecordingOnHardware = true; // 標記硬體正在錄音
 
         // 每隔 5 秒無痛錄製一個對話切片
         await Future.delayed(const Duration(milliseconds: 5000));
 
-        // 💡 關鍵修正：若在延時 5 秒期間被手動結束或強行中斷，
-        // 說明外部已呼叫 _audioRecorder.stop()，這裡直接 return 即可，絕不進行二次 stop() 二度破壞！
-        if (!_isRollingChatRecord) {
+        // 關鍵修正：延時結束後驗證會話，若已被手動或自動結束，安全 return
+        if (!_isRollingChatRecord || sessionId != _chatRecordSessionId) {
           return;
         }
 
         final String? savedPath = await _audioRecorder.stop();
-        if (savedPath != null) {
-          _processChatChunk(savedPath);
+        _isRecordingOnHardware = false; // 標記硬體已停止錄音
+
+        if (savedPath != null && _isRollingChatRecord && sessionId == _chatRecordSessionId) {
+          _processChatChunk(savedPath, sessionId);
         }
       }
     } catch (e) {
       debugPrint("[對話錄音] 滾動循環異常: $e");
-      if (_isRollingChatRecord) {
-        Future.delayed(const Duration(seconds: 2), _runSingleChatRecordCycle);
+      _isRecordingOnHardware = false;
+      if (_isRollingChatRecord && sessionId == _chatRecordSessionId) {
+        Future.delayed(const Duration(seconds: 2), () => _runSingleChatRecordCycle(sessionId));
       }
     }
   }
 
-  Future<void> _processChatChunk(String audioPath) async {
+  Future<void> _processChatChunk(String audioPath, int sessionId) async {
     try {
       final String? transcript = await _nckuSpeechService.transcribe(audioPath);
+
+      if (!_isRollingChatRecord || sessionId != _chatRecordSessionId) {
+        try { File(audioPath).deleteSync(); } catch (_) {}
+        return;
+      }
 
       if (transcript != null && transcript.trim().isNotEmpty) {
         final String cleanText = transcript.replaceAll(" ", "");
@@ -245,19 +289,21 @@ class VoiceAssistantManager {
         }
       }
     } catch (e) {
-      debugPrint("[助理錄音] 翻譯切片出錯: $e");
+      debugPrint("[助理] 處理切片異常: $e");
     }
 
-    if (_isRollingChatRecord) {
-      _runSingleChatRecordCycle();
+    if (_isRollingChatRecord && sessionId == _chatRecordSessionId) {
+      _runSingleChatRecordCycle(sessionId);
     }
   }
 
   /// 三、手動按鈕結束錄音，直接觸發 WAV 拼接並發送
   Future<void> forceEndChat() async {
     _isRollingChatRecord = false;
+    _chatRecordSessionId++; // 使背景其餘錄音延時切片失效
     try {
       final String? path = await _audioRecorder.stop();
+      _isRecordingOnHardware = false; // 標記硬體已停止錄音
       if (path != null) {
         final String? mergedWavPath = await _concatenateWavFiles(_recordedChunkPaths);
         if (mergedWavPath != null) {
