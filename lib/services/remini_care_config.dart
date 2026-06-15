@@ -18,11 +18,6 @@ class ReminiCareConfig {
         hintText: 'nvapi-...'
     ),
     const ConfigField(
-        apiKey: 'GROQ_API_KEY',
-        displayName: 'GROQ API KEY (備用 STT)',
-        hintText: 'gsk_...'
-    ),
-    const ConfigField(
         apiKey: 'SILICONFLOW_API_KEY',
         displayName: 'SILICONFLOW KEY (影像生成)',
         hintText: 'sk-...'
@@ -74,7 +69,6 @@ class ReminiCareConfig {
   ];
 
   static String get nvidiaApiKey => _configs['NVIDIA_API_KEY'] ?? "";
-  static String get groqApiKey => _configs['GROQ_API_KEY'] ?? "";
   static String get siliconFlowApiKey => _configs['SILICONFLOW_API_KEY'] ?? "";
   static String get nckuTtsToken => _configs['NCKU_TTS_TOKEN'] ?? "";
   static String get nckuSttToken => _configs['NCKU_STT_TOKEN'] ?? "";
