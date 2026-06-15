@@ -4,9 +4,10 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:remini_care_ai_app/services/remini_care_config.dart';
 
 // 💡 引入全域金鑰與 ASR 服務
-import 'reminicare_ai_services.dart';
+import 'ncku_speech_service.dart';
 
 /// 用於動態解析 WAV 音訊區塊的內部資料結構
 class WavInfo {

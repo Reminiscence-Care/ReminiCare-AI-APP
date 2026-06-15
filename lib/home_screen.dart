@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-
-// 引入金鑰管理器服務
-import '../../services/reminicare_ai_services.dart';
+import 'package:remini_care_ai_app/services/remini_care_config.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});

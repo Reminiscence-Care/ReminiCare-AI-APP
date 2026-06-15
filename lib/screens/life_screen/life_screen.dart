@@ -6,7 +6,10 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 
 // 完美對齊：同時引入 restored 的 AI 服務檔與獨立語音助理檔
-import '../../services/reminicare_ai_services.dart';
+import '../../services/ncku_speech_service.dart';
+import '../../services/nvidia_llm_service.dart';
+import '../../services/remini_care_config.dart';
+import '../../services/sillicon_flow_image_service.dart';
 import '../../services/voice_assistant_services.dart';
 
 // 匯入您自定義的子組件

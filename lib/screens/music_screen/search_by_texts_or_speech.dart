@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:remini_care_ai_app/services/reminicare_ai_services.dart';
 import 'package:remini_care_ai_app/services/spotify_api_services.dart';
 import 'package:remini_care_ai_app/services/voice_assistant_services.dart';
+
+import '../../services/ncku_speech_service.dart';
+import '../../services/remini_care_config.dart';
 
 class SearchByTextsOrSpeech extends StatefulWidget {
   final String? texts_or_speech;
