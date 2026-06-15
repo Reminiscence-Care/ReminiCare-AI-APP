@@ -10,18 +10,68 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+
+  bool _isConfigComplete() {
+    return ReminiCareConfig.nvidiaApiKey.isNotEmpty &&
+        ReminiCareConfig.siliconFlowApiKey.isNotEmpty &&
+        ReminiCareConfig.nckuSttToken.isNotEmpty &&
+        ReminiCareConfig.nckuTtsToken.isNotEmpty &&
+        ReminiCareConfig.spotifyClientId.isNotEmpty &&
+        ReminiCareConfig.spotifyClientSecret.isNotEmpty;
+  }
+
   @override
   void initState() {
     super.initState();
-    // 💡 啟動時即在首頁默默加載本地金鑰配置，為稍後的使用做足準備！
     ReminiCareConfig.loadConfig();
   }
 
   // =========================================================================
-  // ⚙️ 互動式自訂設定視窗 (💡 升級：完全由 ReminiCareConfig 宣告欄位動態渲染)
+  // 攔截提醒視窗：引導使用者前往設定
+  // =========================================================================
+  void _showConfigWarning() {
+    showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: const [
+                Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+                SizedBox(width: 8),
+                Text("需要設定 API 金鑰", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              ],
+            ),
+            content: const Text(
+              "您必須先點擊右上角的「齒輪」完成所有的系統配置（填寫 API 金鑰），才能開始使用這些陪伴功能喔！",
+              style: TextStyle(fontSize: 15, height: 1.4),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("稍後再說", style: TextStyle(color: Colors.grey, fontSize: 16)),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context); // 先關閉警告視窗
+                  _showSettingsDialog();  // 貼心設計：自動幫使用者打開設定視窗！
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueGrey[800],
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: const Text("前往設定", style: TextStyle(color: Colors.white, fontSize: 15)),
+              ),
+            ],
+          );
+        }
+    );
+  }
+  // =========================================================================
+  // 互動式自訂設定視窗 (完全由 ReminiCareConfig 宣告欄位動態渲染)
   // =========================================================================
   void _showSettingsDialog() {
-    // 💡 1. 根據 ReminiCareConfig 宣告的 fields 清單，動態建立與映射 TextEditingController
+    // 1. 根據 ReminiCareConfig 宣告的 fields 清單，動態建立與映射 TextEditingController
     final Map<String, TextEditingController> controllers = {};
     for (var field in ReminiCareConfig.fields) {
       controllers[field.apiKey] = TextEditingController(
@@ -29,7 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    // 💡 2. 根據 fields 清單，動態建立眼睛遮罩 obscureText 狀態 (預設皆為遮罩 true)
+    // 2. 根據 fields 清單，動態建立眼睛遮罩 obscureText 狀態 (預設皆為遮罩 true)
     final Map<String, bool> obscureStates = {};
     for (var field in ReminiCareConfig.fields) {
       obscureStates[field.apiKey] = true;
@@ -63,7 +113,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const SizedBox(height: 16),
 
-                        // 💡 3. 完全動態生成欄位！不管有 5 個、8 個金鑰，此處 1 行程式碼全部自動動態建置
+                        // 3. 完全動態生成欄位！不管有 5 個、8 個金鑰，此處 1 行程式碼全部自動動態建置
                         ...ReminiCareConfig.fields.map((field) {
                           final controller = controllers[field.apiKey]!;
                           final isObscured = obscureStates[field.apiKey] ?? true;
@@ -73,7 +123,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             controller,
                             field.hintText,
                             isObscured,
-                            field.isSecure, // 💡 傳入是否需要安全眼睛遮蔽 (API key 要，喚醒詞不要)
+                            field.isSecure, // 傳入是否需要安全眼睛遮蔽 (API key 要，喚醒詞不要)
                                 () {
                               // 點擊右側小眼睛，動態切換單個輸入框的遮罩顯隱
                               setStateDialog(() {
@@ -99,13 +149,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   ElevatedButton(
                     onPressed: () async {
-                      // 💡 4. 動態收集所有 Controllers 當下的最新輸入值並寫入 Map
+                      // 4. 動態收集所有 Controllers 當下的最新輸入值並寫入 Map
                       final Map<String, String> updatedData = {};
                       controllers.forEach((key, controller) {
                         updatedData[key] = controller.text;
                       });
 
-                      // 💡 5. 一鍵永久儲存至本機快取與熱更替
+                      // 5. 一鍵永久儲存至本機快取與熱更替
                       await ReminiCareConfig.saveConfig(updatedData);
 
                       // 釋放內存
@@ -140,20 +190,20 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// 💡 自定義設定框組件：支持動態控制安全欄位與明文欄位
+  /// 自定義設定框組件：支持動態控制安全欄位與明文欄位
   Widget _buildSettingsField(
       String label,
       TextEditingController controller,
       String hint,
       bool obscureText,
-      bool isSecure, // 💡 新增：決定此輸入框是否提供遮罩與小眼睛
+      bool isSecure, // 決定此輸入框是否提供遮罩與小眼睛
       VoidCallback onToggleVisibility,
       ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: TextField(
         controller: controller,
-        obscureText: isSecure ? obscureText : false, // 💡 喚醒字明文輸入，方便查看與修改
+        obscureText: isSecure ? obscureText : false, // 喚醒字明文輸入，方便查看與修改
         style: const TextStyle(fontSize: 14),
         decoration: InputDecoration(
           labelText: label,
@@ -244,7 +294,11 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         GestureDetector(
           onTap: () {
-            context.push(routePath);
+            if (!_isConfigComplete()) {
+              _showConfigWarning(); // 缺少金鑰 -> 跳出警告並擋下跳轉
+            } else {
+              context.push(routePath); // 金鑰齊全 -> 正常跳轉
+            }
           },
           child: Container(
             width: width,
