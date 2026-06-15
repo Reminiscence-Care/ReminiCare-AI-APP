@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:remini_care_ai_app/services/nvidia_llm_service.dart';
+import 'package:remini_care_ai_app/services/remini_care_config.dart';
+
+import '../../services/spotify_api_services.dart';
 
 class SearchAndRecommendation extends StatefulWidget {
   final String? languageLabel;
@@ -12,30 +16,72 @@ class SearchAndRecommendation extends StatefulWidget {
 
 class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
   // 模擬歌單資料
-  final List<Map<String, String>> songs = [
-    {
-      'artist': '周璇',
-      'title': '夜上海',
-      'image': 'assets/zhou_xuan.png',
-    },
-    {
-      'artist': '葛蘭',
-      'title': '我要你的愛',
-      'image': 'assets/grace_chang.png',
-    },
-    {
-      'artist': '靜婷',
-      'title': '明日之歌',
-      'image': 'assets/tsin_ting.png',
-    },
-  ];
+  final NvidiaLlmService _llmService = NvidiaLlmService();
+  final spotifyClientId = ReminiCareConfig.spotifyClientId;
+  final spotifyClientSecret = ReminiCareConfig.spotifyClientSecret;
+  List<String> recommendationSongsName = [];
+  List<Map<String, String>> songs = [];
 
+  bool _isLoading = true;
+  Future<void> _loadSongsData() async {
+    try {
+      recommendationSongsName = await _llmService.recommendationSongsName(widget.languageLabel);
+
+      for (String name in recommendationSongsName) {
+        await _getEmbedUrls(name);
+      }
+
+    } catch (e) {
+      print("抓取歌曲資料發生錯誤: $e");
+    } finally {
+      // 資料全部抓完後，更新畫面
+      // 確保畫面還沒被關閉才 setState，防止之前遇過的 dispose 錯誤
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _getEmbedUrls(String query) async {
+    final spotifyApiServices = SpotifyApiServices(
+        spotifyClientId,
+        spotifyClientSecret
+    );
+
+    final List<String>? spotifySearchResults = await spotifyApiServices.getArtistAndTracks(query) as List<String>?;
+
+    if (spotifySearchResults != null && spotifySearchResults.length >= 4) {
+      String artistName = spotifySearchResults[0];
+      String trackName = spotifySearchResults[1];
+      String artistUrl = spotifySearchResults[2];
+      String trackUrl = spotifySearchResults[3];
+
+      songs.add({
+        "artistName": artistName,
+        "artistUrl": artistUrl,
+        "trackName": trackName,
+        "trackUrl": "$trackUrl",
+      });
+      print("成功加入: $trackName");
+    }
+  }
+
+  @override 
+  void initState() {
+    super.initState();
+    _loadSongsData();
+  }
+  
   @override
   Widget build(BuildContext context) {
     String? languageLabel = widget.languageLabel;
     return Scaffold(
       appBar: AppBar(title: Text('搜尋歌曲')),
-      body: Center(
+      body: _isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : Center(
         child: Container(
           margin: const EdgeInsets.all(16.0),
           padding: const EdgeInsets.all(24.0),
@@ -149,7 +195,19 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
                               width: 60,
                               height: 60,
                               color: Colors.grey[300],
-                              child: const Icon(Icons.music_note, color: Colors.grey),
+                              child: (song['artistUrl'] != null && song['artistUrl']!.isNotEmpty)
+                                  ? Image.network(
+                                    song['artistUrl']!,
+                                    fit: BoxFit.cover,
+                                  )
+                                  : Container(
+                                    color: Colors.grey[200], // 給一個淡灰色的底
+                                    child: const Icon(
+                                    Icons.person, // 也可以換成 Icons.music_note
+                                    size: 40,
+                                    color: Colors.grey,
+                                ),
+                              ),
                             ),
                             const SizedBox(width: 16),
 
@@ -157,7 +215,7 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
                             Expanded(
                               flex: 2,
                               child: Text(
-                                song['artist']!,
+                                song['artistName']!,
                                 style: const TextStyle(fontSize: 14),
                               ),
                             ),
@@ -166,7 +224,7 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
                             Expanded(
                               flex: 3,
                               child: Text(
-                                song['title']!,
+                                song['trackName']!,
                                 style: const TextStyle(fontSize: 14),
                               ),
                             ),
@@ -174,7 +232,14 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
                             // 播放按鈕
                             InkWell(
                               onTap: () {
-                                // 點擊播放邏輯
+                                final params = {
+                                  'embedUrl': song['trackUrl'],
+                                };
+                                final uri = Uri(
+                                    path: '/play_music',
+                                    queryParameters: params
+                                ).toString();
+                                context.push(uri);
                               },
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),

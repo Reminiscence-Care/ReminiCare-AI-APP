@@ -38,6 +38,16 @@ class ReminiCareConfig {
         hintText: 'Token...'
     ),
     const ConfigField(
+        apiKey: 'SPOTIFY_CLIENT_ID',
+        displayName: 'Spotify Client Id',
+        hintText: 'Token...'
+    ),
+    const ConfigField(
+        apiKey: 'SPOTIFY_CLIENT_SECRET',
+        displayName: 'Spotify Client Secret',
+        hintText: 'Token...'
+    ),
+    const ConfigField(
       apiKey: 'WAKE_WORDS_START',
       displayName: '語音指令：開始對話 (以逗號隔開)',
       hintText: '開始錄音,開始聊天,開始,來聊,錄音',

@@ -12,7 +12,6 @@ class NvidiaLlmService {
   final String _model = "qwen/qwen3-next-80b-a3b-instruct";
 
   String get _url => kIsWeb ? "https://corsproxy.io/?$_rawUrl" : _rawUrl;
-
   Future<String> generateInitialQuestion() async {
     try {
       final response = await http.post(
@@ -117,6 +116,43 @@ class NvidiaLlmService {
       }
     } catch (e) {
       print("[NVIDIA] 關鍵字擷取錯誤: $e");
+    }
+    return [];
+  }
+
+  Future<List<String>> recommendationSongsName(String? language) async {
+    try {
+      final response = await http.post(
+          Uri.parse(_url),
+          headers: {
+            "Authorization": "Bearer ${ReminiCareConfig.nvidiaApiKey}",
+            "Content-Type": "application/json"
+          },
+          body: jsonEncode({
+            "model": _model,
+            "messages": [
+              {"role": "system", "content": SONG_RECOMMENDATION_PROMPT.replaceAll("\$language", language ?? "國語")},
+              {"role": "user", "content": "請挑選十首老歌的歌名給我。(隨機碼：${DateTime.now().millisecondsSinceEpoch}"}
+            ],
+            "temperature": 0.9,
+            "max_tokens": 1000
+          })
+      );
+      if(response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        String rawOutput = data['choices'][0]['message']['content'].toString().trim();
+        if (rawOutput.startsWith("```json")) {
+          rawOutput = rawOutput.replaceAll("```json", "").replaceAll("```", "").trim();
+        } else if (rawOutput.startsWith("```")) {
+          rawOutput = rawOutput.replaceAll("```", "").trim();
+        }
+        final List<dynamic> decoded = jsonDecode(rawOutput);
+        return decoded.map((e) => e.toString()).toList();
+      } else {
+        print("[NVIDIA] 歌曲推薦失敗");
+      }
+    } catch(e) {
+      print("[NVIDIA] 歌曲推薦錯誤");
     }
     return [];
   }
