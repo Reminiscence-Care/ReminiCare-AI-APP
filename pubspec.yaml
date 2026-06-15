@@ -39,7 +39,6 @@ dependencies:
   path_provider: ^2.1.5
   just_audio: ^0.10.5
   path: ^1.9.1
-  hive_flutter: ^1.1.0
 
   http: ^1.6.0
   audioplayers: ^6.7.1
@@ -55,8 +54,6 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  hive_generator: ^2.0.1
-  build_runner: ^2.4.13
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
