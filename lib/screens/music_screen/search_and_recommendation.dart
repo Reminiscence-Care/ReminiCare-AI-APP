@@ -93,7 +93,7 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
                 children: [
                   Text(
                     widget.languageLabel ?? '國語歌',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                    style: const TextStyle(fontSize: 45, fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -106,17 +106,17 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
                         },
                         borderRadius: BorderRadius.circular(4.0),
                         child: SizedBox(
-                          height: 36,
+                          height: 50,
                           child: Stack(
                             alignment: Alignment.center,
                             children: const [
                               Text(
                                 '點擊搜尋',
-                                style: TextStyle(fontSize: 16, color: Colors.black87),
+                                style: TextStyle(fontSize: 40, color: Colors.black87),
                               ),
                               Positioned(
                                 right: 8,
-                                child: Icon(Icons.search, size: 20, color: Colors.black),
+                                child: Icon(Icons.search, size: 40, color: Colors.black),
                               ),
                             ],
                           ),
@@ -131,7 +131,7 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
               // 2. 標題
               const Text(
                 '推薦歌單',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
+                style: TextStyle(fontSize: 30, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 32),
 
@@ -151,7 +151,7 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
                             color: Colors.grey[300],
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: const Text('歌手名字', style: TextStyle(fontSize: 12)),
+                          child: const Text('歌手名字', style: TextStyle(fontSize: 30)),
                         ),
                       ),
                     ),
@@ -165,7 +165,7 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
                             color: Colors.grey[300],
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: const Text('歌名', style: TextStyle(fontSize: 12)),
+                          child: const Text('歌名', style: TextStyle(fontSize: 30)),
                         ),
                       ),
                     ),
@@ -192,8 +192,8 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
                           children: [
                             // 專輯封面 (此處使用灰色方塊作為佔位，實作時可換成 Image.asset 或 Image.network)
                             Container(
-                              width: 60,
-                              height: 60,
+                              width: 100,
+                              height: 100,
                               color: Colors.grey[300],
                               child: (song['artistUrl'] != null && song['artistUrl']!.isNotEmpty)
                                   ? Image.network(
@@ -216,7 +216,7 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
                               flex: 2,
                               child: Text(
                                 song['artistName']!,
-                                style: const TextStyle(fontSize: 14),
+                                style: const TextStyle(fontSize: 30),
                               ),
                             ),
 
@@ -225,7 +225,7 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
                               flex: 3,
                               child: Text(
                                 song['trackName']!,
-                                style: const TextStyle(fontSize: 14),
+                                style: const TextStyle(fontSize: 30),
                               ),
                             ),
 
@@ -247,7 +247,7 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
                                   color: Colors.grey[300],
                                   borderRadius: BorderRadius.circular(6),
                                 ),
-                                child: const Text('播放', style: TextStyle(fontSize: 12)),
+                                child: const Text('播放', style: TextStyle(fontSize: 30)),
                               ),
                             ),
                           ],
