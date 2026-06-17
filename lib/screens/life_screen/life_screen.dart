@@ -6,11 +6,11 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 
 // 完美對齊：同時引入 restored 的 AI 服務檔與獨立語音助理檔
-import '../../services/ncku_speech_service.dart';
-import '../../services/nvidia_llm_service.dart';
-import '../../services/remini_care_config.dart';
-import '../../services/sillicon_flow_image_service.dart';
-import '../../services/voice_assistant_services.dart';
+import 'package:remini_care_ai_app/services/ncku_speech_service.dart';
+import 'package:remini_care_ai_app/services/nvidia_llm_service.dart';
+import 'package:remini_care_ai_app/services/remini_care_config.dart';
+import 'package:remini_care_ai_app/services/sillicon_flow_image_service.dart';
+import 'package:remini_care_ai_app/services/voice_assistant_services.dart';
 
 // 匯入您自定義的子組件
 import 'widgets/language_selector.dart';
@@ -263,6 +263,7 @@ class _LifeScreenState extends State<LifeScreen> {
   void _triggerStartChatFlow() async {
     _stopAudioSequence();
     await _voiceManager.stopActiveAudioOperations();
+    await Future.delayed(const Duration(milliseconds: 500));
 
     setState(() {
       if (_chatStatus == ChatStatus.dislikePrepare || _chatStatus == ChatStatus.dislikeCompleted) {
