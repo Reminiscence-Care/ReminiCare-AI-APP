@@ -5,14 +5,12 @@ import 'package:flutter/foundation.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 
-// 完美對齊：同時引入 restored 的 AI 服務檔與獨立語音助理檔
-import 'package:remini_care_ai_app/services/ncku_speech_service.dart';
-import 'package:remini_care_ai_app/services/nvidia_llm_service.dart';
-import 'package:remini_care_ai_app/services/remini_care_config.dart';
-import 'package:remini_care_ai_app/services/sillicon_flow_image_service.dart';
 import 'package:remini_care_ai_app/services/voice_assistant_services.dart';
+import 'package:remini_care_ai_app/services/image_gen_api_service.dart';
+import 'package:remini_care_ai_app/services/nvidia_llm_service.dart';
+import 'package:remini_care_ai_app/services/ncku_speech_service.dart';
+import 'package:remini_care_ai_app/services/remini_care_config.dart';
 
-// 匯入您自定義的子組件
 import 'widgets/language_selector.dart';
 import 'widgets/question_area.dart';
 import 'widgets/chat_views.dart';
@@ -35,8 +33,15 @@ class LifeScreen extends StatefulWidget {
 
 class _LifeScreenState extends State<LifeScreen> {
   final NvidiaLlmService _llmService = NvidiaLlmService();
-  final SiliconFlowImageService _imageService = SiliconFlowImageService();
   final NckuSpeechService _nckuSpeechService = NckuSpeechService();
+
+  final UniversalImageService _imageService = UniversalImageService(
+    rawBaseUrl: "https://api.siliconflow.com/v1",
+    apiKeyProvider: () => ReminiCareConfig.siliconFlowApiKey,
+    generationModel: "Qwen/Qwen-Image",
+    editModel: "Qwen/Qwen-Image-Edit",
+    defaultNegativePrompt: "Simplified Chinese, deformed strokes, extra strokes, missing strokes, broken characters, typos, gibberish, illegible text, messy scribbles, distorted text, blurred text, worst quality, low resolution, bad anatomy, watermark, signature",
+  );
 
   final VoiceAssistantManager _voiceManager = VoiceAssistantManager();
 
@@ -57,6 +62,11 @@ class _LifeScreenState extends State<LifeScreen> {
   final List<Map<String, String>> _chatHistory = [];
   String _currentImageUrl = "";
 
+  String _dynamicScene = "台灣早期懷舊生活場景";
+  String _dynamicEra = "1980s";
+  String _dynamicLocation = "Taiwan";
+
+  // 💡 核心修復：回歸「單一全域播放器」，絕對不頻繁銷毀與創建，保護 Windows 音訊服務不崩潰！
   final AudioPlayer _audioPlayer = AudioPlayer();
   int _currentPlaySessionId = 0;
 
@@ -79,9 +89,8 @@ class _LifeScreenState extends State<LifeScreen> {
       _triggerStartChatFlow();
     };
 
-    _voiceManager.onEndChatFlow = () {
+    _voiceManager.onEndChatFlow = () async {
       if (mounted) {
-        _stopAudioSequence();
         setState(() {
           if (_chatStatus == ChatStatus.dislikeCompleted) {
             _chatStatus = ChatStatus.dislikeKeywords;
@@ -91,20 +100,18 @@ class _LifeScreenState extends State<LifeScreen> {
             _chatStatus = ChatStatus.keywords;
           }
         });
-        _voiceManager.stopActiveAudioOperations();
+        await _stopAudioSequence();
+        await _voiceManager.stopActiveAudioOperations();
       }
     };
 
-    _voiceManager.onSpeechCompleted = (mergedWavPath) {
-      _submitMergedAudioToAI(mergedWavPath);
+    _voiceManager.onSpeechCompleted = (mergedWavPaths) {
+      _submitMergedAudioToAI(mergedWavPaths ?? []);
     };
 
     _voiceManager.startBackgroundWakeWordCycle();
   }
 
-  // ==========================================
-  // 計時器管理與狀態重置
-  // ==========================================
   void _startTimer() {
     _recordTimer?.cancel();
     _recordTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -113,6 +120,12 @@ class _LifeScreenState extends State<LifeScreen> {
         return;
       }
       setState(() { _recordSeconds++; });
+
+      int maxRecordLimit = int.parse(ReminiCareConfig.maxRecordLimit);
+      if (_recordSeconds >= maxRecordLimit) {
+        debugPrint("⏳ [錄音限時] 已達 $maxRecordLimit 秒極限，系統自動停止錄製以防偏題！");
+        _handleEndChat();
+      }
     });
   }
 
@@ -123,7 +136,6 @@ class _LifeScreenState extends State<LifeScreen> {
 
   void _resetAllStates() async {
     if (!mounted) return;
-    _stopAudioSequence();
     setState(() {
       _chatStatus = ChatStatus.prepare;
       _recordSeconds = 0;
@@ -132,9 +144,18 @@ class _LifeScreenState extends State<LifeScreen> {
       _newKeywords.clear();
       _chatHistory.clear();
       _aiGeneratedText = "";
+
+      _dynamicScene = "台灣早期懷舊生活場景";
+      _dynamicEra = "1980s";
+      _dynamicLocation = "Taiwan";
+
       _isLoading = true;
       _stopTimer();
     });
+
+    await _stopAudioSequence();
+    if (!kIsWeb) await Future.delayed(const Duration(milliseconds: 300));
+
     await _voiceManager.stopActiveAudioOperations();
     _voiceManager.checkCompletedCommands = false;
     _fetchInitialQuestion();
@@ -157,6 +178,7 @@ class _LifeScreenState extends State<LifeScreen> {
   void dispose() {
     _voiceManager.dispose();
     _stopTimer();
+    // 💡 只有在頁面被關閉時，才准許銷毀播放器！
     _audioPlayer.dispose();
     super.dispose();
   }
@@ -165,14 +187,14 @@ class _LifeScreenState extends State<LifeScreen> {
   // 🔊 雙語交替序列播放引擎
   // ==========================================
 
-  void _stopAudioSequence() {
+  Future<void> _stopAudioSequence() async {
     _currentPlaySessionId++;
-    _audioPlayer.stop();
-    _audioPlayer.release();
+    // 💡 核心修復：只呼叫 stop() 停止播放，絕對不要呼叫 release() 或 dispose()！
+    try { await _audioPlayer.stop(); } catch (_) {}
   }
 
   Future<void> _playAlternatingSequence(String text) async {
-    _stopAudioSequence();
+    await _stopAudioSequence();
     await _voiceManager.stopActiveAudioOperations();
 
     if (text.isEmpty) return;
@@ -180,65 +202,83 @@ class _LifeScreenState extends State<LifeScreen> {
 
     final sessionId = _currentPlaySessionId;
     final sequence = ["台語", "中文", "台語", "中文"];
-    final Map<String, String> localTtsCachePaths = {};
+    final Map<String, Uint8List> localTtsCacheBytes = {};
 
     for (final lang in sequence) {
       if (!mounted || sessionId != _currentPlaySessionId) return;
 
       try {
-        String? filePath;
+        Uint8List? audioBytes;
 
-        if (localTtsCachePaths.containsKey(lang)) {
-          filePath = localTtsCachePaths[lang];
-          debugPrint("[NCKU TTS] 成功快取命中 '$lang'，重複利用實體音檔！");
+        if (localTtsCacheBytes.containsKey(lang)) {
+          audioBytes = localTtsCacheBytes[lang];
         } else {
-          Uint8List? audioBytes = await _nckuSpeechService.generateSpeech(text, lang);
+          audioBytes = await _nckuSpeechService.generateSpeech(text, lang);
           if (audioBytes != null) {
-            final tempDir = await getTemporaryDirectory();
-            final file = File('${tempDir.path}/tts_cache_${lang}_${DateTime.now().millisecondsSinceEpoch}.wav');
-            await file.writeAsBytes(audioBytes);
-            filePath = file.path;
-            localTtsCachePaths[lang] = filePath;
+            localTtsCacheBytes[lang] = audioBytes;
           }
         }
 
-        if (filePath != null && mounted && sessionId == _currentPlaySessionId) {
+        if (audioBytes != null && mounted && sessionId == _currentPlaySessionId) {
           setState(() {
             _selectedLanguage = lang;
           });
 
-          await _audioPlayer.setSourceDeviceFile(filePath);
+          String safeLang = (lang == "台語") ? "tw" : "zh";
+          final tempDir = await getTemporaryDirectory();
+          final file = File('${tempDir.path}/tts_play_${safeLang}_${DateTime.now().millisecondsSinceEpoch}.wav');
+
+          // 強制 flush，確保寫入磁碟
+          await file.writeAsBytes(audioBytes, flush: true);
+
+          // 💡 核心修復：給予防毒軟體與 Windows 系統 150 毫秒的檔案解鎖時間！
+          // 這能 100% 解決 MediaEngine 讀取到空檔案而拋出「找不到編碼轉換」的 Bug！
+          await Future.delayed(const Duration(milliseconds: 150));
+
+          if (!mounted || sessionId != _currentPlaySessionId) {
+            try { file.deleteSync(); } catch (_) {}
+            return;
+          }
+
+          // 直接使用單一全域播放器播放新產生的檔案
+          await _audioPlayer.play(DeviceFileSource(file.path));
+
+          // 讓引擎有時間解析音訊中繼資料
+          await Future.delayed(const Duration(milliseconds: 100));
           Duration? duration = await _audioPlayer.getDuration();
-          await _audioPlayer.resume();
 
           int waitMs = (duration?.inMilliseconds ?? 4000) + 300;
           int elapsed = 0;
 
+          // 輪詢等待播放結束，若被手動切斷則跳出
           while (elapsed < waitMs) {
             if (!mounted || sessionId != _currentPlaySessionId) {
-              await _audioPlayer.stop();
-              await _audioPlayer.release();
+              try { await _audioPlayer.stop(); } catch (_) {}
+              try { file.deleteSync(); } catch (_) {}
               return;
             }
             await Future.delayed(const Duration(milliseconds: 100));
             elapsed += 100;
           }
-          await _audioPlayer.stop();
+
+          if (sessionId == _currentPlaySessionId) {
+            try { await _audioPlayer.stop(); } catch (_) {}
+          }
+          try { file.deleteSync(); } catch (_) {}
         }
       } catch (e) {
         debugPrint("[交替序列播放異常]: $e");
       }
     }
 
-    await _audioPlayer.release();
-
-    if (mounted && sessionId == _currentPlaySessionId && _isVoiceActiveStatus(_chatStatus)) {
-      debugPrint("[TTS 播放完成] 系統處於語音狀態下，安全重啟語音助理背景監聽...");
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted && sessionId == _currentPlaySessionId && _isVoiceActiveStatus(_chatStatus)) {
-          _voiceManager.startBackgroundWakeWordCycle();
-        }
-      });
+    if (sessionId == _currentPlaySessionId) {
+      if (mounted && _isVoiceActiveStatus(_chatStatus)) {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted && sessionId == _currentPlaySessionId && _isVoiceActiveStatus(_chatStatus)) {
+            _voiceManager.startBackgroundWakeWordCycle();
+          }
+        });
+      }
     }
   }
 
@@ -247,9 +287,9 @@ class _LifeScreenState extends State<LifeScreen> {
 
     if (_chatStatus == ChatStatus.evaluation || _chatStatus == ChatStatus.dislikeEvaluation) {
       textToPlay = "這張圖符合您的回憶嗎？";
-    } else if (_chatStatus == ChatStatus.dislikePrepare || _chatStatus == ChatStatus.dislikeChatting || _chatStatus == ChatStatus.dislikeCompleted) {
+    } else if (_chatStatus == ChatStatus.dislikePrepare) {
       textToPlay = "哪裡不對？";
-    } else if (_chatStatus == ChatStatus.likePrepare || _chatStatus == ChatStatus.likeChatting || _chatStatus == ChatStatus.likeCompleted) {
+    } else if (_chatStatus == ChatStatus.likePrepare) {
       textToPlay = "這張圖片讓您想到什麼？";
     }
 
@@ -262,8 +302,6 @@ class _LifeScreenState extends State<LifeScreen> {
 
   void _triggerStartChatFlow() async {
     _stopAudioSequence();
-    await _voiceManager.stopActiveAudioOperations();
-    await Future.delayed(const Duration(milliseconds: 500));
 
     setState(() {
       if (_chatStatus == ChatStatus.dislikePrepare || _chatStatus == ChatStatus.dislikeCompleted) {
@@ -296,7 +334,7 @@ class _LifeScreenState extends State<LifeScreen> {
     await _voiceManager.forceEndChat();
   }
 
-  void _submitMergedAudioToAI(String mergedWavPath) {
+  void _submitMergedAudioToAI(List<String> mergedWavPaths) {
     _stopTimer();
 
     final currentStatus = _chatStatus;
@@ -309,21 +347,20 @@ class _LifeScreenState extends State<LifeScreen> {
           : ChatStatus.completed;
     });
 
-    _processAudioAndChat(audioPath: mergedWavPath);
+    _processAudioAndChat(audioPaths: mergedWavPaths);
 
     _voiceManager.checkCompletedCommands = true;
     _voiceManager.startBackgroundWakeWordCycle();
   }
 
-  // ==========================================
-  // 🚀 純 Dart 業務呼叫邏輯 (UI 串接)
-  // ==========================================
-
   Future<void> _playSingleVoice(String text, String language) async {
-    _stopAudioSequence();
+    await _stopAudioSequence();
     await _voiceManager.stopActiveAudioOperations();
 
     if (text.isEmpty) return;
+
+    final sessionId = _currentPlaySessionId;
+
     try {
       if (kIsWeb) return;
       setState(() {
@@ -331,43 +368,55 @@ class _LifeScreenState extends State<LifeScreen> {
       });
       final Uint8List? audioBytes = await _nckuSpeechService.generateSpeech(text, language);
       if (audioBytes != null) {
-        if (!mounted) return;
+        if (!mounted || sessionId != _currentPlaySessionId) return;
 
-        final sessionId = _currentPlaySessionId;
-
+        String safeLang = (language == "台語") ? "tw" : "zh";
         final tempDir = await getTemporaryDirectory();
-        final file = File('${tempDir.path}/tts_single_${DateTime.now().millisecondsSinceEpoch}.wav');
-        await file.writeAsBytes(audioBytes);
+        final file = File('${tempDir.path}/tts_single_${safeLang}_${DateTime.now().millisecondsSinceEpoch}.wav');
+        await file.writeAsBytes(audioBytes, flush: true);
 
-        await _audioPlayer.setSourceDeviceFile(file.path);
+        // 💡 關鍵修復：給予檔案解鎖時間
+        await Future.delayed(const Duration(milliseconds: 150));
+
+        if (!mounted || sessionId != _currentPlaySessionId) {
+          try { file.deleteSync(); } catch (_) {}
+          return;
+        }
+
+        await _audioPlayer.play(DeviceFileSource(file.path));
+
+        await Future.delayed(const Duration(milliseconds: 100));
         Duration? duration = await _audioPlayer.getDuration();
-        await _audioPlayer.resume();
 
         int waitMs = (duration?.inMilliseconds ?? 4000) + 300;
         int elapsed = 0;
 
         while (elapsed < waitMs) {
           if (!mounted || sessionId != _currentPlaySessionId) {
-            await _audioPlayer.stop();
-            await _audioPlayer.release();
+            try { await _audioPlayer.stop(); } catch (_) {}
+            try { file.deleteSync(); } catch (_) {}
             return;
           }
           await Future.delayed(const Duration(milliseconds: 100));
           elapsed += 100;
         }
-        await _audioPlayer.stop();
+
+        if (sessionId == _currentPlaySessionId) {
+          try { await _audioPlayer.stop(); } catch (_) {}
+        }
+        try { file.deleteSync(); } catch (_) {}
       }
     } catch (e) {
       debugPrint("[單次播放錯誤]: $e");
     } finally {
-      await _audioPlayer.release();
-
-      if (mounted && _isVoiceActiveStatus(_chatStatus)) {
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted && _isVoiceActiveStatus(_chatStatus)) {
-            _voiceManager.startBackgroundWakeWordCycle();
-          }
-        });
+      if (sessionId == _currentPlaySessionId) {
+        if (mounted && _isVoiceActiveStatus(_chatStatus)) {
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted && sessionId == _currentPlaySessionId && _isVoiceActiveStatus(_chatStatus)) {
+              _voiceManager.startBackgroundWakeWordCycle();
+            }
+          });
+        }
       }
     }
   }
@@ -378,16 +427,15 @@ class _LifeScreenState extends State<LifeScreen> {
 
     if (_chatStatus == ChatStatus.evaluation || _chatStatus == ChatStatus.dislikeEvaluation) {
       textToPlay = "這張圖符合您的回憶嗎？";
-    } else if (_chatStatus == ChatStatus.dislikePrepare || _chatStatus == ChatStatus.dislikeChatting || _chatStatus == ChatStatus.dislikeCompleted) {
+    } else if (_chatStatus == ChatStatus.dislikePrepare) {
       textToPlay = "哪裡不對？";
-    } else if (_chatStatus == ChatStatus.likePrepare || _chatStatus == ChatStatus.likeChatting || _chatStatus == ChatStatus.likeCompleted) {
+    } else if (_chatStatus == ChatStatus.likePrepare) {
       textToPlay = "這張圖片讓您想到什麼？";
     }
 
     _playSingleVoice(textToPlay, lang);
   }
 
-  /// 💡 已更新：點擊「換一個問題」按鈕後，會直接呼叫此函數重新生成
   Future<void> _fetchInitialQuestion() async {
     if (!mounted) return;
     setState(() { _isLoading = true; });
@@ -399,7 +447,6 @@ class _LifeScreenState extends State<LifeScreen> {
       });
       _triggerCurrentContextSequencePlayback();
     } catch (e) {
-      debugPrint("初始問題獲取失敗: $e");
       if (!mounted) return;
       setState(() {
         _aiGeneratedText = "哈囉！小時候家裡最常吃什麼呢？";
@@ -412,21 +459,28 @@ class _LifeScreenState extends State<LifeScreen> {
     }
   }
 
-  Future<void> _processAudioAndChat({String? audioPath, String? manualText}) async {
+  Future<void> _processAudioAndChat({List<String>? audioPaths, String? manualText}) async {
     if (!mounted) return;
     setState(() { _isExtractingKeywords = true; });
     String userMessage = "";
 
     try {
-      if (audioPath != null && !kIsWeb) {
-        debugPrint("[高品質語音] 正在送交成大 ASR 服務解析...");
-        String? transcript = await _nckuSpeechService.transcribe(audioPath);
+      if (audioPaths != null && audioPaths.isNotEmpty && !kIsWeb) {
+        String fullTranscript = "";
 
-        try { File(audioPath).deleteSync(); } catch (_) {}
+        for (String path in audioPaths) {
+          debugPrint("[高品質語音] 正在分段送交成大 ASR 服務解析...");
+          String? transcript = await _nckuSpeechService.transcribe(path);
+          try { File(path).deleteSync(); } catch (_) {}
 
-        if (transcript != null && transcript.trim().isNotEmpty) {
-          userMessage = transcript;
-          debugPrint("[NCKU ASR] 精準解析文字: $userMessage");
+          if (transcript != null && transcript.trim().isNotEmpty) {
+            fullTranscript += transcript + "，";
+          }
+        }
+
+        if (fullTranscript.isNotEmpty) {
+          userMessage = fullTranscript;
+          debugPrint("[NCKU ASR] 分段合併解析文字: $userMessage");
         } else {
           throw Exception("語音辨識無有效回傳");
         }
@@ -444,13 +498,23 @@ class _LifeScreenState extends State<LifeScreen> {
       }
 
       final String reply = await _llmService.generateChatReply(userMessage, _chatHistory);
-      final List<String> extracted = await _llmService.extractKeywords(userMessage);
+
+      final Map<String, dynamic> sceneData = await _llmService.extractSceneData(userMessage);
+
+      final List<String> extracted = List<String>.from(sceneData['keywords'] ?? []);
+      final String parsedScene = sceneData['scene']?.toString() ?? "台灣早期懷舊生活場景";
+      final String parsedEra = sceneData['era']?.toString() ?? "1980s";
+      final String parsedLocation = sceneData['location']?.toString() ?? "Taiwan";
 
       if (!mounted) return;
       setState(() {
         _aiGeneratedText = reply;
+
         if (_chatStatus == ChatStatus.completed || _chatStatus == ChatStatus.keywords) {
           _originalKeywords = extracted;
+          _dynamicScene = parsedScene;
+          _dynamicEra = parsedEra;
+          _dynamicLocation = parsedLocation;
         } else {
           _newKeywords = extracted;
         }
@@ -477,16 +541,18 @@ class _LifeScreenState extends State<LifeScreen> {
 
   Future<void> _triggerImageGeneration() async {
     if (!mounted) return;
-    _stopAudioSequence();
+
     setState(() { _chatStatus = ChatStatus.generating; });
+    await _stopAudioSequence();
+
     try {
       String prompt = _originalKeywords.join("、");
-      if (prompt.isEmpty) prompt = "懷舊場景";
+      if (prompt.isEmpty) prompt = "懷舊元素";
 
       final String? imageUrl = await _imageService.generateNostalgicImage(
-        scene: "在傳統灶腳烹飪, 包含關鍵元素: $prompt",
-        era: "1980s",
-        location: "Taiwan",
+        scene: "$_dynamicScene, 包含關鍵元素: $prompt",
+        era: _dynamicEra,
+        location: _dynamicLocation,
       );
 
       if (!mounted) return;
@@ -500,7 +566,6 @@ class _LifeScreenState extends State<LifeScreen> {
         throw Exception("生圖出錯");
       }
     } catch (e) {
-      debugPrint("生圖流程出錯: $e");
       if (!mounted) return;
       setState(() { _chatStatus = ChatStatus.keywords; });
     }
@@ -508,15 +573,17 @@ class _LifeScreenState extends State<LifeScreen> {
 
   Future<void> _triggerModifiedImageGeneration() async {
     if (!mounted) return;
-    _stopAudioSequence();
+
     setState(() { _chatStatus = ChatStatus.dislikeGenerating; });
+    await _stopAudioSequence();
+
     try {
       String combinedPrompt = _newKeywords.join("、");
       if (combinedPrompt.isEmpty) combinedPrompt = "修改後的食物與場景";
 
       final String? imageUrl = await _imageService.editImage(
         imagePath: _currentImageUrl,
-        editInstruction: "將桌上的食物與細節修改或新增為: $combinedPrompt",
+        editInstruction: "在 $_dynamicScene 的大場景氛圍下, 將細節修改或新增為: $combinedPrompt",
       );
 
       if (!mounted) return;
@@ -530,7 +597,6 @@ class _LifeScreenState extends State<LifeScreen> {
         throw Exception("改圖出錯");
       }
     } catch (e) {
-      debugPrint("改圖流程出錯: $e");
       if (!mounted) return;
       setState(() { _chatStatus = ChatStatus.dislikeKeywords; });
     }
@@ -538,15 +604,17 @@ class _LifeScreenState extends State<LifeScreen> {
 
   Future<void> _triggerLikeExtendedImageGeneration() async {
     if (!mounted) return;
-    _stopAudioSequence();
+
     setState(() { _chatStatus = ChatStatus.likeGenerating; });
+    await _stopAudioSequence();
+
     try {
       String combinedPrompt = [..._originalKeywords, ..._newKeywords].join("、");
 
       final String? imageUrl = await _imageService.generateNostalgicImage(
-        scene: "一個溫馨的台灣家庭回憶場景, 包含關鍵元素: $combinedPrompt",
-        era: "1980s",
-        location: "Taiwan",
+        scene: "$_dynamicScene, 包含關鍵元素: $combinedPrompt",
+        era: _dynamicEra,
+        location: _dynamicLocation,
       );
 
       if (!mounted) return;
@@ -560,7 +628,6 @@ class _LifeScreenState extends State<LifeScreen> {
         throw Exception("延伸話題生圖出錯");
       }
     } catch (e) {
-      debugPrint("延伸生圖流程出錯: $e");
       if (!mounted) return;
       setState(() { _chatStatus = ChatStatus.likeKeywords; });
     }
@@ -654,12 +721,11 @@ class _LifeScreenState extends State<LifeScreen> {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   QuestionArea(questionText: _aiGeneratedText),
-                                  // 💡 新增：換一個問題的按鈕 (僅在 ChatStatus.prepare 時顯示)
                                   if (_chatStatus == ChatStatus.prepare) ...[
                                     const SizedBox(height: 16),
                                     ElevatedButton.icon(
-                                      onPressed: () {
-                                        _stopAudioSequence();
+                                      onPressed: () async {
+                                        await _stopAudioSequence();
                                         _fetchInitialQuestion();
                                       },
                                       icon: const Icon(Icons.refresh, size: 20),
@@ -721,7 +787,6 @@ class _LifeScreenState extends State<LifeScreen> {
     );
   }
 
-  /// 💡 底部智慧型助理提示條
   Widget _buildVoiceAssistantIndicator() {
     bool isListeningNow = (_chatStatus == ChatStatus.chatting || _chatStatus == ChatStatus.dislikeChatting || _chatStatus == ChatStatus.likeChatting);
     bool isCompletedState = (_chatStatus == ChatStatus.completed || _chatStatus == ChatStatus.dislikeCompleted || _chatStatus == ChatStatus.likeCompleted);
@@ -816,11 +881,11 @@ class _LifeScreenState extends State<LifeScreen> {
       case ChatStatus.completed:
         return CompletedView(
           onRestartChat: _triggerStartChatFlow,
-          onEndChat: () {
+          onEndChat: () async {
             if (!mounted) return;
-            _stopAudioSequence();
+            await _stopAudioSequence();
             setState(() { _chatStatus = ChatStatus.keywords; });
-            _voiceManager.stopActiveAudioOperations();
+            await _voiceManager.stopActiveAudioOperations();
           },
         );
       case ChatStatus.keywords:
@@ -862,11 +927,11 @@ class _LifeScreenState extends State<LifeScreen> {
       case ChatStatus.dislikeCompleted:
         return CompletedView(
           onRestartChat: _triggerStartChatFlow,
-          onEndChat: () {
+          onEndChat: () async {
             if (!mounted) return;
-            _stopAudioSequence();
+            await _stopAudioSequence();
             setState(() { _chatStatus = ChatStatus.dislikeKeywords; });
-            _voiceManager.stopActiveAudioOperations();
+            await _voiceManager.stopActiveAudioOperations();
           },
         );
       case ChatStatus.dislikeKeywords:
@@ -900,11 +965,11 @@ class _LifeScreenState extends State<LifeScreen> {
       case ChatStatus.likeCompleted:
         return CompletedView(
           onRestartChat: _triggerStartChatFlow,
-          onEndChat: () {
+          onEndChat: () async {
             if (!mounted) return;
-            _stopAudioSequence();
+            await _stopAudioSequence();
             setState(() { _chatStatus = ChatStatus.likeKeywords; });
-            _voiceManager.stopActiveAudioOperations();
+            await _voiceManager.stopActiveAudioOperations();
           },
         );
       case ChatStatus.likeKeywords:

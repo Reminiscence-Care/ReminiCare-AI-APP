@@ -115,6 +115,57 @@ class NvidiaLlmService {
     }
   }
 
+  Future<Map<String, dynamic>> extractSceneData(String transcript) async {
+    final Map<String, dynamic> defaultResult = {
+      "scene": "台灣早期懷舊生活場景",
+      "era": "1980s",
+      "location": "Taiwan",
+      "keywords": <String>[]
+    };
+
+    try {
+      final response = await _client.chat.completions.create(
+        ChatCompletionCreateRequest(
+          model: _model,
+          temperature: 0.1,
+          messages: [
+            ChatMessage.system(EXTRACTOR_SYSTEM_PROMPT),
+            ChatMessage.user(transcript),
+          ],
+        ),
+      );
+
+      String rawOutput = (response.text ?? '').trim();
+
+      if (rawOutput.startsWith("```json")) {
+        rawOutput = rawOutput.replaceAll("```json", "").replaceAll("```", "").trim();
+      } else if (rawOutput.startsWith("```")) {
+        rawOutput = rawOutput.replaceAll("```", "").trim();
+      }
+
+      // 💡 防呆檢查：判斷 LLM 回傳的是 Array 還是 Map
+      final dynamic decoded = jsonDecode(rawOutput);
+
+      if (decoded is List) {
+        debugPrint("[NVIDIA] 警告: LLM 回傳了陣列而非物件，已自動容錯處理。");
+        return {
+          "scene": "台灣早期懷舊生活場景",
+          "era": "1980s",
+          "location": "Taiwan",
+          "keywords": decoded.map((e) => e.toString()).toList()
+        };
+      } else if (decoded is Map<String, dynamic>) {
+        return decoded;
+      } else {
+        return defaultResult;
+      }
+
+    } catch (e) {
+      print("[NVIDIA] 場景擷取錯誤: $e");
+    }
+    return defaultResult;
+  }
+
   Future<List<String>> recommendationSongsName(String? language) async {
     try {
       final response = await _client.chat.completions.create(
