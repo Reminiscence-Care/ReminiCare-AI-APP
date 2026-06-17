@@ -6,6 +6,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   audioplayers_windows
   fullscreen_window
   just_audio_windows
+  permission_handler_windows
   record_windows
   speech_to_text_windows
   webview_win_floating
