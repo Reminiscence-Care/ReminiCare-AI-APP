@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:remini_care_ai_app/services/spotify_api_services.dart';
@@ -58,17 +60,29 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
     _voiceManager.startChatFlow(); // 啟動助理錄製
   }
 
-  Future<void> _processMergedAudio(String path) async {
+  Future<void> _processMergedAudio(List<String>? paths) async {
     setState(() { _isRecording = false; });
-    print("取得無損拼接回憶 WAV 檔: $path");
+    print("取得無損拼接回憶 WAV 檔 (共 ${paths?.length ?? 0} 段)");
 
-    // 💡 呼叫成大自研 ASR 代理伺服器
-    final result = await _nckuSpeechService.transcribe(path);
+    String fullTranscript = "";
 
-    if (result != null && result.isNotEmpty) {
-      speechText = result;
-      _textController.text = result;
+    // 💡 逐段送交成大自研 ASR 解析並合併字串
+    if (paths != null && paths.isNotEmpty) {
+      for (String path in paths) {
+        final result = await _nckuSpeechService.transcribe(path);
+        try { File(path).deleteSync(); } catch (_) {} // 解析完順手刪除暫存
 
+        if (result != null && result.trim().isNotEmpty) {
+          fullTranscript += result; // 歌名搜尋直接緊湊拼接即可
+        }
+      }
+    }
+
+    if (fullTranscript.isNotEmpty) {
+      speechText = fullTranscript;
+      _textController.text = fullTranscript; // 同步將辨識出的歌名丟到文字框，效果很炫
+
+      // 💡 一次性全自動解析 Spotify 網址並直接切換下一頁！長輩連動手都不用！
       _navigateToNextPage();
     } else {
       // 如果是靜音或辨識失敗，重啟背景監聽

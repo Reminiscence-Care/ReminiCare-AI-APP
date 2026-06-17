@@ -43,6 +43,14 @@ class ReminiCareConfig {
         hintText: 'Token...'
     ),
     const ConfigField(
+      apiKey: 'VOICE_MAX_RECORD_LIMIT',
+      displayName: 'Voice max recording limit',
+      hintText: 'e.x. 60 seconds',
+      isSecure: false,
+      hasDefaultValue: true,
+      defaultValue: '60'
+    ),
+    const ConfigField(
       apiKey: 'WAKE_WORDS_START',
       displayName: '語音指令：開始對話 (以逗號隔開)',
       hintText: '開始錄音,開始聊天,開始,來聊,錄音',
@@ -74,6 +82,7 @@ class ReminiCareConfig {
   static String get nckuSttToken => _configs['NCKU_STT_TOKEN'] ?? "";
   static String get spotifyClientId => _configs['SPOTIFY_CLIENT_ID'] ?? "";
   static String get spotifyClientSecret => _configs['SPOTIFY_CLIENT_SECRET'] ?? "";
+  static String get maxRecordLimit => _configs['VOICE_MAX_RECORD_LIMIT'] ?? "";
   // 💡 4. 關鍵字動態解析 Getter (相容半形逗號與全形逗號，貼心處理空白)
   static List<String> get startWakeWords => _getWordsList('WAKE_WORDS_START', ["開始錄音", "開始聊天", "開始", "來聊", "錄音"]);
   static List<String> get endWakeWords => _getWordsList('WAKE_WORDS_END', ["結束錄音", "結束聊天", "結束錄影", "結束錄像", "結束", "完成"]);
