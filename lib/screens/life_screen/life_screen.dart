@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:remini_care_ai_app/services/voice_assistant_services.dart';
 import 'package:remini_care_ai_app/services/image_gen_api_service.dart';
 import 'package:remini_care_ai_app/services/nvidia_llm_service.dart';
-import 'package:remini_care_ai_app/services/ncku_speech_service.dart';
+import 'package:remini_care_ai_app/services/speech_services.dart';
 import 'package:remini_care_ai_app/services/remini_care_config.dart';
 
 import 'widgets/language_selector.dart';
@@ -33,7 +33,8 @@ class LifeScreen extends StatefulWidget {
 
 class _LifeScreenState extends State<LifeScreen> {
   final NvidiaLlmService _llmService = NvidiaLlmService();
-  final NckuSpeechService _nckuSpeechService = NckuSpeechService();
+  final ITTSService ttsService = YatingSpeechService();
+  final ISTTService sttService = YatingSpeechService();
 
   final UniversalImageService _imageService = UniversalImageService(
     rawBaseUrl: "https://api.siliconflow.com/v1",
@@ -213,7 +214,7 @@ class _LifeScreenState extends State<LifeScreen> {
         if (localTtsCacheBytes.containsKey(lang)) {
           audioBytes = localTtsCacheBytes[lang];
         } else {
-          audioBytes = await _nckuSpeechService.generateSpeech(text, lang);
+          audioBytes = await ttsService.generateSpeech(text, lang);
           if (audioBytes != null) {
             localTtsCacheBytes[lang] = audioBytes;
           }
@@ -303,6 +304,15 @@ class _LifeScreenState extends State<LifeScreen> {
   void _triggerStartChatFlow() async {
     _stopAudioSequence();
 
+    // ==========================================
+    // 💡 物理級硬體釋放緩衝 (放棄 while 狀態偵測)
+    // 當發生 audioplayers 紅字報錯時，給予作業系統 600 毫秒強制解鎖硬體。
+    // 這能 100% 避免麥克風搶不到權限而回傳 null 的問題！
+    // ==========================================
+    if (!kIsWeb) {
+      await Future.delayed(const Duration(milliseconds: 600));
+    }
+
     setState(() {
       if (_chatStatus == ChatStatus.dislikePrepare || _chatStatus == ChatStatus.dislikeCompleted) {
         _chatStatus = ChatStatus.dislikeChatting;
@@ -366,7 +376,7 @@ class _LifeScreenState extends State<LifeScreen> {
       setState(() {
         _selectedLanguage = language;
       });
-      final Uint8List? audioBytes = await _nckuSpeechService.generateSpeech(text, language);
+      final Uint8List? audioBytes = await ttsService.generateSpeech(text, language);
       if (audioBytes != null) {
         if (!mounted || sessionId != _currentPlaySessionId) return;
 
@@ -470,7 +480,7 @@ class _LifeScreenState extends State<LifeScreen> {
 
         for (String path in audioPaths) {
           debugPrint("[高品質語音] 正在分段送交成大 ASR 服務解析...");
-          String? transcript = await _nckuSpeechService.transcribe(path);
+          String? transcript = await sttService.transcribe(path);
           try { File(path).deleteSync(); } catch (_) {}
 
           if (transcript != null && transcript.trim().isNotEmpty) {

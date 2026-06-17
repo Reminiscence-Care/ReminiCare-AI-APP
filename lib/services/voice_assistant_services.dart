@@ -7,7 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:remini_care_ai_app/services/remini_care_config.dart';
 
 // 💡 引入全域金鑰與 ASR 服務
-import 'ncku_speech_service.dart';
+import 'speech_services.dart';
 
 class WavInfo {
   final List<int> header;
@@ -26,7 +26,7 @@ class WavInfo {
 // =========================================================================
 class VoiceAssistantManager {
   final AudioRecorder _audioRecorder = AudioRecorder();
-  final NckuSpeechService _nckuSpeechService = NckuSpeechService();
+  final ISTTService sttService = YatingSpeechService();
 
   bool _isRollingWakeWord = false;
   bool _isRollingChatRecord = false;
@@ -132,6 +132,9 @@ class VoiceAssistantManager {
         }
 
         final String? savedPath = await _audioRecorder.stop();
+        if (savedPath == null) {
+          debugPrint("❌ [硬體鎖死警告] _audioRecorder.stop() 回傳 null，麥克風錄製失敗！");
+        }
         _isRecordingOnHardware = false;
         if (!kIsWeb) await Future.delayed(const Duration(milliseconds: 150)); // 切換緩衝
 
@@ -150,7 +153,7 @@ class VoiceAssistantManager {
 
   Future<void> _transcribeAndCheckWakeWord(String audioPath, int sessionId) async {
     try {
-      final String? transcript = await _nckuSpeechService.transcribe(audioPath);
+      final String? transcript = await sttService.transcribe(audioPath);
       try { File(audioPath).deleteSync(); } catch (_) {}
 
       if (!_isRollingWakeWord || sessionId != _wakeWordSessionId) return;
@@ -253,7 +256,7 @@ class VoiceAssistantManager {
 
   Future<void> _processChatChunk(String audioPath, int sessionId) async {
     try {
-      final String? transcript = await _nckuSpeechService.transcribe(audioPath);
+      final String? transcript = await sttService.transcribe(audioPath);
 
       if (!_isRollingChatRecord || sessionId != _chatRecordSessionId) {
         try { File(audioPath).deleteSync(); } catch (_) {}

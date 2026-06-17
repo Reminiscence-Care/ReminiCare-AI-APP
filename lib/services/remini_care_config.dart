@@ -13,34 +13,39 @@ class ReminiCareConfig {
 
   static final List<ConfigField> fields = [
     const ConfigField(
-        apiKey: 'NVIDIA_API_KEY',
-        displayName: 'NVIDIA API KEY (語言模型)',
-        hintText: 'nvapi-...'
+      apiKey: 'NVIDIA_API_KEY',
+      displayName: 'NVIDIA API KEY (語言模型)',
+      hintText: 'nvapi-...'
     ),
     const ConfigField(
-        apiKey: 'SILICONFLOW_API_KEY',
-        displayName: 'SILICONFLOW KEY (影像生成)',
-        hintText: 'sk-...'
+      apiKey: 'SILICONFLOW_API_KEY',
+      displayName: 'SILICONFLOW KEY (影像生成)',
+      hintText: 'sk-...'
     ),
     const ConfigField(
-        apiKey: 'NCKU_TTS_TOKEN',
-        displayName: 'NCKU TTS TOKEN (語音合成)',
-        hintText: 'Token...'
+      apiKey: 'NCKU_TTS_TOKEN',
+      displayName: 'NCKU TTS TOKEN (語音合成)',
+      hintText: 'Token...'
     ),
     const ConfigField(
-        apiKey: 'NCKU_STT_TOKEN',
-        displayName: 'NCKU STT TOKEN (成大 ASR)',
-        hintText: 'Token...'
+      apiKey: 'NCKU_STT_TOKEN',
+      displayName: 'NCKU STT TOKEN (成大 ASR)',
+      hintText: 'Token...'
     ),
     const ConfigField(
-        apiKey: 'SPOTIFY_CLIENT_ID',
-        displayName: 'Spotify Client Id',
-        hintText: 'Token...'
+      apiKey: 'YATING_API_KEY',
+      displayName: 'Yating TTS/STT TOKEN',
+      hintText: 'Token...'
     ),
     const ConfigField(
-        apiKey: 'SPOTIFY_CLIENT_SECRET',
-        displayName: 'Spotify Client Secret',
-        hintText: 'Token...'
+      apiKey: 'SPOTIFY_CLIENT_ID',
+      displayName: 'Spotify Client Id',
+      hintText: 'Token...'
+    ),
+    const ConfigField(
+      apiKey: 'SPOTIFY_CLIENT_SECRET',
+      displayName: 'Spotify Client Secret',
+      hintText: 'Token...'
     ),
     const ConfigField(
       apiKey: 'VOICE_MAX_RECORD_LIMIT',
@@ -80,6 +85,7 @@ class ReminiCareConfig {
   static String get siliconFlowApiKey => _configs['SILICONFLOW_API_KEY'] ?? "";
   static String get nckuTtsToken => _configs['NCKU_TTS_TOKEN'] ?? "";
   static String get nckuSttToken => _configs['NCKU_STT_TOKEN'] ?? "";
+  static String get yatingApiKey => _configs['YATING_API_KEY'] ?? "";
   static String get spotifyClientId => _configs['SPOTIFY_CLIENT_ID'] ?? "";
   static String get spotifyClientSecret => _configs['SPOTIFY_CLIENT_SECRET'] ?? "";
   static String get maxRecordLimit => _configs['VOICE_MAX_RECORD_LIMIT'] ?? "";
