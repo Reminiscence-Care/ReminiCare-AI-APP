@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:remini_care_ai_app/services/spotify_api_services.dart';
 import 'package:remini_care_ai_app/services/voice_assistant_services.dart';
+import 'package:remini_care_ai_app/services/youtube_api_service.dart';
 
 import '../../services/ncku_speech_service.dart';
 import '../../services/remini_care_config.dart';
@@ -122,11 +123,12 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
   }
 
   Future<void> _setEmbedUrls(String query) async {
-    final spotifyApiServices = SpotifyApiServices(
-      spotifyClientId,
-      spotifyClientSecret
-    );
-    final List<String>? spotifySearchResults = await spotifyApiServices.getArtistAndTracks(query) as List<String>;
+    // final spotifyApiServices = SpotifyApiServices(
+    //   spotifyClientId,
+    //   spotifyClientSecret
+    // );
+    final api = YoutubeApiServices();
+    final List<String>? spotifySearchResults = await api.getArtistAndTracks(query) as List<String>;
     artistName = spotifySearchResults?[0];
     trackName = spotifySearchResults?[1];
     artistUrl = spotifySearchResults?[2];

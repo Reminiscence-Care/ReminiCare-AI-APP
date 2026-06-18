@@ -1,7 +1,5 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_win_floating/webview.dart';
+import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
 class PlayMusic extends StatefulWidget {
   final String embedUrl;
@@ -12,62 +10,44 @@ class PlayMusic extends StatefulWidget {
 }
 
 class _PlayMusicState extends State<PlayMusic> {
-  late final WebViewController _controller;
-
-  // 用來追蹤是否發生錯誤的狀態變數
+  late YoutubePlayerController _controller;
   bool _hasError = false;
 
   @override
   void initState() {
     super.initState();
 
-    // 檢查傳進來的 URL 是否為空
-    if (widget.embedUrl.isEmpty) {
+    // YouTube 影片的 ID (例如 dQw4w9WgXcQ)
+    String? videoId = YoutubePlayerController.convertUrlToId(widget.embedUrl);
+
+    if (videoId == null || videoId.isEmpty) {
       _hasError = true;
-      return; // 直接中斷，不初始化 WebView
+      return;
     }
 
-    late final PlatformWebViewControllerCreationParams params;
-    if (Platform.isWindows) {
-      params = WindowsWebViewControllerCreationParams();
-    } else {
-      params = const PlatformWebViewControllerCreationParams();
-    }
-
-    final String autoPlayUrl = "${widget.embedUrl}?autoplay=1";
-
-    try {
-      final uri = Uri.parse(autoPlayUrl);
-
-      _controller = WebViewController.fromPlatformCreationParams(params)
-        ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      // 監聽 WebView 載入過程中的各種錯誤
-        ..setNavigationDelegate(
-          NavigationDelegate(
-            onWebResourceError: (WebResourceError error) {
-              print("WebView 載入失敗: ${error.description}");
-              // 如果發生錯誤，更新畫面顯示提醒介面
-              if (mounted) {
-                setState(() {
-                  _hasError = true;
-                });
-              }
-            },
-          ),
-        )
-        ..loadRequest(uri);
-    } catch (e) {
-      // 捕捉 Uri.parse 解析失敗的例外（例如網址含有非法字元）
-      print("網址格式錯誤: $e");
-      _hasError = true;
-    }
+    _controller = YoutubePlayerController.fromVideoId(
+      videoId: videoId,
+      autoPlay: false, // 設為 false 讓使用者自己按播放，可避免 iOS/macOS 阻擋自動播放
+      params: const YoutubePlayerParams(
+        showControls: true,       // 顯示播放進度條
+        showFullscreenButton: true, // 允許全螢幕
+        mute: false,
+        loop: false,
+      ),
+    );
   }
 
-  // 專屬的錯誤提醒介面
+  @override
+  void dispose() {
+    _controller.close();
+    super.dispose();
+  }
+
+  // 錯誤提示畫面
   Widget _buildErrorUI() {
     return Container(
-      height: 352, // 維持原本 WebView 的高度，避免畫面突然縮水
-      width: 1000,
+      height: 250,
+      width: MediaQuery.of(context).size.width * 0.9,
       decoration: BoxDecoration(
         color: Colors.grey[200],
         borderRadius: BorderRadius.circular(12),
@@ -76,22 +56,18 @@ class _PlayMusicState extends State<PlayMusic> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.music_off, size: 80, color: Colors.grey),
-          const SizedBox(height: 20),
+          const Icon(Icons.error_outline, size: 60, color: Colors.grey),
+          const SizedBox(height: 15),
           const Text(
-            "哎呀，找不到這首歌的播放連結",
-            style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black54),
+            "這似乎不是有效的 YouTube 網址",
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black54),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 15),
           ElevatedButton.icon(
-            onPressed: () {
-              // 點擊後返回上一頁
-              Navigator.of(context).pop();
-            },
+            onPressed: () => Navigator.of(context).pop(),
             icon: const Icon(Icons.arrow_back),
-            label: const Text("換一首歌試試看", style: TextStyle(fontSize: 24)),
+            label: const Text("返回上一頁"),
             style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               backgroundColor: const Color(0xFFB95A38),
               foregroundColor: Colors.white,
             ),
@@ -104,25 +80,41 @@ class _PlayMusicState extends State<PlayMusic> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('音樂播放')),
+      backgroundColor: const Color(0xFF121212),
+      appBar: AppBar(
+        title: const Text('音樂播放', style: TextStyle(color: Colors.white)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
       body: SingleChildScrollView(
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // 根據 _hasError 狀態，決定要顯示 WebView 還是錯誤介面
+              const SizedBox(height: 20),
+
+              // 影片播放器區塊
               _hasError
                   ? _buildErrorUI()
-                  : SizedBox(
-                height: 600, // 注意：600 可能在小螢幕會有點太高，可視情況調整
-                width: 1000,
-                child: WebViewWidget(controller: _controller),
+                  : ClipRRect(
+                borderRadius: BorderRadius.circular(15),
+                child: SizedBox(
+                  // 依照 YouTube 標準 16:9 比例設定高度
+                  width: MediaQuery.of(context).size.width * 0.9,
+                  child: YoutubePlayer(
+                    controller: _controller,
+                    backgroundColor: Colors.black,
+                  ),
+                ),
               ),
 
-              const SizedBox(height: 15),
+              const SizedBox(height: 40),
 
+              // 下方提示文字
               Container(
-                padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 15),
+                width: MediaQuery.of(context).size.width * 0.9,
+                padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 20),
                 decoration: BoxDecoration(
                   color: const Color(0xFFFFF3E0),
                   borderRadius: BorderRadius.circular(12),
@@ -134,11 +126,12 @@ class _PlayMusicState extends State<PlayMusic> {
                   ),
                 ),
                 child: const Text(
-                  "這首歌你有聽過嗎？",
+                  "這首經典歌曲，是否有喚起你的一些回憶呢？",
                   style: TextStyle(
-                    fontSize: 40,
+                    fontSize: 20,
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF5D4037),
+                    height: 1.5,
                   ),
                 ),
               )

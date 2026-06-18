@@ -1,6 +1,7 @@
+import 'package:remini_care_ai_app/services/MusicApiService.dart';
 import 'package:spotify/spotify.dart';
 
-class SpotifyApiServices {
+class SpotifyApiServices implements MusicApiService {
   String clientId;
   String clientSecret;
   SpotifyApiServices(this.clientId, this.clientSecret);

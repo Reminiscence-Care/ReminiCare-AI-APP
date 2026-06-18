@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:remini_care_ai_app/services/nvidia_llm_service.dart';
 import 'package:remini_care_ai_app/services/remini_care_config.dart';
+import 'package:remini_care_ai_app/services/youtube_api_service.dart';
 
 import '../../services/spotify_api_services.dart';
 
@@ -45,12 +46,12 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
   }
 
   Future<void> _getEmbedUrls(String query) async {
-    final spotifyApiServices = SpotifyApiServices(
-        spotifyClientId,
-        spotifyClientSecret
-    );
-
-    final List<String>? spotifySearchResults = await spotifyApiServices.getArtistAndTracks(query) as List<String>?;
+    // final spotifyApiServices = SpotifyApiServices(
+    //     spotifyClientId,
+    //     spotifyClientSecret
+    // );
+    final api = YoutubeApiServices();
+    final List<String>? spotifySearchResults = await api.getArtistAndTracks(query) as List<String>?;
 
     if (spotifySearchResults != null && spotifySearchResults.length >= 4) {
       String artistName = spotifySearchResults[0];
