@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:remini_care_ai_app/services/remini_care_config.dart';
+import 'language_selector.dart';
 
 /// 1. 準備開始聊天視圖 (一般對話用)
 class PrepareView extends StatelessWidget {
@@ -204,7 +205,7 @@ class AdvancedChattingControlView extends StatelessWidget {
   }
 }
 
-/// 4. 進階準備視圖 (Like/Dislike 共用) - 重現截圖設計
+/// 4. 進階準備視圖 (Like/Dislike/下一個長輩 共用) - 黃色大按鈕
 class AdvancedPrepareView extends StatelessWidget {
   final VoidCallback onStartChat;
 
@@ -238,6 +239,46 @@ class AdvancedPrepareView extends StatelessWidget {
         Text(
           '注意：只有${ReminiCareConfig.maxRecordLimitM}分鐘分享',
           style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+        ),
+      ],
+    );
+  }
+}
+
+/// 5. 單一話題結束後的選項：繼續聊天 或 完成今天
+class RoundSummaryControls extends StatelessWidget {
+  final VoidCallback onContinue;
+  final VoidCallback onFinish;
+
+  const RoundSummaryControls({super.key, required this.onContinue, required this.onFinish});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        ElevatedButton(
+          onPressed: onContinue,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFFFD54F),
+            foregroundColor: Colors.black87,
+            elevation: 0,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+          ),
+          child: const Text('繼續聊天', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        ),
+        const SizedBox(width: 24),
+        ElevatedButton(
+          onPressed: onFinish,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFFFD54F),
+            foregroundColor: Colors.black87,
+            elevation: 0,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+          ),
+          child: const Text('完成今天聊天', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         ),
       ],
     );

@@ -7,7 +7,6 @@ import 'package:remini_care_ai_app/services/remini_care_config.dart';
 import 'widgets/language_selector.dart';
 import 'widgets/question_area.dart';
 import 'widgets/chat_views.dart';
-import 'widgets/keywords_view.dart';
 import 'widgets/generating_view.dart';
 import 'widgets/evaluation_view.dart';
 
@@ -38,6 +37,10 @@ class _LifeScreenState extends State<LifeScreen> {
     return ListenableBuilder(
       listenable: _controller,
       builder: (context, child) {
+        // 🌟 最終大總結卡片 (圖三)
+        if (_controller.chatStatus == ChatStatus.chatSummary) return _buildChatSummaryView();
+
+        // 🌟 自我介紹階段
         if (_controller.chatStatus == ChatStatus.introPrepare ||
             _controller.chatStatus == ChatStatus.introRecording ||
             _controller.chatStatus == ChatStatus.introProcessing ||
@@ -48,15 +51,17 @@ class _LifeScreenState extends State<LifeScreen> {
 
         String appBarTitle = _getAppBarTitle();
 
-        // 💡 修復：將 prepare 階段加入，這樣圖片才不會在按完讚後消失
-        final bool isLikeOrDislikeFlow = _controller.chatStatus == ChatStatus.likePrepare ||
-            _controller.chatStatus == ChatStatus.likeChatting ||
-            _controller.chatStatus == ChatStatus.dislikePrepare ||
+        final bool isLikeOrDislikeFlow = _controller.chatStatus == ChatStatus.likeChatting ||
             _controller.chatStatus == ChatStatus.dislikeChatting ||
-            _controller.chatStatus == ChatStatus.likeKeywords ||
-            _controller.chatStatus == ChatStatus.dislikeKeywords;
+            _controller.chatStatus == ChatStatus.likePrepare ||
+            _controller.chatStatus == ChatStatus.dislikePrepare;
 
-        final bool showImageOnTop = _controller.chatStatus == ChatStatus.evaluation || isLikeOrDislikeFlow;
+        final bool isNextElderOrSummary = _controller.chatStatus == ChatStatus.nextElderPrompt ||
+            _controller.chatStatus == ChatStatus.generatingNextTopic ||
+            _controller.chatStatus == ChatStatus.roundSummary;
+
+        final bool showImageOnTop = (_controller.chatStatus == ChatStatus.evaluation ||
+            isLikeOrDislikeFlow || isNextElderOrSummary) && _controller.currentImageUrl.isNotEmpty;
 
         return Scaffold(
           backgroundColor: Colors.white,
@@ -83,7 +88,8 @@ class _LifeScreenState extends State<LifeScreen> {
                         children: [
                           const Spacer(flex: 1),
 
-                          if (isLikeOrDislikeFlow) ...[
+                          // 💡 動態顯示：圖一與圖二的頂部大標題排版
+                          if (isLikeOrDislikeFlow || isNextElderOrSummary) ...[
                             LanguageSelector(
                               selectedLanguage: _controller.selectedLanguage,
                               onLanguageSelected: (lang) {
@@ -95,9 +101,11 @@ class _LifeScreenState extends State<LifeScreen> {
                             Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 16.0),
                               child: Text(
-                                _controller.chatStatus.toString().contains('dislike') ? '為什麼不像？' : _controller.aiGeneratedText,
+                                _controller.chatStatus == ChatStatus.nextElderPrompt
+                                    ? '${_controller.currentPromptElder}呢？'
+                                    : (_controller.chatStatus.toString().contains('dislike') ? '為什麼不像？' : _controller.aiGeneratedText),
                                 textAlign: TextAlign.center,
-                                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87),
+                                style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.black87),
                               ),
                             ),
                             const SizedBox(height: 24),
@@ -105,7 +113,8 @@ class _LifeScreenState extends State<LifeScreen> {
 
                           if (showImageOnTop) ...[ _buildEvaluationImage(), const Spacer(flex: 1) ],
 
-                          if (!_isEvaluationState() && !isLikeOrDislikeFlow) ...[
+                          // 一般初次對話流程
+                          if (!_isEvaluationState() && !isLikeOrDislikeFlow && !isNextElderOrSummary) ...[
                             LanguageSelector(
                               selectedLanguage: _controller.selectedLanguage,
                               onLanguageSelected: (lang) {
@@ -114,9 +123,6 @@ class _LifeScreenState extends State<LifeScreen> {
                               },
                             ),
                             const Spacer(flex: 1),
-                          ],
-
-                          if (!_isEvaluationState() && !isLikeOrDislikeFlow) ...[
                             AnimatedSwitcher(
                               duration: const Duration(milliseconds: 200),
                               child: _controller.isLoading
@@ -145,18 +151,6 @@ class _LifeScreenState extends State<LifeScreen> {
                             const Spacer(flex: 1),
                           ],
 
-                          if (_controller.chatStatus == ChatStatus.keywords ||
-                              _controller.chatStatus == ChatStatus.dislikeKeywords ||
-                              _controller.chatStatus == ChatStatus.likeKeywords) ...[
-                            KeywordsView(
-                              isLoading: _controller.isExtractingKeywords,
-                              originalKeywords: _controller.originalKeywords,
-                              newKeywords: _controller.chatStatus == ChatStatus.keywords ? const [] : _controller.newKeywords,
-                              maxLength: _controller.maxKeywordLength,
-                            ),
-                            const Spacer(flex: 1),
-                          ],
-
                           AnimatedSwitcher(duration: const Duration(milliseconds: 300), child: _buildControlSection()),
 
                           if (_controller.isVoiceActiveStatus(_controller.chatStatus) && !isLikeOrDislikeFlow)
@@ -177,71 +171,104 @@ class _LifeScreenState extends State<LifeScreen> {
   }
 
   // ==========================================
-  // 👥 自我介紹系列視圖 (Intro Views)
+  // 🌟 最終儲存總結卡片 (圖三)
+  // ==========================================
+  Widget _buildChatSummaryView() {
+    return Scaffold(
+      backgroundColor: Colors.grey[100],
+      appBar: AppBar(
+        backgroundColor: Colors.grey[100],
+        elevation: 0,
+        leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.black), onPressed: () => Navigator.maybePop(context)),
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 500),
+          child: Container(
+            margin: const EdgeInsets.all(24),
+            padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+            decoration: BoxDecoration(
+              color: Colors.white, borderRadius: BorderRadius.circular(16),
+              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                  decoration: BoxDecoration(color: const Color(0xFFFFF9E6), borderRadius: BorderRadius.circular(12)),
+                  child: const Text("儲存今天的聊天", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87)),
+                ),
+                const SizedBox(height: 40),
+                _buildSummaryRow("主題：", _controller.originalKeywords.isNotEmpty ? _controller.originalKeywords.first : "懷舊時光"),
+                const SizedBox(height: 24),
+                _buildSummaryRow("內容：", _controller.originalKeywords.join("、")),
+                const SizedBox(height: 24),
+                _buildSummaryRow("分享者：", _controller.elderNames.isNotEmpty ? _controller.elderNames.join("、") : "未留名"),
+                const SizedBox(height: 48),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFFD54F),
+                    foregroundColor: Colors.black87,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                    padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 14),
+                    elevation: 0,
+                  ),
+                  child: const Text("下一步", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                )
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryRow(String label, String value) {
+    return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 100,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(color: const Color(0xFFFFF9E6), borderRadius: BorderRadius.circular(16)),
+            child: Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(value, style: const TextStyle(fontSize: 18, color: Colors.black87)),
+            ),
+          ),
+        ]
+    );
+  }
+
+  // ==========================================
+  // 👥 自我介紹系列視圖
   // ==========================================
   Widget _buildIntroView() {
     if (_controller.chatStatus == ChatStatus.introTransition) {
-      return Scaffold(
-        backgroundColor: Colors.white,
-        appBar: AppBar(backgroundColor: Colors.white, elevation: 0, leading: const BackButton(color: Colors.black)),
-        body: const Center(
-          child: Text("我們開始聊天！", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black87)),
-        ),
-      );
+      return Scaffold(backgroundColor: Colors.white, appBar: AppBar(backgroundColor: Colors.white, elevation: 0, leading: const BackButton(color: Colors.black)), body: const Center(child: Text("我們開始聊天！", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black87))));
     }
-
     if (_controller.chatStatus == ChatStatus.introProcessing) {
-      return Scaffold(
-        backgroundColor: Colors.white,
-        appBar: AppBar(backgroundColor: Colors.white, elevation: 0, leading: const BackButton(color: Colors.black)),
-        body: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(color: Colors.orange),
-              SizedBox(height: 24),
-              Text("正在聆聽長輩的名字...", style: TextStyle(fontSize: 18, color: Colors.grey, fontWeight: FontWeight.w500)),
-            ],
-          ),
-        ),
-      );
+      return Scaffold(backgroundColor: Colors.white, appBar: AppBar(backgroundColor: Colors.white, elevation: 0, leading: const BackButton(color: Colors.black)), body: const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [CircularProgressIndicator(color: Colors.orange), SizedBox(height: 24), Text("正在聆聽長輩的名字...", style: TextStyle(fontSize: 18, color: Colors.grey, fontWeight: FontWeight.w500))])));
     }
-
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(backgroundColor: Colors.white, elevation: 0, leading: const BackButton(color: Colors.black)),
+      backgroundColor: Colors.white, appBar: AppBar(backgroundColor: Colors.white, elevation: 0, leading: const BackButton(color: Colors.black)),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Text("請大家介紹自己", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
             const SizedBox(height: 40),
-
-            Text(
-              _controller.currentElderName.isEmpty ? "我叫________" : "我叫 ${_controller.currentElderName}",
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w500),
-            ),
+            Text(_controller.currentElderName.isEmpty ? "我叫________" : "我叫 ${_controller.currentElderName}", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w500)),
             const SizedBox(height: 60),
-
-            if (_controller.chatStatus == ChatStatus.introPrepare)
-              _buildCircleButton("開始介紹", () => _controller.startIntroRecording())
-            else if (_controller.chatStatus == ChatStatus.introRecording)
-              Column(
-                children: [
-                  const Text("🗣️ 聆聽中... (說完停頓即可)", style: TextStyle(color: Colors.grey, fontSize: 16)),
-                  const SizedBox(height: 16),
-                  _buildCircleButton("停止", () => _controller.stopIntroRecordingManually(), color: Colors.redAccent),
-                ],
-              )
-            else if (_controller.chatStatus == ChatStatus.introNameExtracted)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildCircleButton("下一位", () => _controller.nextPersonIntro()),
-                    const SizedBox(width: 40),
-                    _buildCircleButton("結束介紹", () => _controller.finishIntro()),
-                  ],
-                ),
+            if (_controller.chatStatus == ChatStatus.introPrepare) _buildCircleButton("開始介紹", () => _controller.startIntroRecording())
+            else if (_controller.chatStatus == ChatStatus.introRecording) Column(children: [const Text("🗣️ 聆聽中... (說完停頓即可)", style: TextStyle(color: Colors.grey, fontSize: 16)), const SizedBox(height: 16), _buildCircleButton("停止", () => _controller.stopIntroRecordingManually(), color: Colors.redAccent)])
+            else if (_controller.chatStatus == ChatStatus.introNameExtracted) Row(mainAxisAlignment: MainAxisAlignment.center, children: [_buildCircleButton("下一位", () => _controller.nextPersonIntro()), const SizedBox(width: 40), _buildCircleButton("結束介紹", () => _controller.finishIntro())]),
           ],
         ),
       ),
@@ -249,70 +276,37 @@ class _LifeScreenState extends State<LifeScreen> {
   }
 
   Widget _buildCircleButton(String text, VoidCallback onPressed, {Color color = const Color(0xFFFFD54F)}) {
-    return InkWell(
-      onTap: onPressed,
-      borderRadius: BorderRadius.circular(50),
-      child: Container(
-        width: 100, height: 100,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        child: Text(text, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
-      ),
-    );
+    return InkWell(onTap: onPressed, borderRadius: BorderRadius.circular(50), child: Container(width: 100, height: 100, alignment: Alignment.center, decoration: BoxDecoration(color: color, shape: BoxShape.circle), child: Text(text, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87))));
   }
 
   bool _isEvaluationState() => _controller.chatStatus == ChatStatus.evaluation || _controller.chatStatus == ChatStatus.dislikeEvaluation || _controller.chatStatus == ChatStatus.dislikePrepare || _controller.chatStatus == ChatStatus.dislikeChatting || _controller.chatStatus == ChatStatus.likePrepare || _controller.chatStatus == ChatStatus.likeChatting;
 
   String _getAppBarTitle() {
     switch (_controller.chatStatus) {
-      case ChatStatus.prepare: return "準備聊天";
+      case ChatStatus.prepare: case ChatStatus.nextElderPrompt: return "準備聊天";
       case ChatStatus.chatting: return "點開始聊";
-      case ChatStatus.keywords: return "抓取關鍵詞";
       case ChatStatus.generating: case ChatStatus.dislikeGenerating: case ChatStatus.likeGenerating: return "Ai 生圖中";
       case ChatStatus.evaluation: case ChatStatus.dislikeEvaluation: return "問像不像";
-      case ChatStatus.dislikePrepare: case ChatStatus.dislikeChatting: case ChatStatus.dislikeKeywords: return "不像，繼續聊天";
-      case ChatStatus.likePrepare: case ChatStatus.likeChatting: case ChatStatus.likeKeywords: return "如果像，就 AI延伸話題";
+      case ChatStatus.dislikePrepare: case ChatStatus.dislikeChatting: return "不像，繼續聊天";
+      case ChatStatus.likePrepare: case ChatStatus.likeChatting: return "如果像，就 AI延伸話題";
+      case ChatStatus.generatingNextTopic: case ChatStatus.roundSummary: return "延伸新話題";
       default: return "";
     }
   }
 
   Widget _buildVoiceAssistantIndicator() {
     bool isListeningNow = (_controller.chatStatus == ChatStatus.chatting || _controller.chatStatus == ChatStatus.dislikeChatting || _controller.chatStatus == ChatStatus.likeChatting);
-    bool isCompletedState = (_controller.chatStatus == ChatStatus.keywords || _controller.chatStatus == ChatStatus.dislikeKeywords || _controller.chatStatus == ChatStatus.likeKeywords);
-
     return Padding(
       padding: const EdgeInsets.only(top: 24.0, bottom: 8.0),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: isListeningNow ? Colors.red[50] : Colors.green[50],
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(
-            color: isListeningNow ? Colors.red[200]! : Colors.green[200]!,
-            width: 1,
-          ),
-        ),
+        decoration: BoxDecoration(color: isListeningNow ? Colors.red[50] : Colors.green[50], borderRadius: BorderRadius.circular(30), border: Border.all(color: isListeningNow ? Colors.red[200]! : Colors.green[200]!, width: 1)),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              isListeningNow ? Icons.record_voice_over : Icons.online_prediction_outlined,
-              color: isListeningNow ? Colors.red[700] : Colors.green[700],
-              size: 16,
-            ),
+            Icon(isListeningNow ? Icons.record_voice_over : Icons.online_prediction_outlined, color: isListeningNow ? Colors.red[700] : Colors.green[700], size: 16),
             const SizedBox(width: 8),
-            Text(
-              isListeningNow
-                  ? "🎙️ 聆聽中... (記得說「${ReminiCareConfig.endWakeWords.first}」或手動結束)"
-                  : isCompletedState
-                  ? "🤖 AI 監聽中... 說「${ReminiCareConfig.restartWakeWords.first}」或「${ReminiCareConfig.endWakeWords.first}」"
-                  : "🤖 AI 監聽中... 說「${ReminiCareConfig.startWakeWords.first}」",
-              style: TextStyle(
-                fontSize: 12,
-                color: isListeningNow ? Colors.red[800] : Colors.green[800],
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            Text(isListeningNow ? "🎙️ 聆聽中... (記得說「${ReminiCareConfig.endWakeWords.first}」或手動結束)" : "🤖 AI 監聽中... 說「${ReminiCareConfig.startWakeWords.first}」", style: TextStyle(fontSize: 12, color: isListeningNow ? Colors.red[800] : Colors.green[800], fontWeight: FontWeight.bold)),
           ],
         ),
       ),
@@ -321,37 +315,11 @@ class _LifeScreenState extends State<LifeScreen> {
 
   Widget _buildEvaluationImage() {
     return Container(
-      width: 320,
-      height: 240,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        color: Colors.grey[200],
-      ),
-      clipBehavior: Clip.antiAlias,
+      width: 320, height: 240, decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), color: Colors.grey[200]), clipBehavior: Clip.antiAlias,
       child: _controller.currentImageUrl.isNotEmpty
           ? (_controller.currentImageUrl.startsWith('http') || _controller.currentImageUrl.startsWith('https')
-          ? Image.network(
-        _controller.currentImageUrl,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => const Center(child: Icon(Icons.broken_image, size: 64, color: Colors.grey)),
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(Colors.grey)));
-        },
-      )
-          : (kIsWeb
-          ? const Center(
-        child: Text(
-          'Web 瀏覽器無法讀取電腦硬碟檔案\n\n請改用 Windows 桌面版執行\n(或更新後端提供靜態網址)',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.grey, fontSize: 13),
-        ),
-      )
-          : Image.file(
-        File(_controller.currentImageUrl),
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => const Center(child: Icon(Icons.broken_image, size: 64, color: Colors.grey)),
-      )))
+          ? Image.network(_controller.currentImageUrl, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => const Center(child: Icon(Icons.broken_image, size: 64, color: Colors.grey)), loadingBuilder: (context, child, loadingProgress) { if (loadingProgress == null) return child; return const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(Colors.grey))); })
+          : (kIsWeb ? const Center(child: Text('Web 瀏覽器無法讀取電腦檔案', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 13))) : Image.file(File(_controller.currentImageUrl), fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => const Center(child: Icon(Icons.broken_image, size: 64, color: Colors.grey)))))
           : const Center(child: Icon(Icons.image, size: 64, color: Colors.grey)),
     );
   }
@@ -360,57 +328,48 @@ class _LifeScreenState extends State<LifeScreen> {
     switch (_controller.chatStatus) {
       case ChatStatus.prepare: return PrepareView(onStartChat: _controller.triggerStartChatFlow);
       case ChatStatus.chatting: return ListeningView(recordSeconds: _controller.recordSeconds, onEndRecording: _controller.handleEndChat);
-      case ChatStatus.keywords: return KeywordsConfirmButton(isDisabled: _controller.isExtractingKeywords, onConfirm: _controller.triggerImageGeneration);
       case ChatStatus.generating: return const GeneratingView();
 
       case ChatStatus.evaluation:
         return EvaluationView(
             selectedLanguage: _controller.selectedLanguage,
             onLanguageSelected: _controller.playCurrentContextVoice,
-            onLike: () {
-              // 💡 點擊「像」：開始異步生成延伸話題（這會讓狀態進入 likePrepare）
-              _controller.handleLikeAndGenerateExtension();
-            },
-            onDislike: () {
-              // 💡 點擊「不像」：回到準備狀態
-              _controller.chatStatus = ChatStatus.dislikePrepare;
-              _controller.voiceManager.checkCompletedCommands = false;
-              _controller.voiceManager.startBackgroundWakeWordCycle();
-              _controller.notifyListeners();
-              _controller.playCurrentContextVoice(_controller.selectedLanguage);
-            }
+            onLike: () { _controller.handleLikeAndGenerateExtension(); },
+            onDislike: () { _controller.chatStatus = ChatStatus.dislikePrepare; _controller.playCurrentContextVoice(_controller.selectedLanguage); _controller.notifyListeners(); }
         );
 
-    // 💡 補回：渲染有黃色「點開始聊天」大按鈕的準備視圖
+    // 🌟 新增的輪迴提示視圖 (圖一)
       case ChatStatus.likePrepare:
       case ChatStatus.dislikePrepare:
+      case ChatStatus.nextElderPrompt:
         return AdvancedPrepareView(onStartChat: _controller.triggerStartChatFlow);
 
-      case ChatStatus.likeChatting:
-        return AdvancedChattingControlView(
-            recordSeconds: _controller.recordSeconds,
-            onEndRecording: () async {
-              await _controller.handleEndChat();
-            },
-            onCancel: () {
-              Navigator.of(context).popUntil((route) => route.isFirst);
-            }
+    // 🌟 正在產生新話題中
+      case ChatStatus.generatingNextTopic:
+        return const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: Colors.orange),
+            SizedBox(height: 16),
+            Text('等待 AI 總結並產生新話題中...', style: TextStyle(fontSize: 16, color: Colors.grey)),
+          ],
         );
+
+    // 🌟 新話題選項卡片 (圖二)
+      case ChatStatus.roundSummary:
+        return RoundSummaryControls(
+          onContinue: _controller.continueChatFromSummary,
+          onFinish: _controller.finishTodayChat,
+        );
+
+      case ChatStatus.likeChatting:
       case ChatStatus.dislikeChatting:
         return AdvancedChattingControlView(
             recordSeconds: _controller.recordSeconds,
-            onEndRecording: () async {
-              await _controller.handleEndChat();
-            },
-            onCancel: () {
-              Navigator.of(context).popUntil((route) => route.isFirst);
-            }
+            onEndRecording: () async { await _controller.handleEndChat(); },
+            onCancel: () { Navigator.of(context).popUntil((route) => route.isFirst); }
         );
 
-      case ChatStatus.likeKeywords:
-        return KeywordsConfirmButton(isDisabled: _controller.isExtractingKeywords, onConfirm: _controller.triggerLikeExtendedImageGeneration);
-      case ChatStatus.dislikeKeywords:
-        return KeywordsConfirmButton(isDisabled: _controller.isExtractingKeywords, onConfirm: _controller.triggerModifiedImageGeneration);
       case ChatStatus.dislikeGenerating: return const GeneratingView();
       case ChatStatus.likeGenerating: return const GeneratingView();
       default: return const SizedBox();
