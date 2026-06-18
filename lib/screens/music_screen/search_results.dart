@@ -9,132 +9,191 @@ class SearchResults extends StatelessWidget {
   final String? languageLabel;
 
   const SearchResults({
-    super.key, this.artistName, this.trackName,
-    this.artistUrl, this.trackUrl, this.languageLabel
+    super.key,
+    this.artistName,
+    this.trackName,
+    this.artistUrl,
+    this.trackUrl,
+    this.languageLabel,
   });
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final screenWidth = size.width;
+
     return Scaffold(
-      backgroundColor: Colors.white, // 設定為白色背景
+      backgroundColor: Colors.white, // 上半部維持純白背景
       appBar: AppBar(
-        title: const Text('以前聽過的歌'),
         backgroundColor: Colors.white,
-        foregroundColor: Colors.black, // 設定 AppBar 文字顏色
-        elevation: 0, // 移除陰影更簡潔
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black, size: 40),
+          onPressed: () => context.pop(),
+        ),
       ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // 1. 中間居中的標題
-              const Text(
-                '以前聽過的歌',
-                style: TextStyle(fontSize: 18, color: Colors.black87),
-              ),
-              const SizedBox(height: 12),
+      body: Column(
+        children: [
+          // ================= 上半部：白色區域 =================
+          SizedBox(
+            width: double.infinity, // 強迫撐滿寬度，讓子元件完美置中
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                SizedBox(height: size.height * 0.02),
 
-              // 2. 語言類別
-              Text(
-                languageLabel ?? '國語歌',
-                style: const TextStyle(fontSize: 16, color: Colors.black87),
-              ),
-              const SizedBox(height: 32),
-
-              // 3. 搜尋結果標籤 (左對齊)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: const Text(
-                    '搜尋結果',
+                // 1. 灰色標籤：以前聽過的歌
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '以前聽過的歌',
                     style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87
+                      fontSize: (screenWidth * 0.06).clamp(20.0, 24.0),
+                      color: Colors.black87,
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
+                const SizedBox(height: 20),
 
-              // 4. 歌曲清單項目
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Row(
+                // 2. 淺黃色標籤：國語歌
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF59D),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    languageLabel ?? '國語歌',
+                    style: TextStyle(
+                      fontSize: (screenWidth * 0.06).clamp(20.0, 24.0),
+                      color: Colors.black87,
+                    ),
+                  ),
+                ),
+                SizedBox(height: size.height * 0.05),
+              ],
+            ),
+          ),
+
+          // ================= 下半部：灰色區域 =================
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              color: const Color(0xFFF5F5F5),
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start, // 讓結果標籤靠左
                   children: [
-                    // 圖片區域
+                    // 3. 搜尋結果標籤 (左對齊)
                     Container(
-                      width: 60,
-                      height: 60,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(4),
-                        color: Colors.grey[200],
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: Image.network(
-                          artistUrl ?? 'http://googleusercontent.com/image_collection/image_retrieval/5495305988097026397',
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                          const Icon(Icons.person, color: Colors.grey),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-
-                    // 歌手與歌曲名稱 (使用 Expanded 避免溢出)
-                    Expanded(
-                      flex: 2,
                       child: Text(
-                        artistName ?? '葛蘭',
-                        style: const TextStyle(fontSize: 14, color: Colors.black),
+                        '結果',
+                        style: TextStyle(
+                          fontSize: (screenWidth * 0.05).clamp(18.0, 22.0),
+                          color: Colors.black87,
+                        ),
                       ),
                     ),
-                    Expanded(
-                      flex: 3,
-                      child: Text(
-                        trackName ?? '我要你的愛',
-                        style: const TextStyle(fontSize: 14, color: Colors.black),
-                      ),
-                    ),
+                    const SizedBox(height: 32),
 
-                    // 播放按鈕
-                    TextButton(
-                      onPressed: () {},
-                      style: TextButton.styleFrom(
-                        backgroundColor: Colors.grey[300],
-                        foregroundColor: Colors.black87,
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
+                    // 4. 歌曲清單項目
+                    Row(
+                      children: [
+                        // 圖片區域 (動態縮放)
+                        Container(
+                          width: (screenWidth * 0.2).clamp(80.0, 100.0),
+                          height: (screenWidth * 0.2).clamp(80.0, 100.0),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            color: Colors.grey[300],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.network(
+                              artistUrl ?? 'http://googleusercontent.com/image_collection/image_retrieval/5495305988097026397',
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                              const Icon(Icons.person, color: Colors.grey, size: 40),
+                            ),
+                          ),
                         ),
-                      ),
-                      child: TextButton(
-                        onPressed: () {
-                          final params = {
-                            'embedUrl': trackUrl,
-                          };
-                          final uri = Uri(
-                            path: '/play_music',
-                            queryParameters: params
-                          ).toString();
-                          context.push(uri);
-                        },
-                        child: const Text(
-                          '播放',
-                          style: TextStyle(fontSize: 12),
+                        const SizedBox(width: 16),
+
+                        // 歌手名稱 (使用 Expanded 平分空間，並置中對齊)
+                        Expanded(
+                          flex: 2,
+                          child: Text(
+                            artistName ?? '葛蘭',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: (screenWidth * 0.05).clamp(18.0, 22.0),
+                              color: Colors.black87,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                      ),
+
+                        // 歌曲名稱
+                        Expanded(
+                          flex: 3,
+                          child: Text(
+                            trackName ?? '我要你的愛',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: (screenWidth * 0.05).clamp(18.0, 22.0),
+                              color: Colors.black87,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+
+                        InkWell(
+                          onTap: () {
+                            final safeTrackUrl = trackUrl ?? '';
+                            final params = {'embedUrl': safeTrackUrl};
+                            final uri = Uri(
+                              path: '/play_music',
+                              queryParameters: params,
+                            ).toString();
+                            context.push(uri);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFDE065),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '聽歌',
+                              style: TextStyle(
+                                fontSize: (screenWidth * 0.045).clamp(16.0, 20.0),
+                                color: Colors.black87,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:remini_care_ai_app/services/nvidia_llm_service.dart';
-import 'package:remini_care_ai_app/services/remini_care_config.dart';
 import 'package:remini_care_ai_app/services/music_services/youtube_api_service.dart';
-
-import '../../services/music_services/spotify_api_services.dart';
 
 class SearchAndRecommendation extends StatefulWidget {
   final String? languageLabel;
@@ -16,14 +13,12 @@ class SearchAndRecommendation extends StatefulWidget {
 }
 
 class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
-  // 模擬歌單資料
   final NvidiaLlmService _llmService = NvidiaLlmService();
-  final spotifyClientId = ReminiCareConfig.spotifyClientId;
-  final spotifyClientSecret = ReminiCareConfig.spotifyClientSecret;
   List<String> recommendationSongsName = [];
   List<Map<String, String>> songs = [];
 
   bool _isLoading = true;
+
   Future<void> _loadSongsData() async {
     try {
       recommendationSongsName = await _llmService.recommendationSongsName(widget.languageLabel);
@@ -31,12 +26,9 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
       for (String name in recommendationSongsName) {
         await _getEmbedUrls(name);
       }
-
     } catch (e) {
       print("抓取歌曲資料發生錯誤: $e");
     } finally {
-      // 資料全部抓完後，更新畫面
-      // 確保畫面還沒被關閉才 setState，防止之前遇過的 dispose 錯誤
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -46,220 +38,233 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
   }
 
   Future<void> _getEmbedUrls(String query) async {
-    // final spotifyApiServices = SpotifyApiServices(
-    //     spotifyClientId,
-    //     spotifyClientSecret
-    // );
     final api = YoutubeApiServices();
-    final List<String>? spotifySearchResults = await api.getArtistAndTracks(query) as List<String>?;
+    final List<String>? searchResults = await api.getArtistAndTracks(query);
 
-    if (spotifySearchResults != null && spotifySearchResults.length >= 4) {
-      String artistName = spotifySearchResults[0];
-      String trackName = spotifySearchResults[1];
-      String artistUrl = spotifySearchResults[2];
-      String trackUrl = spotifySearchResults[3];
+    if (searchResults != null && searchResults.length >= 4) {
+      String artistName = searchResults[0];
+      String trackName = searchResults[1];
+      String artistUrl = searchResults[2];
+      String trackUrl = searchResults[3];
 
       songs.add({
         "artistName": artistName,
         "artistUrl": artistUrl,
         "trackName": trackName,
-        "trackUrl": "$trackUrl",
+        "trackUrl": trackUrl,
       });
       print("成功加入: $trackName");
     }
   }
 
-  @override 
+  @override
   void initState() {
     super.initState();
     _loadSongsData();
   }
-  
+
   @override
   Widget build(BuildContext context) {
-    String? languageLabel = widget.languageLabel;
+    String? languageLabel = widget.languageLabel ?? '國語歌';
+    final screenWidth = MediaQuery.of(context).size.width;
+
     return Scaffold(
-      appBar: AppBar(title: Text('搜尋歌曲')),
-      body: _isLoading
-        ? const Center(child: CircularProgressIndicator())
-        : Center(
-        child: Container(
-          margin: const EdgeInsets.all(16.0),
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // 1. 頂部搜尋列
-              Row(
+      backgroundColor: const Color(0xFFF5F5F5),
+      body: SafeArea( // 確保不會被手機頂部瀏海擋住
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: Color(0xFFFDE065)))
+            : Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+              child: Row(
                 children: [
-                  Text(
-                    widget.languageLabel ?? '國語歌',
-                    style: const TextStyle(fontSize: 45, fontWeight: FontWeight.w500),
+                  // 返回按鈕
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.black, size: 40),
+                    onPressed: () => context.pop(),
                   ),
                   const SizedBox(width: 16),
+
+                  // 黃色搜尋框
                   Expanded(
-                    child: Material(
-                      color: Colors.grey[300], // 將背景色設定在 Material 上
-                      borderRadius: BorderRadius.circular(4.0),
-                      child: InkWell(
-                        onTap: () {
-                          context.push('/search_options/$languageLabel');
-                        },
-                        borderRadius: BorderRadius.circular(4.0),
-                        child: SizedBox(
-                          height: 50,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: const [
-                              Text(
-                                '點擊搜尋',
-                                style: TextStyle(fontSize: 40, color: Colors.black87),
-                              ),
-                              Positioned(
-                                right: 8,
-                                child: Icon(Icons.search, size: 40, color: Colors.black),
-                              ),
-                            ],
-                          ),
+                    child: InkWell(
+                      onTap: () => context.push('/search_options/$languageLabel'),
+                      child: Container(
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFDE065), // 鮮黃色
+                          borderRadius: BorderRadius.circular(8.0),
                         ),
-                      ),
-                    )
-                  )
-                ],
-              ),
-              const SizedBox(height: 32),
-
-              // 2. 標題
-              const Text(
-                '推薦歌單',
-                style: TextStyle(fontSize: 30, fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 32),
-
-              // 3. 列表標題 (歌手名字 / 歌名)
-              Padding(
-                padding: const EdgeInsets.only(right: 16.0), // 預留右側捲軸空間
-                child: Row(
-                  children: [
-                    const SizedBox(width: 76), // 圖片寬度 (60) + 間距 (16)
-                    Expanded(
-                      flex: 2,
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[300],
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Text('歌手名字', style: TextStyle(fontSize: 30)),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      flex: 3,
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[300],
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Text('歌名', style: TextStyle(fontSize: 30)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 70), // 「播放」按鈕預留空間
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // 4. 歌曲列表
-              Expanded(
-                child: Scrollbar(
-                  thumbVisibility: true,
-                  thickness: 6.0,
-                  radius: const Radius.circular(8),
-                  child: ListView.builder(
-                    primary: true,
-                    itemCount: songs.length,
-                    itemBuilder: (context, index) {
-                      final song = songs[index];
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 8.0),
                         child: Row(
-                          children: [
-                            // 專輯封面 (此處使用灰色方塊作為佔位，實作時可換成 Image.asset 或 Image.network)
-                            Container(
-                              width: 100,
-                              height: 100,
-                              color: Colors.grey[300],
-                              child: (song['artistUrl'] != null && song['artistUrl']!.isNotEmpty)
-                                  ? Image.network(
-                                    song['artistUrl']!,
-                                    fit: BoxFit.cover,
-                                  )
-                                  : Container(
-                                    color: Colors.grey[200], // 給一個淡灰色的底
-                                    child: const Icon(
-                                    Icons.person, // 也可以換成 Icons.music_note
-                                    size: 40,
-                                    color: Colors.grey,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-
-                            // 歌手名稱
+                          mainAxisAlignment: MainAxisAlignment.center, // 讓「搜尋」兩字置中
+                          children: const [
                             Expanded(
-                              flex: 2,
                               child: Text(
-                                song['artistName']!,
-                                style: const TextStyle(fontSize: 30),
+                                '搜尋',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(fontSize: 22, color: Colors.black87),
                               ),
                             ),
-
-                            // 歌曲名稱
-                            Expanded(
-                              flex: 3,
-                              child: Text(
-                                song['trackName']!,
-                                style: const TextStyle(fontSize: 30),
-                              ),
-                            ),
-
-                            // 播放按鈕
-                            InkWell(
-                              onTap: () {
-                                final params = {
-                                  'embedUrl': song['trackUrl'],
-                                };
-                                final uri = Uri(
-                                    path: '/play_music',
-                                    queryParameters: params
-                                ).toString();
-                                context.push(uri);
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[300],
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: const Text('播放', style: TextStyle(fontSize: 30)),
-                              ),
+                            Padding(
+                              padding: EdgeInsets.only(right: 16.0),
+                              child: Icon(Icons.search, size: 30, color: Colors.black),
                             ),
                           ],
                         ),
-                      );
-                    },
+                      ),
+                    ),
                   ),
+                ],
+              ),
+            ),
+
+            // 2. 中間灰色分類標題列
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
+              color: Colors.grey[300], // 灰色橫條背景
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // 靠左的語言標籤
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      languageLabel,
+                      style: const TextStyle(fontSize: 24, color: Colors.black87),
+                    ),
+                  ),
+                  // 絕對置中的推薦歌單
+                  const Text(
+                    '推薦歌單',
+                    style: TextStyle(fontSize: 24, color: Colors.black87),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 3. 列表標題
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Row(
+                children: [
+                  const SizedBox(width: 80), // 預留給圖片的寬度
+                  const SizedBox(width: 16),
+                  Expanded(
+                    flex: 2,
+                    child: Container(
+                      alignment: Alignment.center,
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF59D), // 淺黃色
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text('歌手名字', style: TextStyle(fontSize: 18, color: Colors.black87)),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    flex: 3,
+                    child: Container(
+                      alignment: Alignment.center,
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF59D), // 淺黃色
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text('歌名', style: TextStyle(fontSize: 18, color: Colors.black87)),
+                    ),
+                  ),
+                  const SizedBox(width: 80), // 預留給右邊聽歌按鈕的寬度
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 4. 歌曲列表清單
+            Expanded(
+              child: Scrollbar(
+                thumbVisibility: true,
+                thickness: 6.0,
+                radius: const Radius.circular(8),
+                child: ListView.separated(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  itemCount: songs.length,
+                  separatorBuilder: (context, index) => const SizedBox(height: 16), // 每個 item 之間的間距
+                  itemBuilder: (context, index) {
+                    final song = songs[index];
+                    return Row(
+                      children: [
+                        // 專輯封面縮小至 80x80，適應多數手機
+                        Container(
+                          width: 80,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[300],
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: (song['artistUrl'] != null && song['artistUrl']!.isNotEmpty)
+                              ? Image.network(
+                            song['artistUrl']!,
+                            fit: BoxFit.cover,
+                          )
+                              : const Icon(Icons.person, size: 32, color: Colors.grey),
+                        ),
+                        const SizedBox(width: 16),
+
+                        // 歌手名稱
+                        Expanded(
+                          flex: 2,
+                          child: Text(
+                            song['artistName'] ?? '未知歌手',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 20, color: Colors.black87),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+
+                        // 歌曲名稱
+                        Expanded(
+                          flex: 3,
+                          child: Text(
+                            song['trackName'] ?? '未知歌曲',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 20, color: Colors.black87),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+
+                        InkWell(
+                          onTap: () {
+                            final params = {'embedUrl': song['trackUrl'] ?? ''};
+                            final uri = Uri(path: '/play_music', queryParameters: params).toString();
+                            context.push(uri);
+                          },
+                          child: Container(
+                            width: 80, // 固定寬度，確保所有按鈕對齊
+                            alignment: Alignment.center,
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFDE065), // 鮮黃色
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text('聽歌', style: TextStyle(fontSize: 18, color: Colors.black87)),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

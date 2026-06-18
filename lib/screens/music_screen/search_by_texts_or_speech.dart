@@ -2,12 +2,9 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:remini_care_ai_app/services/music_services/spotify_api_services.dart';
 import 'package:remini_care_ai_app/services/voice_assistant_services.dart';
 import 'package:remini_care_ai_app/services/music_services/youtube_api_service.dart';
-
 import 'package:remini_care_ai_app/services/speech_services.dart';
-import 'package:remini_care_ai_app/services/remini_care_config.dart';
 
 class SearchByTextsOrSpeech extends StatefulWidget {
   final String? texts_or_speech;
@@ -19,20 +16,26 @@ class SearchByTextsOrSpeech extends StatefulWidget {
 }
 
 class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
-  // 使用 Controller 來管理輸入框的文字
   final TextEditingController _textController = TextEditingController(text: '我要你的愛');
-  final String spotifyClientId = ReminiCareConfig.spotifyClientId;
-  final String spotifyClientSecret = ReminiCareConfig.spotifyClientSecret;
-  late String? artistName;
-  late String? trackName;
-  late String? artistUrl;
-  late String? trackUrl;
+
+  String? artistName;
+  String? trackName;
+  String? artistUrl;
+  String? trackUrl;
   String? languageLabel;
 
   final ISTTService sttService = YatingSpeechService();
   final _voiceManager = VoiceAssistantManager();
   bool _isRecording = false;
   String? speechText;
+
+  @override
+  void initState() {
+    super.initState();
+    _initVoiceAssistant();
+    languageLabel = widget.languageLabel;
+  }
+
   void _initVoiceAssistant() {
     _voiceManager.onStartChatFlow = () async {
       await _voiceManager.stopActiveAudioOperations();
@@ -58,7 +61,7 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
 
   void _startRecordingSession() {
     setState(() { _isRecording = true; });
-    _voiceManager.startChatFlow(); // 啟動助理錄製
+    _voiceManager.startChatFlow();
   }
 
   Future<void> _processMergedAudio(List<String>? paths) async {
@@ -67,196 +70,233 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
 
     String fullTranscript = "";
 
-    // 💡 逐段送交成大自研 ASR 解析並合併字串
     if (paths != null && paths.isNotEmpty) {
       for (String path in paths) {
         final result = await sttService.transcribe(path);
-        try { File(path).deleteSync(); } catch (_) {} // 解析完順手刪除暫存
+        try { File(path).deleteSync(); } catch (_) {}
 
         if (result != null && result.trim().isNotEmpty) {
-          fullTranscript += result; // 歌名搜尋直接緊湊拼接即可
+          fullTranscript += result;
         }
       }
     }
 
     if (fullTranscript.isNotEmpty) {
       speechText = fullTranscript;
-      _textController.text = fullTranscript; // 同步將辨識出的歌名丟到文字框，效果很炫
-
-      // 💡 一次性全自動解析 Spotify 網址並直接切換下一頁！長輩連動手都不用！
+      _textController.text = fullTranscript;
       _navigateToNextPage();
     } else {
-      // 如果是靜音或辨識失敗，重啟背景監聽
       _voiceManager.checkCompletedCommands = false;
       _voiceManager.startBackgroundWakeWordCycle();
     }
   }
 
   void _navigateToNextPage() async {
-    // 這裡放你的跳轉邏輯，並把輸入的文字 (value) 帶過去
-    // 假設你的下一個頁面路由叫做 /search_results
     if(speechText == null) speechText = "";
     await _setEmbedUrls(speechText!);
+
+    final safeArtist = artistName ?? '未知歌手';
+    final safeTrack = trackName ?? '未知歌曲';
+    final safeLang = languageLabel ?? '國語歌';
+    final safeArtistUrl = artistUrl ?? '';
+    final safeTrackUrl = trackUrl ?? '';
+
     final queryParams = {
-      'artistUrl': artistUrl,
-      'trackUrl': trackUrl,
+      'artistName': safeArtist,
+      'trackName': safeTrack,
+      'languageLabel': safeLang,
+      'artistUrl': safeArtistUrl,
+      'trackUrl': safeTrackUrl,
     };
+
     final uri = Uri(
-        path: '/search_results/$artistName/$trackName/$languageLabel',
+        path: '/search_results',
         queryParameters: queryParams
     ).toString();
-    context.push(uri);
-  }
 
-  @override
-  void initState() {
-    super.initState();
-    _initVoiceAssistant();
-    languageLabel = widget.languageLabel;
+    if (mounted) context.push(uri);
   }
 
   @override
   void dispose() {
-    _textController.dispose(); // 記得釋放資源
+    _textController.dispose();
     _voiceManager.dispose();
     super.dispose();
   }
 
   Future<void> _setEmbedUrls(String query) async {
-    // final spotifyApiServices = SpotifyApiServices(
-    //   spotifyClientId,
-    //   spotifyClientSecret
-    // );
     final api = YoutubeApiServices();
-    final List<String>? spotifySearchResults = await api.getArtistAndTracks(query) as List<String>;
-    artistName = spotifySearchResults?[0];
-    trackName = spotifySearchResults?[1];
-    artistUrl = spotifySearchResults?[2];
-    trackUrl = spotifySearchResults?[3];
+    final List<String>? searchResults = await api.getArtistAndTracks(query);
+
+    if (searchResults != null && searchResults.length >= 4) {
+      artistName = searchResults[0];
+      trackName = searchResults[1];
+      artistUrl = searchResults[2];
+      trackUrl = searchResults[3];
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // 判斷當前是否為文字模式
     final bool isTextMode = widget.texts_or_speech == 'texts';
     final String currentLanguage = widget.languageLabel ?? '國語歌';
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          '以前聽過的歌',
-          style: TextStyle(fontSize: 16, color: Colors.black87),
-        ),
-      ),
-      body: SingleChildScrollView(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const SizedBox(height: 60),
-              Text(
-                currentLanguage,
-                style: const TextStyle(fontSize: 60, color: Colors.black87),
-              ),
-              const SizedBox(height: 60),
+    final size = MediaQuery.of(context).size;
+    final screenWidth = size.width;
 
-              // 2. 條件渲染區塊：根據變數決定顯示文字輸入還是語音按鈕
-              if (isTextMode)
-                _buildTextInputUI(currentLanguage)
-              else
-                _buildSpeechInputUI(currentLanguage),
-              SizedBox(height: 40),
-              Text(_isRecording ? "手動結束錄音" : "手動開始錄音"),
-              SizedBox(height: 40),
-              Text(_isRecording ? "🎙️ 正在錄製故事中..." : "🤖 背景語音助理監聽中..."),
-            ],
+    return Scaffold(
+        backgroundColor: const Color(0xFFF5F5F5),
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.black, size: 40),
+            onPressed: () => context.pop(),
           ),
         ),
-      )
+        body: SingleChildScrollView(
+          //  加上 SizedBox 強迫寬度撐滿整個螢幕
+          child: SizedBox(
+            width: double.infinity,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Column(
+                //  因為外面撐滿了螢幕，這裡的 center 就會讓所有東西置中
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  SizedBox(height: size.height * 0.05),
+
+                  // 以前聽過的歌
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '以前聽過的歌',
+                      style: TextStyle(
+                          fontSize: (screenWidth * 0.06).clamp(20.0, 40.0),
+                          color: Colors.black87
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: size.height * 0.1),
+
+                  // 國語歌
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF59D), // 淺黃色
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      currentLanguage,
+                      style: TextStyle(
+                          fontSize: (screenWidth * 0.06).clamp(20.0, 40.0),
+                          color: Colors.black87
+                      ),
+                    ),
+                  ),
+
+                  // 依據螢幕高度動態推開下方區域
+                  SizedBox(height: size.height * 0.1),
+
+                  // 條件渲染區塊
+                  if (isTextMode)
+                    _buildTextInputUI(screenWidth)
+                  else
+                    _buildSpeechInputUI(screenWidth),
+
+                  const SizedBox(height: 40),
+                ],
+              ),
+            ),
+          ),
+        )
     );
   }
 
   // 獨立出來的文字輸入 UI
-  Widget _buildTextInputUI(String languageLabel) {
-    return SizedBox(
-      width: 220, // 限制輸入框的寬度
-      child: TextField(
-        controller: _textController,
-        textAlign: TextAlign.center, // 讓文字置中
-        cursorColor: Colors.white, // 模仿截圖中的白色游標
-        cursorWidth: 3.0,
-        autofocus: true, // 進來這頁自動彈出鍵盤
-
-        // 將鍵盤右下角的按鈕設為「搜尋」樣式
-        textInputAction: TextInputAction.search,
-
-        // 當使用者按下鍵盤的搜尋/確認鍵時觸發
-        onSubmitted: (String value) async {
-          // 防呆機制：如果使用者沒打字就按搜尋，可以直接 return 不做任何事
-          if (value.trim().isEmpty) return;
-          await _setEmbedUrls(value);
-          // 這裡放你的跳轉邏輯，並把輸入的文字 (value) 帶過去
-          // 假設你的下一個頁面路由叫做 /search_results
-          final queryParams = {
-            'artistUrl': artistUrl,
-            'trackUrl': trackUrl,
-          };
-          final uri = Uri(
-            path: '/search_results/$artistName/$trackName/$languageLabel',
-            queryParameters: queryParams
-          ).toString();
-          context.push(uri);
-        },
-
-        decoration: InputDecoration(
-          filled: true,
-          fillColor: Colors.grey[300], // 淺灰背景色
-          contentPadding: const EdgeInsets.symmetric(vertical: 12),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(6),
-            borderSide: BorderSide.none, // 移除預設的黑框
+  Widget _buildTextInputUI(double screenWidth) {
+    return Column(
+      children: [
+        SizedBox(
+          //  寬度佔螢幕 80%，限制在 250~400 之間
+          width: (screenWidth * 0.8).clamp(250.0, 400.0),
+          child: TextField(
+            controller: _textController,
+            textAlign: TextAlign.center,
+            cursorColor: Colors.white,
+            cursorWidth: 4.0,
+            autofocus: true,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (String value) async {
+              if (value.trim().isEmpty) return;
+              await _setEmbedUrls(value);
+              _navigateToNextPage();
+            },
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: const Color(0xFFFDE065),
+              contentPadding: const EdgeInsets.symmetric(vertical: 24),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide.none,
+              ),
+            ),
+            style: const TextStyle(fontSize: 28, color: Colors.black87),
           ),
         ),
-        style: const TextStyle(fontSize: 18),
-      ),
+        const SizedBox(height: 32),
+        // 下方提示文字
+        const Text(
+          "文字輸入中",
+          style: TextStyle(fontSize: 24, color: Colors.black87),
+        ),
+      ],
     );
   }
 
   // 獨立出來的語音輸入 UI
-  Widget _buildSpeechInputUI(String languageLabel) {
-    return Container(
-      width: 80,
-      height: 80,
-      decoration: BoxDecoration(
-        color: Colors.grey[300],
-        shape: BoxShape.circle, // 圓形背景
-      ),
-      child:Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          IconButton(
-            icon: Icon(
+  Widget _buildSpeechInputUI(double screenWidth) {
+    //  根據螢幕寬度動態計算麥克風圓形的大小
+    final double circleSize = (screenWidth * 0.35).clamp(120.0, 160.0);
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        InkWell(
+          onTap: () {
+            if(_isRecording) {
+              setState(() => _isRecording = false);
+              _voiceManager.forceEndChat();
+            } else {
+              _startRecordingSession();
+            }
+          },
+          borderRadius: BorderRadius.circular(100),
+          child: Container(
+            width: circleSize,
+            height: circleSize,
+            decoration: const BoxDecoration(
+              color: Color(0xFFFDE065),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
               _isRecording ? Icons.stop : Icons.mic,
-              size: 40,
+              size: circleSize * 0.5, //  Icon 大小永遠是圓形的一半
               color: _isRecording ? Colors.red : Colors.black87,
             ),
-            onPressed: () {
-              // 這裡可以觸發開啟麥克風的邏輯
-              if(_isRecording) {
-                setState(() {
-                  _isRecording = false;
-                });
-                _voiceManager.forceEndChat();
-              }
-              else {
-                _startRecordingSession();
-              }
-            },
           ),
-        ],
-      )
+        ),
+        const SizedBox(height: 32),
+        // 下方提示文字
+        Text(
+          _isRecording ? "錄音中..." : "開始",
+          style: const TextStyle(fontSize: 24, color: Colors.black87),
+        ),
+      ],
     );
   }
-
 }
