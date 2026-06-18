@@ -6,8 +6,8 @@ import 'package:remini_care_ai_app/services/spotify_api_services.dart';
 import 'package:remini_care_ai_app/services/voice_assistant_services.dart';
 import 'package:remini_care_ai_app/services/youtube_api_service.dart';
 
-import '../../services/ncku_speech_service.dart';
-import '../../services/remini_care_config.dart';
+import 'package:remini_care_ai_app/services/speech_services.dart';
+import 'package:remini_care_ai_app/services/remini_care_config.dart';
 
 class SearchByTextsOrSpeech extends StatefulWidget {
   final String? texts_or_speech;
@@ -29,7 +29,7 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
   late String? trackUrl;
   String? languageLabel;
 
-  final _nckuSpeechService = NckuSpeechService();
+  final ISTTService sttService = YatingSpeechService();
   final _voiceManager = VoiceAssistantManager();
   bool _isRecording = false;
   String? speechText;
@@ -70,7 +70,7 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
     // 💡 逐段送交成大自研 ASR 解析並合併字串
     if (paths != null && paths.isNotEmpty) {
       for (String path in paths) {
-        final result = await _nckuSpeechService.transcribe(path);
+        final result = await sttService.transcribe(path);
         try { File(path).deleteSync(); } catch (_) {} // 解析完順手刪除暫存
 
         if (result != null && result.trim().isNotEmpty) {

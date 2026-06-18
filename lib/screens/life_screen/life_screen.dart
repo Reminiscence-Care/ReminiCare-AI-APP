@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:remini_care_ai_app/services/voice_assistant_services.dart';
 import 'package:remini_care_ai_app/services/image_gen_api_service.dart';
 import 'package:remini_care_ai_app/services/nvidia_llm_service.dart';
-import 'package:remini_care_ai_app/services/ncku_speech_service.dart';
+import 'package:remini_care_ai_app/services/speech_services.dart';
 import 'package:remini_care_ai_app/services/remini_care_config.dart';
 
 import 'widgets/language_selector.dart';
@@ -33,7 +33,8 @@ class LifeScreen extends StatefulWidget {
 
 class _LifeScreenState extends State<LifeScreen> {
   final NvidiaLlmService _llmService = NvidiaLlmService();
-  final NckuSpeechService _nckuSpeechService = NckuSpeechService();
+  final ITTSService ttsService = YatingSpeechService();
+  final ISTTService sttService = YatingSpeechService();
 
   final UniversalImageService _imageService = UniversalImageService(
     rawBaseUrl: "https://api.siliconflow.com/v1",
@@ -55,6 +56,9 @@ class _LifeScreenState extends State<LifeScreen> {
   int _recordSeconds = 0;
   Timer? _recordTimer;
 
+  String _accumulatedChatText = "";
+  bool _isProcessingEnd = false;
+
   final int _maxKeywordLength = 5;
   List<String> _originalKeywords = [];
   List<String> _newKeywords = [];
@@ -66,7 +70,6 @@ class _LifeScreenState extends State<LifeScreen> {
   String _dynamicEra = "1980s";
   String _dynamicLocation = "Taiwan";
 
-  // 💡 核心修復：回歸「單一全域播放器」，絕對不頻繁銷毀與創建，保護 Windows 音訊服務不崩潰！
   final AudioPlayer _audioPlayer = AudioPlayer();
   int _currentPlaySessionId = 0;
 
@@ -106,7 +109,11 @@ class _LifeScreenState extends State<LifeScreen> {
     };
 
     _voiceManager.onSpeechCompleted = (mergedWavPaths) {
-      _submitMergedAudioToAI(mergedWavPaths ?? []);
+      if (_isProcessingEnd) {
+        _handleFinalChunk(mergedWavPaths ?? []);
+      } else {
+        _handleVadChunk(mergedWavPaths ?? []);
+      }
     };
 
     _voiceManager.startBackgroundWakeWordCycle();
@@ -139,6 +146,8 @@ class _LifeScreenState extends State<LifeScreen> {
     setState(() {
       _chatStatus = ChatStatus.prepare;
       _recordSeconds = 0;
+      _accumulatedChatText = "";
+      _isProcessingEnd = false;
       _currentImageUrl = "";
       _originalKeywords.clear();
       _newKeywords.clear();
@@ -174,22 +183,22 @@ class _LifeScreenState extends State<LifeScreen> {
         status == ChatStatus.likeCompleted;
   }
 
+  bool _isCurrentlyChatting() {
+    return _chatStatus == ChatStatus.chatting ||
+        _chatStatus == ChatStatus.dislikeChatting ||
+        _chatStatus == ChatStatus.likeChatting;
+  }
+
   @override
   void dispose() {
     _voiceManager.dispose();
     _stopTimer();
-    // 💡 只有在頁面被關閉時，才准許銷毀播放器！
     _audioPlayer.dispose();
     super.dispose();
   }
 
-  // ==========================================
-  // 🔊 雙語交替序列播放引擎
-  // ==========================================
-
   Future<void> _stopAudioSequence() async {
     _currentPlaySessionId++;
-    // 💡 核心修復：只呼叫 stop() 停止播放，絕對不要呼叫 release() 或 dispose()！
     try { await _audioPlayer.stop(); } catch (_) {}
   }
 
@@ -213,7 +222,7 @@ class _LifeScreenState extends State<LifeScreen> {
         if (localTtsCacheBytes.containsKey(lang)) {
           audioBytes = localTtsCacheBytes[lang];
         } else {
-          audioBytes = await _nckuSpeechService.generateSpeech(text, lang);
+          audioBytes = await ttsService.generateSpeech(text, lang);
           if (audioBytes != null) {
             localTtsCacheBytes[lang] = audioBytes;
           }
@@ -228,11 +237,7 @@ class _LifeScreenState extends State<LifeScreen> {
           final tempDir = await getTemporaryDirectory();
           final file = File('${tempDir.path}/tts_play_${safeLang}_${DateTime.now().millisecondsSinceEpoch}.wav');
 
-          // 強制 flush，確保寫入磁碟
           await file.writeAsBytes(audioBytes, flush: true);
-
-          // 💡 核心修復：給予防毒軟體與 Windows 系統 150 毫秒的檔案解鎖時間！
-          // 這能 100% 解決 MediaEngine 讀取到空檔案而拋出「找不到編碼轉換」的 Bug！
           await Future.delayed(const Duration(milliseconds: 150));
 
           if (!mounted || sessionId != _currentPlaySessionId) {
@@ -240,17 +245,14 @@ class _LifeScreenState extends State<LifeScreen> {
             return;
           }
 
-          // 直接使用單一全域播放器播放新產生的檔案
           await _audioPlayer.play(DeviceFileSource(file.path));
 
-          // 讓引擎有時間解析音訊中繼資料
           await Future.delayed(const Duration(milliseconds: 100));
           Duration? duration = await _audioPlayer.getDuration();
 
           int waitMs = (duration?.inMilliseconds ?? 4000) + 300;
           int elapsed = 0;
 
-          // 輪詢等待播放結束，若被手動切斷則跳出
           while (elapsed < waitMs) {
             if (!mounted || sessionId != _currentPlaySessionId) {
               try { await _audioPlayer.stop(); } catch (_) {}
@@ -275,6 +277,8 @@ class _LifeScreenState extends State<LifeScreen> {
       if (mounted && _isVoiceActiveStatus(_chatStatus)) {
         Future.delayed(const Duration(milliseconds: 500), () {
           if (mounted && sessionId == _currentPlaySessionId && _isVoiceActiveStatus(_chatStatus)) {
+            // 確保在這些準備狀態下，系統聽的是「開始」口令
+            _voiceManager.checkCompletedCommands = false;
             _voiceManager.startBackgroundWakeWordCycle();
           }
         });
@@ -296,12 +300,12 @@ class _LifeScreenState extends State<LifeScreen> {
     _playAlternatingSequence(textToPlay);
   }
 
-  // ==========================================
-  // 🚀 雙模智慧對話流程控制器
-  // ==========================================
-
   void _triggerStartChatFlow() async {
     _stopAudioSequence();
+
+    if (!kIsWeb) {
+      await Future.delayed(const Duration(milliseconds: 600));
+    }
 
     setState(() {
       if (_chatStatus == ChatStatus.dislikePrepare || _chatStatus == ChatStatus.dislikeCompleted) {
@@ -311,7 +315,11 @@ class _LifeScreenState extends State<LifeScreen> {
       } else {
         _chatStatus = ChatStatus.chatting;
       }
+
       _recordSeconds = 0;
+      _accumulatedChatText = "";
+      _isProcessingEnd = false; // 確保重置為未結束狀態
+
       _startTimer();
     });
 
@@ -319,6 +327,8 @@ class _LifeScreenState extends State<LifeScreen> {
   }
 
   Future<void> _handleEndChat() async {
+    // 💡 關鍵修復：先將旗記設為 true，這樣接下來 VAD 結束時就會被導向 _handleFinalChunk
+    _isProcessingEnd = true;
     _stopTimer();
 
     final currentStatus = _chatStatus;
@@ -334,24 +344,94 @@ class _LifeScreenState extends State<LifeScreen> {
     await _voiceManager.forceEndChat();
   }
 
-  void _submitMergedAudioToAI(List<String> mergedWavPaths) {
-    _stopTimer();
+  Future<void> _handleVadChunk(List<String> paths) async {
+    // 1. 💡 關鍵修復：只要還是 Chatting 狀態，瞬間重啟錄音引擎！
+    if (!_isProcessingEnd && _isCurrentlyChatting()) {
+      _voiceManager.startChatFlow();
+    }
 
-    final currentStatus = _chatStatus;
-    if (!mounted) return;
-    setState(() {
-      _chatStatus = currentStatus == ChatStatus.dislikeChatting
-          ? ChatStatus.dislikeCompleted
-          : currentStatus == ChatStatus.likeChatting
-          ? ChatStatus.likeCompleted
-          : ChatStatus.completed;
-    });
+    if (paths.isEmpty) return;
 
-    _processAudioAndChat(audioPaths: mergedWavPaths);
+    String chunkText = "";
+    for (String path in paths) {
+      String? t = await sttService.transcribe(path);
+      try { File(path).deleteSync(); } catch (_) {}
+      if (t != null && t.trim().isNotEmpty) {
+        chunkText += t + "，";
+      }
+    }
 
+    if (chunkText.isEmpty) return;
+
+    if (_isProcessingEnd) {
+      _accumulatedChatText += chunkText;
+      return;
+    }
+
+    bool isEnd = false;
+    String cleanText = chunkText.replaceAll(" ", "");
+    for (String cmd in ReminiCareConfig.endWakeWords) {
+      if (cleanText.contains(cmd)) {
+        isEnd = true;
+        break;
+      }
+    }
+
+    if (isEnd) {
+      _isProcessingEnd = true;
+      _stopTimer();
+      await _voiceManager.stopActiveAudioOperations();
+
+      if (mounted) {
+        setState(() {
+          if (_chatStatus == ChatStatus.dislikeChatting) _chatStatus = ChatStatus.dislikeCompleted;
+          else if (_chatStatus == ChatStatus.likeChatting) _chatStatus = ChatStatus.likeCompleted;
+          else _chatStatus = ChatStatus.completed;
+        });
+      }
+
+      _accumulatedChatText += chunkText;
+      debugPrint("🎉 [檢測到結束關鍵字] 最終彙整內容: $_accumulatedChatText");
+
+      String cleanTextForLLM = _accumulatedChatText;
+      for (String cmd in ReminiCareConfig.endWakeWords) {
+        cleanTextForLLM = cleanTextForLLM.replaceAll(cmd, "");
+      }
+
+      _processAudioAndChat(manualText: cleanTextForLLM);
+      _voiceManager.checkCompletedCommands = true;
+      _voiceManager.startBackgroundWakeWordCycle();
+    } else {
+      _accumulatedChatText += chunkText;
+      debugPrint("💬 [VAD 自動分段擷取]: $chunkText -> 總累積: $_accumulatedChatText");
+    }
+  }
+
+  Future<void> _handleFinalChunk(List<String> paths) async {
+    String chunkText = "";
+    if (paths.isNotEmpty) {
+      for (String path in paths) {
+        String? t = await sttService.transcribe(path);
+        try { File(path).deleteSync(); } catch (_) {}
+        if (t != null && t.trim().isNotEmpty) {
+          chunkText += t + "，";
+        }
+      }
+    }
+
+    _accumulatedChatText += chunkText;
+    debugPrint("🏁 [手動/超時結束] 最終彙整內容: $_accumulatedChatText");
+
+    String cleanTextForLLM = _accumulatedChatText;
+    for (String cmd in ReminiCareConfig.endWakeWords) {
+      cleanTextForLLM = cleanTextForLLM.replaceAll(cmd, "");
+    }
+
+    _processAudioAndChat(manualText: cleanTextForLLM);
     _voiceManager.checkCompletedCommands = true;
     _voiceManager.startBackgroundWakeWordCycle();
   }
+
 
   Future<void> _playSingleVoice(String text, String language) async {
     await _stopAudioSequence();
@@ -366,7 +446,7 @@ class _LifeScreenState extends State<LifeScreen> {
       setState(() {
         _selectedLanguage = language;
       });
-      final Uint8List? audioBytes = await _nckuSpeechService.generateSpeech(text, language);
+      final Uint8List? audioBytes = await ttsService.generateSpeech(text, language);
       if (audioBytes != null) {
         if (!mounted || sessionId != _currentPlaySessionId) return;
 
@@ -375,7 +455,6 @@ class _LifeScreenState extends State<LifeScreen> {
         final file = File('${tempDir.path}/tts_single_${safeLang}_${DateTime.now().millisecondsSinceEpoch}.wav');
         await file.writeAsBytes(audioBytes, flush: true);
 
-        // 💡 關鍵修復：給予檔案解鎖時間
         await Future.delayed(const Duration(milliseconds: 150));
 
         if (!mounted || sessionId != _currentPlaySessionId) {
@@ -413,6 +492,10 @@ class _LifeScreenState extends State<LifeScreen> {
         if (mounted && _isVoiceActiveStatus(_chatStatus)) {
           Future.delayed(const Duration(milliseconds: 500), () {
             if (mounted && sessionId == _currentPlaySessionId && _isVoiceActiveStatus(_chatStatus)) {
+              // 確保單次播放結束後，喚醒詞的狀態符合當前的對話進度
+              _voiceManager.checkCompletedCommands = (_chatStatus == ChatStatus.completed ||
+                  _chatStatus == ChatStatus.dislikeCompleted ||
+                  _chatStatus == ChatStatus.likeCompleted);
               _voiceManager.startBackgroundWakeWordCycle();
             }
           });
@@ -465,28 +548,9 @@ class _LifeScreenState extends State<LifeScreen> {
     String userMessage = "";
 
     try {
-      if (audioPaths != null && audioPaths.isNotEmpty && !kIsWeb) {
-        String fullTranscript = "";
-
-        for (String path in audioPaths) {
-          debugPrint("[高品質語音] 正在分段送交成大 ASR 服務解析...");
-          String? transcript = await _nckuSpeechService.transcribe(path);
-          try { File(path).deleteSync(); } catch (_) {}
-
-          if (transcript != null && transcript.trim().isNotEmpty) {
-            fullTranscript += transcript + "，";
-          }
-        }
-
-        if (fullTranscript.isNotEmpty) {
-          userMessage = fullTranscript;
-          debugPrint("[NCKU ASR] 分段合併解析文字: $userMessage");
-        } else {
-          throw Exception("語音辨識無有效回傳");
-        }
-      } else if (manualText != null && manualText.isNotEmpty) {
+      if (manualText != null && manualText.isNotEmpty) {
         userMessage = manualText;
-        debugPrint("[彙整文字直接送出] 最終內容: $userMessage");
+        debugPrint("💬 [對話內容正式送交分析]: $userMessage");
       } else {
         if (_chatStatus == ChatStatus.completed) {
           userMessage = "小時候我阿母都在灶腳煮那個蕃薯飯，配滷豆乾啦。";
@@ -498,7 +562,6 @@ class _LifeScreenState extends State<LifeScreen> {
       }
 
       final String reply = await _llmService.generateChatReply(userMessage, _chatHistory);
-
       final Map<String, dynamic> sceneData = await _llmService.extractSceneData(userMessage);
 
       final List<String> extracted = List<String>.from(sceneData['keywords'] ?? []);
@@ -633,9 +696,6 @@ class _LifeScreenState extends State<LifeScreen> {
     }
   }
 
-  // ==========================================
-  // 主畫面排版
-  // ==========================================
   @override
   Widget build(BuildContext context) {
     String appBarTitle = "";
@@ -814,7 +874,7 @@ class _LifeScreenState extends State<LifeScreen> {
             const SizedBox(width: 8),
             Text(
               isListeningNow
-                  ? "🎙️ 說話聆聽中... (說「${ReminiCareConfig.endWakeWords.first}」或手動結束)"
+                  ? "🎙️ 聆聽中... (講完停頓一下，AI 會自動接話)"
                   : isCompletedState
                   ? "🤖 AI 監聽中... 說「${ReminiCareConfig.restartWakeWords.first}」或「${ReminiCareConfig.endWakeWords.first}」"
                   : "🤖 AI 監聽中... 說「${ReminiCareConfig.startWakeWords.first}」",
