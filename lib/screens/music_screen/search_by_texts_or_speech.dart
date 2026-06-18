@@ -2,9 +2,9 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:remini_care_ai_app/services/spotify_api_services.dart';
+import 'package:remini_care_ai_app/services/music_services/spotify_api_services.dart';
 import 'package:remini_care_ai_app/services/voice_assistant_services.dart';
-import 'package:remini_care_ai_app/services/youtube_api_service.dart';
+import 'package:remini_care_ai_app/services/music_services/youtube_api_service.dart';
 
 import 'package:remini_care_ai_app/services/speech_services.dart';
 import 'package:remini_care_ai_app/services/remini_care_config.dart';

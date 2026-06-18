@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:remini_care_ai_app/services/nvidia_llm_service.dart';
 import 'package:remini_care_ai_app/services/remini_care_config.dart';
-import 'package:remini_care_ai_app/services/youtube_api_service.dart';
+import 'package:remini_care_ai_app/services/music_services/youtube_api_service.dart';
 
-import '../../services/spotify_api_services.dart';
+import '../../services/music_services/spotify_api_services.dart';
 
 class SearchAndRecommendation extends StatefulWidget {
   final String? languageLabel;

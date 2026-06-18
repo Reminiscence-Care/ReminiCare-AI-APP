@@ -1,4 +1,4 @@
-import 'package:remini_care_ai_app/services/MusicApiService.dart';
+import 'package:remini_care_ai_app/services/music_services/music_api_service.dart';
 import 'package:spotify/spotify.dart';
 
 class SpotifyApiServices implements MusicApiService {
