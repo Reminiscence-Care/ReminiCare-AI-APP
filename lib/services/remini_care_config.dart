@@ -79,6 +79,11 @@ class ReminiCareConfig {
   static String get spotifyClientId => _configs['SPOTIFY_CLIENT_ID'] ?? "";
   static String get spotifyClientSecret => _configs['SPOTIFY_CLIENT_SECRET'] ?? "";
   static String get maxRecordLimit => _configs['VOICE_MAX_RECORD_LIMIT'] ?? "";
+  static int get maxRecordLimitM =>
+      int.parse(maxRecordLimit) ~/ 60;
+
+  static int get maxRecordLimitS =>
+      int.parse(maxRecordLimit) % 60;
   // 💡 4. 關鍵字動態解析 Getter (相容半形逗號與全形逗號，貼心處理空白)
   static List<String> get startWakeWords => _getWordsList('WAKE_WORDS_START', ["開始錄音", "開始聊天", "開始", "來聊", "錄音"]);
   static List<String> get endWakeWords => _getWordsList('WAKE_WORDS_END', ["結束錄音", "結束聊天", "結束錄影", "結束錄像", "結束", "完成"]);

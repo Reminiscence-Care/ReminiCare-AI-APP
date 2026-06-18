@@ -82,6 +82,33 @@ class NvidiaLlmService {
       print("[NVIDIA] 陪伴對話錯誤: $e");
       return "阿公阿嬤拍謝，我這邊稍微聽不清楚，您可以再說一次嗎？";
     }
+
+
+  }
+
+  /// 💡 新增：根據目前的對話脈絡與長輩的聊天內容，自動生成有深度的延伸懷舊問題
+  Future<String> generateExtendedQuestion(String previousQuestion, String elderResponse) async {
+    try {
+      final response = await _client.chat.completions.create(
+        ChatCompletionCreateRequest(
+          model: _model,
+          temperature: 0.8,
+          maxTokens: 100,
+          messages: [
+            ChatMessage.system("你是一個親切的台灣早期懷舊引導助理。請根據先前的提問，以及長輩剛剛的回答，延伸出一個有溫度、口語化且具體的新問題，字數控制在 25 到 45 字以內。請直接回傳該新問題，不要附帶任何引號、前言、多餘問候或解釋。使用台灣繁體中文（可穿插親切的台語口吻助詞，例如『那那時...』『那那時候...』）。"),
+            ChatMessage.user("先前的提問：『$previousQuestion』\n長輩的回答：『$elderResponse』\n請產生一個延伸問題："),
+          ],
+        ),
+      );
+
+      print("[NVIDIA] 延伸問題生成成功！");
+      final String text = response.text ?? '';
+      return text.trim().isNotEmpty ? text.trim() : "這張照片有讓您想起更多小時候的趣味往事嗎？";
+
+    } catch (e) {
+      print("[NVIDIA] 延伸問題生成失敗: $e");
+      return "這張照片有讓您想起更多小時候的趣味往事嗎？";
+    }
   }
 
   /// 從逐字稿中精準抓取 1~5 個視覺關鍵字
@@ -143,7 +170,6 @@ class NvidiaLlmService {
         rawOutput = rawOutput.replaceAll("```", "").trim();
       }
 
-      // 💡 防呆檢查：判斷 LLM 回傳的是 Array 還是 Map
       final dynamic decoded = jsonDecode(rawOutput);
 
       if (decoded is List) {

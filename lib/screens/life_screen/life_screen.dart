@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:remini_care_ai_app/services/remini_care_config.dart';
-import 'package:remini_care_ai_app/screens/life_screen/controllers/life_screen_controller.dart';
 
+import 'package:remini_care_ai_app/screens/life_screen/controllers/life_screen_controller.dart';
+import 'package:remini_care_ai_app/services/remini_care_config.dart';
 import 'widgets/language_selector.dart';
 import 'widgets/question_area.dart';
 import 'widgets/chat_views.dart';
@@ -11,9 +11,6 @@ import 'widgets/keywords_view.dart';
 import 'widgets/generating_view.dart';
 import 'widgets/evaluation_view.dart';
 
-// =========================================================================
-// 🎨 LifeScreen: 純粹的外觀層 (View)，透過 ListenableBuilder 綁定 Controller
-// =========================================================================
 class LifeScreen extends StatefulWidget {
   const LifeScreen({super.key});
 
@@ -22,32 +19,44 @@ class LifeScreen extends StatefulWidget {
 }
 
 class _LifeScreenState extends State<LifeScreen> {
-  // 💡 實例化大腦 (Controller)
-  late final LifeScreenController _controller;
+  final LifeScreenController _controller = LifeScreenController();
 
   @override
   void initState() {
     super.initState();
-    _controller = LifeScreenController();
-    _controller.init(); // 啟動所有邏輯
+    _controller.init();
   }
 
   @override
   void dispose() {
-    _controller.dispose(); // 釋放記憶體與硬體鎖
+    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // 💡 ListenableBuilder 會在 _controller 呼叫 notifyListeners() 時自動重繪畫面！
     return ListenableBuilder(
       listenable: _controller,
       builder: (context, child) {
-        final chatStatus = _controller.chatStatus;
+        if (_controller.chatStatus == ChatStatus.introPrepare ||
+            _controller.chatStatus == ChatStatus.introRecording ||
+            _controller.chatStatus == ChatStatus.introProcessing ||
+            _controller.chatStatus == ChatStatus.introNameExtracted ||
+            _controller.chatStatus == ChatStatus.introTransition) {
+          return _buildIntroView();
+        }
 
-        String appBarTitle = _getAppBarTitle(chatStatus);
-        final bool showImageOnTop = _shouldShowImageOnTop(chatStatus);
+        String appBarTitle = _getAppBarTitle();
+
+        // 💡 修復：將 prepare 階段加入，這樣圖片才不會在按完讚後消失
+        final bool isLikeOrDislikeFlow = _controller.chatStatus == ChatStatus.likePrepare ||
+            _controller.chatStatus == ChatStatus.likeChatting ||
+            _controller.chatStatus == ChatStatus.dislikePrepare ||
+            _controller.chatStatus == ChatStatus.dislikeChatting ||
+            _controller.chatStatus == ChatStatus.likeKeywords ||
+            _controller.chatStatus == ChatStatus.dislikeKeywords;
+
+        final bool showImageOnTop = _controller.chatStatus == ChatStatus.evaluation || isLikeOrDislikeFlow;
 
         return Scaffold(
           backgroundColor: Colors.white,
@@ -59,158 +68,217 @@ class _LifeScreenState extends State<LifeScreen> {
               icon: const Icon(Icons.arrow_back, color: Colors.black87),
               onPressed: () => Navigator.maybePop(context),
             ),
-            title: Text(
-              appBarTitle,
-              style: const TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
-            ),
+            title: Text(appBarTitle, style: const TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold)),
           ),
           body: SafeArea(
-            child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return SingleChildScrollView(
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                      child: IntrinsicHeight(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              const Spacer(flex: 1),
+            child: LayoutBuilder(builder: (context, constraints) {
+              return SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: IntrinsicHeight(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const Spacer(flex: 1),
 
-                              if (showImageOnTop) ...[
-                                _buildEvaluationImage(),
-                                const Spacer(flex: 1),
-                              ],
-
-                              // --- 語音語言選擇器 ---
-                              if (chatStatus != ChatStatus.evaluation && chatStatus != ChatStatus.dislikePrepare &&
-                                  chatStatus != ChatStatus.dislikeChatting && chatStatus != ChatStatus.likePrepare &&
-                                  chatStatus != ChatStatus.likeChatting && chatStatus != ChatStatus.dislikeEvaluation) ...[
-                                LanguageSelector(
-                                  selectedLanguage: _controller.selectedLanguage,
-                                  onLanguageSelected: _controller.playCurrentContextVoice,
-                                ),
-                                const Spacer(flex: 1),
-                              ],
-
-                              // --- AI 提問區域 ---
-                              if (chatStatus != ChatStatus.evaluation && chatStatus != ChatStatus.dislikeEvaluation &&
-                                  chatStatus != ChatStatus.dislikePrepare && chatStatus != ChatStatus.dislikeChatting &&
-                                  chatStatus != ChatStatus.likePrepare && chatStatus != ChatStatus.likeChatting) ...[
-                                AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 200),
-                                  child: _controller.isLoading
-                                      ? const QuestionLoadingIndicator()
-                                      : Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      QuestionArea(questionText: _controller.aiGeneratedText),
-                                      if (chatStatus == ChatStatus.prepare) ...[
-                                        const SizedBox(height: 16),
-                                        ElevatedButton.icon(
-                                          onPressed: () async {
-                                            await _controller.stopAudioSequence();
-                                            _controller.fetchInitialQuestion();
-                                          },
-                                          icon: const Icon(Icons.refresh, size: 20),
-                                          label: const Text("換一個問題", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                          style: ElevatedButton.styleFrom(
-                                              backgroundColor: Colors.orange[50],
-                                              foregroundColor: Colors.orange[800],
-                                              elevation: 0,
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(20),
-                                                side: BorderSide(color: Colors.orange[200]!),
-                                              ),
-                                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8)),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                                const Spacer(flex: 1),
-                              ],
-
-                              // --- 關鍵字擷取區域 ---
-                              if (chatStatus == ChatStatus.keywords) ...[
-                                KeywordsView(
-                                  isLoading: _controller.isExtractingKeywords,
-                                  originalKeywords: _controller.originalKeywords,
-                                  newKeywords: const [],
-                                  maxLength: _controller.maxKeywordLength,
-                                ),
-                                const Spacer(flex: 1),
-                              ] else if (chatStatus == ChatStatus.dislikeKeywords || chatStatus == ChatStatus.likeKeywords) ...[
-                                KeywordsView(
-                                  isLoading: _controller.isExtractingKeywords,
-                                  originalKeywords: _controller.originalKeywords,
-                                  newKeywords: _controller.newKeywords,
-                                  maxLength: _controller.maxKeywordLength,
-                                ),
-                                const Spacer(flex: 1),
-                              ],
-
-                              // --- 動態操作按鈕區域 ---
-                              AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 300),
-                                child: _buildControlSection(),
+                          if (isLikeOrDislikeFlow) ...[
+                            LanguageSelector(
+                              selectedLanguage: _controller.selectedLanguage,
+                              onLanguageSelected: (lang) {
+                                _controller.selectedLanguage = lang;
+                                _controller.playCurrentContextVoice(lang);
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                              child: Text(
+                                _controller.chatStatus.toString().contains('dislike') ? '為什麼不像？' : _controller.aiGeneratedText,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87),
                               ),
+                            ),
+                            const SizedBox(height: 24),
+                          ],
 
-                              // --- AI 監聽指示器 ---
-                              if (_controller.isVoiceActiveStatus())
-                                _buildVoiceAssistantIndicator(),
+                          if (showImageOnTop) ...[ _buildEvaluationImage(), const Spacer(flex: 1) ],
 
-                              const Spacer(flex: 2),
-                            ],
-                          ),
-                        ),
+                          if (!_isEvaluationState() && !isLikeOrDislikeFlow) ...[
+                            LanguageSelector(
+                              selectedLanguage: _controller.selectedLanguage,
+                              onLanguageSelected: (lang) {
+                                _controller.selectedLanguage = lang;
+                                _controller.playCurrentContextVoice(lang);
+                              },
+                            ),
+                            const Spacer(flex: 1),
+                          ],
+
+                          if (!_isEvaluationState() && !isLikeOrDislikeFlow) ...[
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 200),
+                              child: _controller.isLoading
+                                  ? const Center(child: CircularProgressIndicator(color: Colors.orange))
+                                  : Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  QuestionArea(questionText: _controller.aiGeneratedText),
+                                  if (_controller.chatStatus == ChatStatus.prepare) ...[
+                                    const SizedBox(height: 16),
+                                    ElevatedButton.icon(
+                                      onPressed: () async {
+                                        await _controller.stopAudioSequence();
+                                        _controller.fetchInitialQuestion();
+                                      },
+                                      icon: const Icon(Icons.refresh, size: 20),
+                                      label: const Text("換一個問題", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                      style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.orange[50], foregroundColor: Colors.orange[800],
+                                          elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8)),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            const Spacer(flex: 1),
+                          ],
+
+                          if (_controller.chatStatus == ChatStatus.keywords ||
+                              _controller.chatStatus == ChatStatus.dislikeKeywords ||
+                              _controller.chatStatus == ChatStatus.likeKeywords) ...[
+                            KeywordsView(
+                              isLoading: _controller.isExtractingKeywords,
+                              originalKeywords: _controller.originalKeywords,
+                              newKeywords: _controller.chatStatus == ChatStatus.keywords ? const [] : _controller.newKeywords,
+                              maxLength: _controller.maxKeywordLength,
+                            ),
+                            const Spacer(flex: 1),
+                          ],
+
+                          AnimatedSwitcher(duration: const Duration(milliseconds: 300), child: _buildControlSection()),
+
+                          if (_controller.isVoiceActiveStatus(_controller.chatStatus) && !isLikeOrDislikeFlow)
+                            _buildVoiceAssistantIndicator(),
+
+                          const Spacer(flex: 2),
+                        ],
                       ),
                     ),
-                  );
-                }
-            ),
+                  ),
+                ),
+              );
+            }),
           ),
         );
       },
     );
   }
 
-  String _getAppBarTitle(ChatStatus status) {
-    switch (status) {
+  // ==========================================
+  // 👥 自我介紹系列視圖 (Intro Views)
+  // ==========================================
+  Widget _buildIntroView() {
+    if (_controller.chatStatus == ChatStatus.introTransition) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(backgroundColor: Colors.white, elevation: 0, leading: const BackButton(color: Colors.black)),
+        body: const Center(
+          child: Text("我們開始聊天！", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black87)),
+        ),
+      );
+    }
+
+    if (_controller.chatStatus == ChatStatus.introProcessing) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(backgroundColor: Colors.white, elevation: 0, leading: const BackButton(color: Colors.black)),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(color: Colors.orange),
+              SizedBox(height: 24),
+              Text("正在聆聽長輩的名字...", style: TextStyle(fontSize: 18, color: Colors.grey, fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(backgroundColor: Colors.white, elevation: 0, leading: const BackButton(color: Colors.black)),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text("請大家介紹自己", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 40),
+
+            Text(
+              _controller.currentElderName.isEmpty ? "我叫________" : "我叫 ${_controller.currentElderName}",
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 60),
+
+            if (_controller.chatStatus == ChatStatus.introPrepare)
+              _buildCircleButton("開始介紹", () => _controller.startIntroRecording())
+            else if (_controller.chatStatus == ChatStatus.introRecording)
+              Column(
+                children: [
+                  const Text("🗣️ 聆聽中... (說完停頓即可)", style: TextStyle(color: Colors.grey, fontSize: 16)),
+                  const SizedBox(height: 16),
+                  _buildCircleButton("停止", () => _controller.stopIntroRecordingManually(), color: Colors.redAccent),
+                ],
+              )
+            else if (_controller.chatStatus == ChatStatus.introNameExtracted)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _buildCircleButton("下一位", () => _controller.nextPersonIntro()),
+                    const SizedBox(width: 40),
+                    _buildCircleButton("結束介紹", () => _controller.finishIntro()),
+                  ],
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCircleButton(String text, VoidCallback onPressed, {Color color = const Color(0xFFFFD54F)}) {
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(50),
+      child: Container(
+        width: 100, height: 100,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        child: Text(text, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
+      ),
+    );
+  }
+
+  bool _isEvaluationState() => _controller.chatStatus == ChatStatus.evaluation || _controller.chatStatus == ChatStatus.dislikeEvaluation || _controller.chatStatus == ChatStatus.dislikePrepare || _controller.chatStatus == ChatStatus.dislikeChatting || _controller.chatStatus == ChatStatus.likePrepare || _controller.chatStatus == ChatStatus.likeChatting;
+
+  String _getAppBarTitle() {
+    switch (_controller.chatStatus) {
       case ChatStatus.prepare: return "準備聊天";
-      case ChatStatus.chatting:
-      case ChatStatus.completed: return "點開始聊";
+      case ChatStatus.chatting: return "點開始聊";
       case ChatStatus.keywords: return "抓取關鍵詞";
-      case ChatStatus.generating:
-      case ChatStatus.dislikeGenerating:
-      case ChatStatus.likeGenerating: return "Ai 生圖中";
-      case ChatStatus.evaluation:
-      case ChatStatus.dislikeEvaluation: return "問像不像";
-      case ChatStatus.dislikePrepare:
-      case ChatStatus.dislikeChatting:
-      case ChatStatus.dislikeCompleted:
-      case ChatStatus.dislikeKeywords: return "不像，繼續聊天";
-      case ChatStatus.likePrepare:
-      case ChatStatus.likeChatting:
-      case ChatStatus.likeCompleted:
-      case ChatStatus.likeKeywords: return "如果像，就 AI延伸話題";
+      case ChatStatus.generating: case ChatStatus.dislikeGenerating: case ChatStatus.likeGenerating: return "Ai 生圖中";
+      case ChatStatus.evaluation: case ChatStatus.dislikeEvaluation: return "問像不像";
+      case ChatStatus.dislikePrepare: case ChatStatus.dislikeChatting: case ChatStatus.dislikeKeywords: return "不像，繼續聊天";
+      case ChatStatus.likePrepare: case ChatStatus.likeChatting: case ChatStatus.likeKeywords: return "如果像，就 AI延伸話題";
+      default: return "";
     }
   }
 
-  bool _shouldShowImageOnTop(ChatStatus status) {
-    return status == ChatStatus.evaluation ||
-        status == ChatStatus.dislikePrepare || status == ChatStatus.dislikeChatting ||
-        status == ChatStatus.dislikeCompleted || status == ChatStatus.dislikeKeywords ||
-        status == ChatStatus.dislikeEvaluation || status == ChatStatus.likePrepare ||
-        status == ChatStatus.likeChatting || status == ChatStatus.likeCompleted ||
-        status == ChatStatus.likeKeywords;
-  }
-
   Widget _buildVoiceAssistantIndicator() {
-    final status = _controller.chatStatus;
-    bool isListeningNow = (status == ChatStatus.chatting || status == ChatStatus.dislikeChatting || status == ChatStatus.likeChatting);
-    bool isCompletedState = (status == ChatStatus.completed || status == ChatStatus.dislikeCompleted || status == ChatStatus.likeCompleted);
+    bool isListeningNow = (_controller.chatStatus == ChatStatus.chatting || _controller.chatStatus == ChatStatus.dislikeChatting || _controller.chatStatus == ChatStatus.likeChatting);
+    bool isCompletedState = (_controller.chatStatus == ChatStatus.keywords || _controller.chatStatus == ChatStatus.dislikeKeywords || _controller.chatStatus == ChatStatus.likeKeywords);
 
     return Padding(
       padding: const EdgeInsets.only(top: 24.0, bottom: 8.0),
@@ -219,7 +287,10 @@ class _LifeScreenState extends State<LifeScreen> {
         decoration: BoxDecoration(
           color: isListeningNow ? Colors.red[50] : Colors.green[50],
           borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: isListeningNow ? Colors.red[200]! : Colors.green[200]!),
+          border: Border.all(
+            color: isListeningNow ? Colors.red[200]! : Colors.green[200]!,
+            width: 1,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -249,24 +320,37 @@ class _LifeScreenState extends State<LifeScreen> {
   }
 
   Widget _buildEvaluationImage() {
-    final imageUrl = _controller.currentImageUrl;
     return Container(
       width: 320,
       height: 240,
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), color: Colors.grey[200]),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.grey[200],
+      ),
       clipBehavior: Clip.antiAlias,
-      child: imageUrl.isNotEmpty
-          ? (imageUrl.startsWith('http') || imageUrl.startsWith('https')
+      child: _controller.currentImageUrl.isNotEmpty
+          ? (_controller.currentImageUrl.startsWith('http') || _controller.currentImageUrl.startsWith('https')
           ? Image.network(
-        imageUrl, fit: BoxFit.cover,
-        errorBuilder: (ctx, error, st) => const Center(child: Icon(Icons.broken_image, size: 64, color: Colors.grey)),
-        loadingBuilder: (ctx, child, progress) => progress == null ? child : const Center(child: CircularProgressIndicator()),
+        _controller.currentImageUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => const Center(child: Icon(Icons.broken_image, size: 64, color: Colors.grey)),
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(Colors.grey)));
+        },
       )
           : (kIsWeb
-          ? const Center(child: Text('Web 無法讀取硬碟', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)))
+          ? const Center(
+        child: Text(
+          'Web 瀏覽器無法讀取電腦硬碟檔案\n\n請改用 Windows 桌面版執行\n(或更新後端提供靜態網址)',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.grey, fontSize: 13),
+        ),
+      )
           : Image.file(
-        File(imageUrl), fit: BoxFit.cover,
-        errorBuilder: (ctx, error, st) => const Center(child: Icon(Icons.broken_image, size: 64, color: Colors.grey)),
+        File(_controller.currentImageUrl),
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => const Center(child: Icon(Icons.broken_image, size: 64, color: Colors.grey)),
       )))
           : const Center(child: Icon(Icons.image, size: 64, color: Colors.grey)),
     );
@@ -274,100 +358,62 @@ class _LifeScreenState extends State<LifeScreen> {
 
   Widget _buildControlSection() {
     switch (_controller.chatStatus) {
-      case ChatStatus.prepare:
-        return PrepareView(onStartChat: _controller.triggerStartChatFlow);
-      case ChatStatus.chatting:
-        return ListeningView(recordSeconds: _controller.recordSeconds, onEndRecording: _controller.handleEndChat);
-      case ChatStatus.completed:
-        return CompletedView(
-          onRestartChat: _controller.triggerStartChatFlow,
-          onEndChat: () async {
-            await _controller.stopAudioSequence();
-            _controller.setChatStatusAndNotify(ChatStatus.keywords);
-            await _controller.voiceManager.stopActiveAudioOperations();
-          },
-        );
-      case ChatStatus.keywords:
-        return KeywordsConfirmButton(isDisabled: _controller.isExtractingKeywords, onConfirm: _controller.triggerImageGeneration);
-      case ChatStatus.generating:
-      case ChatStatus.dislikeGenerating:
-      case ChatStatus.likeGenerating:
-        return const GeneratingView();
+      case ChatStatus.prepare: return PrepareView(onStartChat: _controller.triggerStartChatFlow);
+      case ChatStatus.chatting: return ListeningView(recordSeconds: _controller.recordSeconds, onEndRecording: _controller.handleEndChat);
+      case ChatStatus.keywords: return KeywordsConfirmButton(isDisabled: _controller.isExtractingKeywords, onConfirm: _controller.triggerImageGeneration);
+      case ChatStatus.generating: return const GeneratingView();
+
       case ChatStatus.evaluation:
         return EvaluationView(
-          selectedLanguage: _controller.selectedLanguage,
-          onLanguageSelected: _controller.playCurrentContextVoice,
-          onLike: () {
-            _controller.setChatStatusAndNotify(ChatStatus.likePrepare);
-            _controller.voiceManager.checkCompletedCommands = false;
-            _controller.voiceManager.startBackgroundWakeWordCycle();
-            _controller.playCurrentContextVoice(_controller.selectedLanguage); // trigger sequence play indirectly
-          },
-          onDislike: () {
-            _controller.setChatStatusAndNotify(ChatStatus.dislikePrepare);
-            _controller.voiceManager.checkCompletedCommands = false;
-            _controller.voiceManager.startBackgroundWakeWordCycle();
-            _controller.playCurrentContextVoice(_controller.selectedLanguage);
-          },
+            selectedLanguage: _controller.selectedLanguage,
+            onLanguageSelected: _controller.playCurrentContextVoice,
+            onLike: () {
+              // 💡 點擊「像」：開始異步生成延伸話題（這會讓狀態進入 likePrepare）
+              _controller.handleLikeAndGenerateExtension();
+            },
+            onDislike: () {
+              // 💡 點擊「不像」：回到準備狀態
+              _controller.chatStatus = ChatStatus.dislikePrepare;
+              _controller.voiceManager.checkCompletedCommands = false;
+              _controller.voiceManager.startBackgroundWakeWordCycle();
+              _controller.notifyListeners();
+              _controller.playCurrentContextVoice(_controller.selectedLanguage);
+            }
         );
+
+    // 💡 補回：渲染有黃色「點開始聊天」大按鈕的準備視圖
+      case ChatStatus.likePrepare:
       case ChatStatus.dislikePrepare:
-        return DislikePrepareView(
-          selectedLanguage: _controller.selectedLanguage,
-          onLanguageSelected: _controller.playCurrentContextVoice,
-          onStartChat: _controller.triggerStartChatFlow,
+        return AdvancedPrepareView(onStartChat: _controller.triggerStartChatFlow);
+
+      case ChatStatus.likeChatting:
+        return AdvancedChattingControlView(
+            recordSeconds: _controller.recordSeconds,
+            onEndRecording: () async {
+              await _controller.handleEndChat();
+            },
+            onCancel: () {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            }
         );
       case ChatStatus.dislikeChatting:
-        return DislikeChattingView(
-          selectedLanguage: _controller.selectedLanguage,
-          onLanguageSelected: _controller.playCurrentContextVoice,
-          recordSeconds: _controller.recordSeconds,
-          onEndRecording: _controller.handleEndChat,
+        return AdvancedChattingControlView(
+            recordSeconds: _controller.recordSeconds,
+            onEndRecording: () async {
+              await _controller.handleEndChat();
+            },
+            onCancel: () {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            }
         );
-      case ChatStatus.dislikeCompleted:
-        return CompletedView(
-          onRestartChat: _controller.triggerStartChatFlow,
-          onEndChat: () async {
-            await _controller.stopAudioSequence();
-            _controller.setChatStatusAndNotify(ChatStatus.dislikeKeywords);
-            await _controller.voiceManager.stopActiveAudioOperations();
-          },
-        );
-      case ChatStatus.dislikeKeywords:
-        return KeywordsConfirmButton(isDisabled: _controller.isExtractingKeywords, onConfirm: _controller.triggerModifiedImageGeneration);
-      case ChatStatus.dislikeEvaluation:
-        return DislikeEvaluationView(
-          onContinueModify: () {
-            _controller.setChatStatusAndNotify(ChatStatus.dislikePrepare);
-            _controller.voiceManager.checkCompletedCommands = false;
-            _controller.voiceManager.startBackgroundWakeWordCycle();
-            _controller.playCurrentContextVoice(_controller.selectedLanguage);
-          },
-          onFinished: _controller.resetAllStates,
-        );
-      case ChatStatus.likePrepare:
-        return LikePrepareView(
-          selectedLanguage: _controller.selectedLanguage,
-          onLanguageSelected: _controller.playCurrentContextVoice,
-          onStartChat: _controller.triggerStartChatFlow,
-        );
-      case ChatStatus.likeChatting:
-        return LikeChattingView(
-          selectedLanguage: _controller.selectedLanguage,
-          onLanguageSelected: _controller.playCurrentContextVoice,
-          recordSeconds: _controller.recordSeconds,
-          onEndRecording: _controller.handleEndChat,
-        );
-      case ChatStatus.likeCompleted:
-        return CompletedView(
-          onRestartChat: _controller.triggerStartChatFlow,
-          onEndChat: () async {
-            await _controller.stopAudioSequence();
-            _controller.setChatStatusAndNotify(ChatStatus.likeKeywords);
-            await _controller.voiceManager.stopActiveAudioOperations();
-          },
-        );
+
       case ChatStatus.likeKeywords:
         return KeywordsConfirmButton(isDisabled: _controller.isExtractingKeywords, onConfirm: _controller.triggerLikeExtendedImageGeneration);
+      case ChatStatus.dislikeKeywords:
+        return KeywordsConfirmButton(isDisabled: _controller.isExtractingKeywords, onConfirm: _controller.triggerModifiedImageGeneration);
+      case ChatStatus.dislikeGenerating: return const GeneratingView();
+      case ChatStatus.likeGenerating: return const GeneratingView();
+      default: return const SizedBox();
     }
   }
 }

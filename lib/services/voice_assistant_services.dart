@@ -9,7 +9,7 @@ import 'speech_services.dart';
 
 // =========================================================================
 // 🎙️ 💡 獨立語音助手核心控制器 (VoiceAssistantManager)
-// 【專業 VAD 版】自動測量環境雜音 + 防突發噪音 (Min Duration) + 靜音掛斷
+// 【專業 VAD 版】自動測量環境雜音 + 防突發噪音 + 靜音掛斷 + 背景文字廣播
 // =========================================================================
 class VoiceAssistantManager {
   final AudioRecorder _audioRecorder = AudioRecorder();
@@ -25,16 +25,14 @@ class VoiceAssistantManager {
   // ==========================================
   // 🎛️ VAD (音量偵測) 動態校正與防錯參數
   // ==========================================
-  double _vadThresholdDb = -35.0; // 預設值，第一次錄音時會被自動校正覆蓋
-  final int _silenceThresholdMs = 2500; // 掛斷延遲 (Hangover Time)
-  final int _idleTimeoutMs = 15000; // 最長發呆時間
+  double _vadThresholdDb = -35.0;
+  final int _silenceThresholdMs = 2500;
+  final int _idleTimeoutMs = 15000;
 
-  // --- 校正 (Calibration) 參數 ---
   bool _isCalibrated = false;
   int _calibrationTicks = 0;
   double _calibrationSumDb = 0.0;
 
-  // --- 防誤觸 (Min Duration) 參數 ---
   int _consecutiveLoudTicks = 0;
 
   Timer? _vadTimer;
@@ -43,15 +41,20 @@ class VoiceAssistantManager {
   bool _hasSpoken = false;
   String? _currentRecordPath;
 
+  // ==========================================
+  // 🔗 回調函數 (Callbacks)
+  // ==========================================
   void Function()? onStartChatFlow;
   void Function()? onRestartChatFlow;
   void Function()? onEndChatFlow;
   void Function(List<String> mergedAudioPaths)? onSpeechCompleted;
 
+  // 💡 新增：背景辨識文字廣播！讓 Controller 可以自訂攔截「下一位」、「開始介紹」等口令
+  void Function(String recognizedText)? onBackgroundTextRecognized;
+
   bool checkCompletedCommands = false;
   bool get isListening => _isRollingWakeWord || _isRollingChatRecord;
 
-  /// 外部若環境改變，可呼叫此方法強制重新校正環境音
   void forceRecalibrateVad() {
     _isCalibrated = false;
     _calibrationTicks = 0;
@@ -128,26 +131,23 @@ class VoiceAssistantManager {
           final amplitude = await _audioRecorder.getAmplitude();
           final currentDb = amplitude.current;
 
-          // 1. 動態環境音量校正 (Auto Calibration)
           if (!_isCalibrated) {
-            if (currentDb > -100.0) { // 忽略麥克風剛啟動的極端無聲
+            if (currentDb > -100.0) {
               _calibrationSumDb += currentDb;
               _calibrationTicks++;
-              if (_calibrationTicks >= 8) { // 收集 8 個樣本 = 1.6 秒
+              if (_calibrationTicks >= 8) {
                 double avgNoise = _calibrationSumDb / 8;
                 _vadThresholdDb = (avgNoise + 12.0).clamp(-45.0, -20.0);
                 _isCalibrated = true;
-                debugPrint("🎛️ [VAD 自動校正完成] 房間雜音: ${avgNoise.toStringAsFixed(1)} dB, 口令門檻設為: ${_vadThresholdDb.toStringAsFixed(1)} dB");
+                debugPrint("🎛️ [VAD 自動校正完成] 房間雜音: ${avgNoise.toStringAsFixed(1)} dB, 門檻設為: ${_vadThresholdDb.toStringAsFixed(1)} dB");
                 debugPrint("👂 [背景 VAD] 開始監聽口令...");
               }
             }
-            return; // 校正期間不作說話判定
+            return;
           }
 
-          // 2. 語音活動偵測與防誤觸 (Min Duration)
           if (currentDb >= _vadThresholdDb) {
             _consecutiveLoudTicks++;
-            // 必須連續 2 次 (400ms) 超過門檻，才判定為真實語音
             if (_consecutiveLoudTicks >= 2 && !_hasSpoken) {
               debugPrint("🗣️ [背景 VAD] 偵測到聲音！(音量: ${currentDb.toStringAsFixed(1)} dB)");
               _hasSpoken = true;
@@ -157,9 +157,8 @@ class VoiceAssistantManager {
               _idleMs = 0;
             }
           } else {
-            _consecutiveLoudTicks = 0; // 音量低於門檻，連續計數器歸零
+            _consecutiveLoudTicks = 0;
 
-            // 3. 靜音掛斷延遲 (Hangover Time)
             if (_hasSpoken) {
               _silenceMs += 200;
               if (_silenceMs >= _silenceThresholdMs) {
@@ -217,6 +216,10 @@ class VoiceAssistantManager {
         final String cleanText = transcript.replaceAll(" ", "");
         debugPrint("[喚醒助理] 解析內容: '$cleanText'，完成監聽狀態為: $checkCompletedCommands");
 
+        // 💡 新增：無論是什麼文字，都先廣播給 Controller 處理 (例如：處理自我介紹流程)
+        onBackgroundTextRecognized?.call(cleanText);
+
+        // 處理內建的核心對話狀態口令
         if (_matchesCommand(cleanText, ReminiCareConfig.restartWakeWords)) {
           debugPrint("🎉 [助理喚醒成功] 重新聊天 (口令: $cleanText)");
           _isRollingWakeWord = false;
@@ -286,7 +289,6 @@ class VoiceAssistantManager {
           final amplitude = await _audioRecorder.getAmplitude();
           final currentDb = amplitude.current;
 
-          // 1. 動態環境音量校正 (Auto Calibration)
           if (!_isCalibrated) {
             if (currentDb > -100.0) {
               _calibrationSumDb += currentDb;
@@ -301,7 +303,6 @@ class VoiceAssistantManager {
             return;
           }
 
-          // 2. 語音活動偵測與防誤觸 (Min Duration)
           if (currentDb >= _vadThresholdDb) {
             _consecutiveLoudTicks++;
             if (_consecutiveLoudTicks >= 2 && !_hasSpoken) {
@@ -316,7 +317,6 @@ class VoiceAssistantManager {
           else {
             _consecutiveLoudTicks = 0;
 
-            // 3. 靜音掛斷延遲 (Hangover Time)
             if (_hasSpoken) {
               _silenceMs += 200;
               if (_silenceMs >= _silenceThresholdMs) {
