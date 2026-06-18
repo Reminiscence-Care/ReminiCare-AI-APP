@@ -38,16 +38,6 @@ class ReminiCareConfig {
       hintText: 'Token...'
     ),
     const ConfigField(
-      apiKey: 'SPOTIFY_CLIENT_ID',
-      displayName: 'Spotify Client Id',
-      hintText: 'Token...'
-    ),
-    const ConfigField(
-      apiKey: 'SPOTIFY_CLIENT_SECRET',
-      displayName: 'Spotify Client Secret',
-      hintText: 'Token...'
-    ),
-    const ConfigField(
       apiKey: 'VOICE_MAX_RECORD_LIMIT',
       displayName: 'Voice max recording limit',
       hintText: 'e.x. 60 seconds',

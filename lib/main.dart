@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:remini_care_ai_app/home_screen.dart';
@@ -10,14 +8,10 @@ import 'package:remini_care_ai_app/screens/music_screen/search_and_recommendatio
 import 'package:remini_care_ai_app/screens/music_screen/search_by_texts_or_speech.dart';
 import 'package:remini_care_ai_app/screens/music_screen/search_options.dart';
 import 'package:remini_care_ai_app/screens/music_screen/search_results.dart';
-import 'package:webview_win_floating/webview_plugin.dart';
 
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (Platform.isWindows) {
-    WindowsWebViewPlatform.registerWith();
-  }
   runApp(const MyApp());
 }
 final GoRouter _router = GoRouter(

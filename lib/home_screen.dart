@@ -14,10 +14,9 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isConfigComplete() {
     return ReminiCareConfig.nvidiaApiKey.isNotEmpty &&
         ReminiCareConfig.siliconFlowApiKey.isNotEmpty &&
-        ReminiCareConfig.nckuSttToken.isNotEmpty &&
-        ReminiCareConfig.nckuTtsToken.isNotEmpty &&
-        ReminiCareConfig.spotifyClientId.isNotEmpty &&
-        ReminiCareConfig.spotifyClientSecret.isNotEmpty;
+        ((ReminiCareConfig.nckuSttToken.isNotEmpty &&
+          ReminiCareConfig.nckuTtsToken.isNotEmpty) ||
+            ReminiCareConfig.yatingApiKey.isNotEmpty);
   }
 
   @override
@@ -303,18 +302,24 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Container(
             width: width,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
+              color: Colors.white, // 加上白底，避免透明圖片透出後方的陰影顏色
+              borderRadius: BorderRadius.circular(24), // 加大圓角，更像截圖中的質感
+              // ==========================================
+              border: Border.all(
+                color: Colors.grey.shade400, // 邊框顏色 (灰色)
+                width: 1.5, // 邊框粗細
+              ),
+              // ==========================================
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
+                  color: Colors.black.withOpacity(0.15),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
                 ),
               ],
             ),
-            // 圓角裁切與防呆機制
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(22.5),
               child: Image.asset(
                 imagePath,
                 fit: BoxFit.contain, // 確保圖片等比縮放

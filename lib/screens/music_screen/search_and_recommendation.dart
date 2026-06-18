@@ -14,6 +14,7 @@ class SearchAndRecommendation extends StatefulWidget {
 
 class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
   final NvidiaLlmService _llmService = NvidiaLlmService();
+  final ScrollController _scrollController = ScrollController();
   List<String> recommendationSongsName = [];
   List<Map<String, String>> songs = [];
 
@@ -66,7 +67,6 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
   @override
   Widget build(BuildContext context) {
     String? languageLabel = widget.languageLabel ?? '國語歌';
-    final screenWidth = MediaQuery.of(context).size.width;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
@@ -186,10 +186,12 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
             // 4. 歌曲列表清單
             Expanded(
               child: Scrollbar(
+                controller: _scrollController,
                 thumbVisibility: true,
                 thickness: 6.0,
                 radius: const Radius.circular(8),
                 child: ListView.separated(
+                  controller: _scrollController,
                   padding: const EdgeInsets.symmetric(horizontal: 24.0),
                   itemCount: songs.length,
                   separatorBuilder: (context, index) => const SizedBox(height: 16), // 每個 item 之間的間距

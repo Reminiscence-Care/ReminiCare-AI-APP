@@ -76,26 +76,29 @@ class MusicScreen extends StatelessWidget {
       child: Container(
         width: width,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          // 加上淡淡的陰影讓圖片按鈕看起來有立體感
+          color: Colors.white, // 加上白底防護
+          borderRadius: BorderRadius.circular(24), // 加大圓角至 24
+          border: Border.all(
+            color: Colors.grey.shade400,
+            width: 1.5,
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+              color: Colors.black.withOpacity(0.15),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
             ),
           ],
         ),
-        // 確保外層的圓角能完美裁切圖片
+        // 內層圓角設為 22.5，確保圖片裁切不會蓋到外框
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(22.5),
           child: Image.asset(
             imagePath,
-            fit: BoxFit.contain, // 圖片等比縮放不變形
-
+            fit: BoxFit.contain,
             errorBuilder: (context, error, stackTrace) {
               return Container(
-                height: width * 0.8, // 給替代方塊一個合理的高度
+                height: width * 0.8,
                 color: Colors.blueGrey[50],
                 alignment: Alignment.center,
                 child: Text(
