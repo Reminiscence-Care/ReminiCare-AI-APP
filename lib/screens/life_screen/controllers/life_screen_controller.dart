@@ -18,7 +18,7 @@ enum ChatStatus {
   prepare, chatting, generating, evaluation,
   dislikePrepare, dislikeChatting, dislikeGenerating, dislikeEvaluation,
   likePrepare, likeChatting, likeGenerating,
-  // --- 🌟 新增的輪流與總結狀態 ---
+  // --- 🌟 輪流與總結狀態 ---
   nextElderPrompt,
   generatingNextTopic,
   roundSummary,
@@ -128,7 +128,7 @@ class LifeScreenController extends ChangeNotifier {
     }
   }
 
-  // --- Intro Logic 省略 (同原版) ---
+  // --- Intro Logic ---
   void startIntroRecording() async { await stopAudioSequence(); chatStatus = ChatStatus.introRecording; notifyListeners(); voiceManager.startChatFlow(); }
   void stopIntroRecordingManually() async => await voiceManager.forceEndChat();
   Future<void> _handleIntroSpeechCompleted(List<String> paths) async {
@@ -157,7 +157,6 @@ class LifeScreenController extends ChangeNotifier {
 
     bool isResumingNextElder = false;
 
-    // 💡 第一輪聊天不設定輪流，只有進入 likePrepare 延伸話題才會抽籤排隊！
     if (chatStatus == ChatStatus.prepare) {
       chatStatus = ChatStatus.chatting;
     } else if (chatStatus == ChatStatus.dislikePrepare) {
@@ -172,7 +171,7 @@ class LifeScreenController extends ChangeNotifier {
       if (unspokenElders.isNotEmpty) unspokenElders.removeAt(0);
     } else if (chatStatus == ChatStatus.nextElderPrompt) {
       isResumingNextElder = true;
-      chatStatus = currentChatPhase; // 接續回 likeChatting
+      chatStatus = currentChatPhase;
     } else {
       chatStatus = ChatStatus.chatting;
     }
@@ -185,7 +184,6 @@ class LifeScreenController extends ChangeNotifier {
   Future<void> handleEndChat() async {
     isProcessingEnd = true; stopTimer();
     if (_isDisposed) return;
-    // 不要在這裡強硬設定狀態，交給 _processEndOfSpeechChunk 處理！
     await voiceManager.forceEndChat();
   }
 
@@ -220,10 +218,8 @@ class LifeScreenController extends ChangeNotifier {
     await _processEndOfSpeechChunk(cleanTextForLLM);
   }
 
-  // 🌟 核心：判定是換下一個長輩，還是結束這一輪！
   Future<void> _processEndOfSpeechChunk(String cleanTextForLLM) async {
     if (chatStatus == ChatStatus.chatting) {
-      // 第一輪：直接生圖，不輪流
       chatStatus = ChatStatus.generating;
       notifyListeners();
       _processAudioAndExtractKeywords(manualText: cleanTextForLLM);
@@ -236,9 +232,9 @@ class LifeScreenController extends ChangeNotifier {
       if (unspokenElders.isNotEmpty) {
         currentPromptElder = unspokenElders.removeAt(0);
         chatStatus = ChatStatus.nextElderPrompt; notifyListeners();
-        _playAlternatingSequence("$currentPromptElder呢？");
+        // 💡 透過 playCurrentContextVoice，它內部會自動去跑 _playAlternatingSequence
+        playCurrentContextVoice(selectedLanguage);
       } else {
-        // ✅ 大家都對這張圖講完了，總結並產生「新話題」
         chatStatus = ChatStatus.generatingNextTopic; notifyListeners();
         _generateNextTopicAndSummary(manualText: cleanTextForLLM);
       }
@@ -264,7 +260,6 @@ class LifeScreenController extends ChangeNotifier {
     finally { if (!_isDisposed) { isLoading = false; notifyListeners(); playCurrentContextVoice(selectedLanguage); } }
   }
 
-  // 🌟 產生輪迴新話題
   Future<void> _generateNextTopicAndSummary({required String manualText}) async {
     try {
       String previousQuestion = aiGeneratedText;
@@ -282,7 +277,6 @@ class LifeScreenController extends ChangeNotifier {
     }
   }
 
-  // 💡 當按下「繼續聊天」，帶入剛剛產生的新話題，回到像 likePrepare 一樣的準備狀態
   void continueChatFromSummary() {
     chatStatus = ChatStatus.likePrepare;
     accumulatedChatText = "";
@@ -298,14 +292,21 @@ class LifeScreenController extends ChangeNotifier {
     voiceManager.stopActiveAudioOperations();
   }
 
-  void playCurrentContextVoice(String lang) {
+  // 💡 核心升級：自動判斷要播放雙語迴圈(自動流程)還是單語(手動切換按鈕)
+  void playCurrentContextVoice(String lang, {bool isManualTap = false}) {
     if (_isDisposed) return;
     String textToPlay = aiGeneratedText;
+
     if (chatStatus == ChatStatus.evaluation || chatStatus == ChatStatus.dislikeEvaluation) textToPlay = "這張圖符合您的回憶嗎？";
     else if (chatStatus == ChatStatus.dislikePrepare) textToPlay = "哪裡不對？";
     else if (chatStatus == ChatStatus.nextElderPrompt) textToPlay = "$currentPromptElder呢？";
     else if (chatStatus == ChatStatus.likePrepare || chatStatus == ChatStatus.likeChatting || chatStatus == ChatStatus.roundSummary) textToPlay = aiGeneratedText;
-    _playSingleVoice(textToPlay, lang);
+
+    if (isManualTap) {
+      _playSingleVoice(textToPlay, lang);
+    } else {
+      _playAlternatingSequence(textToPlay);
+    }
   }
 
   Future<void> _playSingleVoice(String text, String language) async {
@@ -383,26 +384,38 @@ class LifeScreenController extends ChangeNotifier {
     }
   }
 
-  // 💡 第一輪生圖
+  // 💡 核心升級：組合上下文，讓 LLM 有充分的記憶可以萃取精準關鍵字
   Future<void> _processAudioAndExtractKeywords({String? manualText}) async {
     if (_isDisposed) return;
     String userMessage = manualText ?? "小時候我阿母都在灶腳煮那個蕃薯飯，配滷豆乾啦。";
     try {
+      // 1. 把之前的對話脈絡組裝起來，幫助生圖抓取準確場景
+      String contextStr = chatHistory.map((msg) => "${msg['role'] == 'user' ? '長輩' : 'AI'}: ${msg['content']}").join("\n");
+      String promptContext = contextStr.isNotEmpty ? "【之前的對話脈絡】\n$contextStr\n\n" : "";
+      promptContext += "【AI最新提問】: $aiGeneratedText\n【長輩最新回答】: $userMessage\n\n請根據以上完整對話脈絡，提取出具體的懷舊畫面場景與視覺關鍵字。";
+
       if (chatStatus == ChatStatus.dislikeGenerating) {
+        // 如果是按爛修改，直接把長輩的最新反饋文字當成改圖 Prompt 傳進去！
+        chatHistory.add({"role": "user", "content": userMessage});
         await triggerModifiedImageGeneration(userMessage);
       } else {
-        final Map<String, dynamic> sceneData = await llmService
-            .extractSceneData(userMessage);
+        // 否則提取關鍵字進行正常生圖或延伸生圖
+        final Map<String, dynamic> sceneData = await llmService.extractSceneData(promptContext);
         originalKeywords = List<String>.from(sceneData['keywords'] ?? []);
         dynamicScene = sceneData['scene']?.toString() ?? "台灣早期懷舊生活場景";
         dynamicEra = sceneData['era']?.toString() ?? "1980s";
         dynamicLocation = sceneData['location']?.toString() ?? "Taiwan";
+
         if (_isDisposed) return;
         newKeywords = originalKeywords;
         chatHistory.add({"role": "user", "content": userMessage});
-        await triggerImageGeneration();
-      }
 
+        if (chatStatus == ChatStatus.likeGenerating) {
+          await triggerLikeExtendedImageGeneration();
+        } else {
+          await triggerImageGeneration();
+        }
+      }
     } catch (e) {
       if (_isDisposed) return;
       aiGeneratedText = "阿公阿嬤拍謝，我剛才不小心恍神了，可以再跟我說一次嗎？";
@@ -423,14 +436,27 @@ class LifeScreenController extends ChangeNotifier {
     } catch (e) { if (_isDisposed) return; chatStatus = ChatStatus.prepare; notifyListeners(); }
   }
 
-  Future<void> triggerModifiedImageGeneration(String modifiedPrompt) async {
+  // 💡 核心升級：直接套用長輩真實的抱怨/建議來改圖
+  Future<void> triggerModifiedImageGeneration(String userFeedback) async {
     if (_isDisposed) return; await stopAudioSequence();
     try {
-      final String? imageUrl = await imageService.editImage(imagePath: currentImageUrl, editInstruction: modifiedPrompt);
+      String editInstruction = "在 $dynamicScene 的大場景氛圍下, 根據長輩的反饋修改細節：$userFeedback";
+      final String? imageUrl = await imageService.editImage(imagePath: currentImageUrl, editInstruction: editInstruction);
       if (_isDisposed) return;
       if (imageUrl != null) { currentImageUrl = imageUrl; chatStatus = ChatStatus.evaluation; notifyListeners(); playCurrentContextVoice(selectedLanguage); }
       else throw Exception("改圖出錯");
     } catch (e) { if (_isDisposed) return; chatStatus = ChatStatus.dislikePrepare; notifyListeners(); }
+  }
+
+  Future<void> triggerLikeExtendedImageGeneration() async {
+    if (_isDisposed) return; await stopAudioSequence();
+    try {
+      String combinedPrompt = [...originalKeywords, ...newKeywords].join("、");
+      final String? imageUrl = await imageService.generateNostalgicImage(scene: "$dynamicScene, 包含關鍵元素: $combinedPrompt", era: dynamicEra, location: dynamicLocation);
+      if (_isDisposed) return;
+      if (imageUrl != null) { currentImageUrl = imageUrl; chatStatus = ChatStatus.evaluation; notifyListeners(); playCurrentContextVoice(selectedLanguage); }
+      else throw Exception("延伸話題生圖出錯");
+    } catch (e) { if (_isDisposed) return; chatStatus = ChatStatus.likePrepare; notifyListeners(); }
   }
 
   @override

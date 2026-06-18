@@ -37,10 +37,8 @@ class _LifeScreenState extends State<LifeScreen> {
     return ListenableBuilder(
       listenable: _controller,
       builder: (context, child) {
-        // 🌟 最終大總結卡片 (圖三)
         if (_controller.chatStatus == ChatStatus.chatSummary) return _buildChatSummaryView();
 
-        // 🌟 自我介紹階段
         if (_controller.chatStatus == ChatStatus.introPrepare ||
             _controller.chatStatus == ChatStatus.introRecording ||
             _controller.chatStatus == ChatStatus.introProcessing ||
@@ -88,13 +86,13 @@ class _LifeScreenState extends State<LifeScreen> {
                         children: [
                           const Spacer(flex: 1),
 
-                          // 💡 動態顯示：圖一與圖二的頂部大標題排版
                           if (isLikeOrDislikeFlow || isNextElderOrSummary) ...[
                             LanguageSelector(
                               selectedLanguage: _controller.selectedLanguage,
                               onLanguageSelected: (lang) {
                                 _controller.selectedLanguage = lang;
-                                _controller.playCurrentContextVoice(lang);
+                                // 💡 加上 manual 標記，代表是手動點選，只播一次音軌
+                                _controller.playCurrentContextVoice(lang, isManualTap: true);
                               },
                             ),
                             const SizedBox(height: 16),
@@ -113,13 +111,13 @@ class _LifeScreenState extends State<LifeScreen> {
 
                           if (showImageOnTop) ...[ _buildEvaluationImage(), const Spacer(flex: 1) ],
 
-                          // 一般初次對話流程
                           if (!_isEvaluationState() && !isLikeOrDislikeFlow && !isNextElderOrSummary) ...[
                             LanguageSelector(
                               selectedLanguage: _controller.selectedLanguage,
                               onLanguageSelected: (lang) {
                                 _controller.selectedLanguage = lang;
-                                _controller.playCurrentContextVoice(lang);
+                                // 💡 加上 manual 標記
+                                _controller.playCurrentContextVoice(lang, isManualTap: true);
                               },
                             ),
                             const Spacer(flex: 1),
@@ -170,9 +168,6 @@ class _LifeScreenState extends State<LifeScreen> {
     );
   }
 
-  // ==========================================
-  // 🌟 最終儲存總結卡片 (圖三)
-  // ==========================================
   Widget _buildChatSummaryView() {
     return Scaffold(
       backgroundColor: Colors.grey[100],
@@ -246,9 +241,6 @@ class _LifeScreenState extends State<LifeScreen> {
     );
   }
 
-  // ==========================================
-  // 👥 自我介紹系列視圖
-  // ==========================================
   Widget _buildIntroView() {
     if (_controller.chatStatus == ChatStatus.introTransition) {
       return Scaffold(backgroundColor: Colors.white, appBar: AppBar(backgroundColor: Colors.white, elevation: 0, leading: const BackButton(color: Colors.black)), body: const Center(child: Text("我們開始聊天！", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black87))));
@@ -338,13 +330,11 @@ class _LifeScreenState extends State<LifeScreen> {
             onDislike: () { _controller.chatStatus = ChatStatus.dislikePrepare; _controller.playCurrentContextVoice(_controller.selectedLanguage); _controller.notifyListeners(); }
         );
 
-    // 🌟 新增的輪迴提示視圖 (圖一)
       case ChatStatus.likePrepare:
       case ChatStatus.dislikePrepare:
       case ChatStatus.nextElderPrompt:
         return AdvancedPrepareView(onStartChat: _controller.triggerStartChatFlow);
 
-    // 🌟 正在產生新話題中
       case ChatStatus.generatingNextTopic:
         return const Column(
           mainAxisSize: MainAxisSize.min,
@@ -355,7 +345,6 @@ class _LifeScreenState extends State<LifeScreen> {
           ],
         );
 
-    // 🌟 新話題選項卡片 (圖二)
       case ChatStatus.roundSummary:
         return RoundSummaryControls(
           onContinue: _controller.continueChatFromSummary,
