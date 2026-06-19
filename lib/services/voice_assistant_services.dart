@@ -33,6 +33,9 @@ class VoiceAssistantManager {
 // 播放語言通知
   void Function(String language)? onPlayingLanguageChanged;
 
+  // 💡 新增：背景辨識文字廣播！讓 Controller 可以自訂攔截「下一位」、「開始介紹」等口令
+  void Function(String recognizedText)? onBackgroundTextRecognized;
+
   // ==========================================
   // 🎛️ VAD (音量偵測) 動態校正與防錯參數
   // ==========================================
@@ -60,8 +63,6 @@ class VoiceAssistantManager {
   void Function()? onEndChatFlow;
   void Function(List<String> mergedAudioPaths)? onSpeechCompleted;
 
-  // 💡 新增：背景辨識文字廣播！讓 Controller 可以自訂攔截「下一位」、「開始介紹」等口令
-  void Function(String recognizedText)? onBackgroundTextRecognized;
 
   bool checkCompletedCommands = false;
   bool get isListening => _isRollingWakeWord || _isRollingChatRecord;

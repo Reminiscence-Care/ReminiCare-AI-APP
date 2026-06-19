@@ -23,7 +23,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Future<void> _loadHistory() async {
     final prefs = await SharedPreferences.getInstance();
-    final List<String> savedList = prefs.getStringList('chat_records') ?? [];
+    final List<String> savedList = prefs.getStringList('chat_memories') ?? [];
 
     // 反轉陣列讓最新的紀錄排在最上面
     setState(() {

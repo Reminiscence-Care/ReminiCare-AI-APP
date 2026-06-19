@@ -97,7 +97,7 @@ class _LifeScreenState extends State<LifeScreen> {
                               onLanguageSelected: (lang) {
                                 _controller.selectedLanguage = lang;
                                 // 💡 加上 manual 標記，代表是手動點選，只播一次音軌
-                                _controller.playCurrentContextVoice(lang, isManualTap: true);
+                                _controller.playCurrentContextVoice(isManualTap: true);
                               },
                             ),
                             const SizedBox(height: 16),
@@ -122,7 +122,7 @@ class _LifeScreenState extends State<LifeScreen> {
                               onLanguageSelected: (lang) {
                                 _controller.selectedLanguage = lang;
                                 // 💡 加上 manual 標記
-                                _controller.playCurrentContextVoice(lang, isManualTap: true);
+                                _controller.playCurrentContextVoice(isManualTap: true);
                               },
                             ),
                             const Spacer(flex: 1),
@@ -415,9 +415,15 @@ class _LifeScreenState extends State<LifeScreen> {
       case ChatStatus.evaluation:
         return EvaluationView(
             selectedLanguage: _controller.selectedLanguage,
-            onLanguageSelected: _controller.playCurrentContextVoice,
+            onLanguageSelected: (lang) {
+              _controller.selectedLanguage = lang;
+              _controller.playCurrentContextVoice(isManualTap: true);
+            },
             onLike: () { _controller.handleLikeAndGenerateExtension(); },
-            onDislike: () { _controller.chatStatus = ChatStatus.dislikePrepare; _controller.playCurrentContextVoice(_controller.selectedLanguage); }
+            onDislike: () {
+              _controller.chatStatus = ChatStatus.dislikePrepare;
+              _controller.playCurrentContextVoice();
+            }
         );
 
       case ChatStatus.likePrepare:
