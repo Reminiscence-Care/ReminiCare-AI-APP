@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:remini_care_ai_app/services/nvidia_llm_service.dart';
+import 'package:remini_care_ai_app/services/llm_services/nvidia_llm_service.dart';
 import 'package:remini_care_ai_app/services/music_services/youtube_api_service.dart';
 
 class SearchAndRecommendation extends StatefulWidget {

@@ -1,5 +1,5 @@
 import 'package:remini_care_ai_app/services/music_services/music_api_service.dart';
-import 'package:remini_care_ai_app/services/nvidia_llm_service.dart';
+import 'package:remini_care_ai_app/services/llm_services/nvidia_llm_service.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 class YoutubeApiServices implements MusicApiService {

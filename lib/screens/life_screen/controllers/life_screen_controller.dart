@@ -9,7 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:remini_care_ai_app/services/voice_assistant_services.dart';
 import 'package:remini_care_ai_app/services/image_gen_api_service.dart';
-import 'package:remini_care_ai_app/services/nvidia_llm_service.dart';
+import 'package:remini_care_ai_app/services/llm_services/nvidia_llm_service.dart';
 import 'package:remini_care_ai_app/services/speech_services.dart';
 import 'package:remini_care_ai_app/services/remini_care_config.dart';
 

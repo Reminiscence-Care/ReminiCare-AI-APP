@@ -2,21 +2,24 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:openai_dart/openai_dart.dart';
 import 'package:remini_care_ai_app/services/prompts.dart';
-import 'package:remini_care_ai_app/services/remini_care_config.dart';
 
-// ==========================================
-// NVIDIA LLM 服務 (對話生成與關鍵字萃取)
-// ==========================================
-class NvidiaLlmService {
-  final String _baseApiUrl = "https://integrate.api.nvidia.com/v1";
-  final String _model = "qwen/qwen3-next-80b-a3b-instruct";
+class LlmService {
+  final String baseUrl;
+  final String model;
+  final String apiKey;
+
+  LlmService({
+    required this.baseUrl,
+    required this.model,
+    required this.apiKey,
+  });
 
   OpenAIClient get _client {
-    final baseUrl = kIsWeb ? "https://corsproxy.io/?$_baseApiUrl" : _baseApiUrl;
+    final finalBaseUrl = kIsWeb ? "https://corsproxy.io/?$baseUrl" : baseUrl;
     return OpenAIClient(
       config: OpenAIConfig(
-        authProvider: ApiKeyProvider(ReminiCareConfig.nvidiaApiKey),
-        baseUrl: baseUrl,
+        authProvider: ApiKeyProvider(apiKey),
+        baseUrl: finalBaseUrl,
         timeout: const Duration(seconds: 10),
       ),
     );
@@ -26,7 +29,7 @@ class NvidiaLlmService {
     try {
       final response = await _client.chat.completions.create(
         ChatCompletionCreateRequest(
-          model: _model,
+          model: model,
           temperature: 0.9,
           maxTokens: 50,
           messages: [
@@ -68,7 +71,7 @@ class NvidiaLlmService {
 
       final response = await _client.chat.completions.create(
         ChatCompletionCreateRequest(
-          model: _model,
+          model: model,
           temperature: 0.6,
           maxTokens: 150,
           messages: messages,
@@ -91,7 +94,7 @@ class NvidiaLlmService {
     try {
       final response = await _client.chat.completions.create(
         ChatCompletionCreateRequest(
-          model: _model,
+          model: model,
           temperature: 0.8,
           maxTokens: 100,
           messages: [
@@ -116,7 +119,7 @@ class NvidiaLlmService {
     try {
       final response = await _client.chat.completions.create(
         ChatCompletionCreateRequest(
-          model: _model,
+          model: model,
           temperature: 0.1,
           messages: [
             ChatMessage.system(EXTRACTOR_SYSTEM_PROMPT),
@@ -153,7 +156,7 @@ class NvidiaLlmService {
     try {
       final response = await _client.chat.completions.create(
         ChatCompletionCreateRequest(
-          model: _model,
+          model: model,
           temperature: 0.1,
           messages: [
             ChatMessage.system(EXTRACTOR_SYSTEM_PROMPT),
@@ -203,7 +206,7 @@ class NvidiaLlmService {
     try {
       final response = await _client.chat.completions.create(
         ChatCompletionCreateRequest(
-          model: _model,
+          model: model,
           temperature: 0.9,
           maxTokens: 1000,
           messages: [
@@ -238,7 +241,7 @@ class NvidiaLlmService {
     try {
       final response = await _client.chat.completions.create(
         ChatCompletionCreateRequest(
-          model: _model,
+          model: model,
           temperature: 0.1,
           maxTokens: 1000,
           messages: [
