@@ -37,8 +37,13 @@ class _LifeScreenState extends State<LifeScreen> {
     return ListenableBuilder(
       listenable: _controller,
       builder: (context, child) {
+        // 🌟 最終回憶卡片
+        if (_controller.chatStatus == ChatStatus.chatMemories) return _buildChatMemoriesView();
+
+        // 🌟 最終儲存總結卡片
         if (_controller.chatStatus == ChatStatus.chatSummary) return _buildChatSummaryView();
 
+        // 🌟 自我介紹階段
         if (_controller.chatStatus == ChatStatus.introPrepare ||
             _controller.chatStatus == ChatStatus.introRecording ||
             _controller.chatStatus == ChatStatus.introProcessing ||
@@ -103,7 +108,7 @@ class _LifeScreenState extends State<LifeScreen> {
                                     ? '${_controller.currentPromptElder}呢？'
                                     : (_controller.chatStatus.toString().contains('dislike') ? '為什麼不像？' : _controller.aiGeneratedText),
                                 textAlign: TextAlign.center,
-                                style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.black87),
+                                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
                               ),
                             ),
                             const SizedBox(height: 24),
@@ -202,7 +207,7 @@ class _LifeScreenState extends State<LifeScreen> {
                 _buildSummaryRow("分享者：", _controller.elderNames.isNotEmpty ? _controller.elderNames.join("、") : "未留名"),
                 const SizedBox(height: 48),
                 ElevatedButton(
-                  onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+                  onPressed: () => _controller.saveAndShowMemories(),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFFD54F),
                     foregroundColor: Colors.black87,
@@ -241,6 +246,91 @@ class _LifeScreenState extends State<LifeScreen> {
     );
   }
 
+  // ==========================================
+  // 🌟 新增：今天聊天的回憶卡片 (儲存後展示)
+  // ==========================================
+  Widget _buildChatMemoriesView() {
+    return Scaffold(
+      backgroundColor: Colors.grey[200],
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 700),
+          child: Container(
+            margin: const EdgeInsets.all(24),
+            padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 32),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 12),
+                  decoration: BoxDecoration(color: const Color(0xFFFFF9E6), borderRadius: BorderRadius.circular(12)),
+                  child: const Text("今天聊天的回憶", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87)),
+                ),
+                const SizedBox(height: 40),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 左側：文字資訊
+                    Expanded(
+                      flex: 5,
+                      child: Column(
+                        children: [
+                          _buildSummaryRow("主題：", _controller.originalKeywords.isNotEmpty ? _controller.originalKeywords.first : "懷舊時光"),
+                          const SizedBox(height: 24),
+                          _buildSummaryRow("內容：", _controller.originalKeywords.join("、")),
+                          const SizedBox(height: 24),
+                          _buildSummaryRow("分享者：", _controller.elderNames.isNotEmpty ? _controller.elderNames.join("、") : "未留名"),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 32),
+                    // 右側：AI 生成的圖片
+                    Expanded(
+                      flex: 4,
+                      child: Container(
+                        height: 200,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          color: Colors.grey[200],
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: _controller.currentImageUrl.isNotEmpty
+                            ? (_controller.currentImageUrl.startsWith('http') || _controller.currentImageUrl.startsWith('https')
+                            ? Image.network(_controller.currentImageUrl, fit: BoxFit.cover)
+                            : (kIsWeb ? const Center(child: Text('Web 無法預覽', style: TextStyle(color: Colors.grey))) : Image.file(File(_controller.currentImageUrl), fit: BoxFit.cover)))
+                            : const Center(child: Icon(Icons.image, size: 48, color: Colors.grey)),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 48),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFFD54F),
+                    foregroundColor: Colors.black87,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                    padding: const EdgeInsets.symmetric(horizontal: 64, vertical: 14),
+                    elevation: 0,
+                  ),
+                  child: const Text("結束", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                )
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // 👥 自我介紹系列視圖
+  // ==========================================
   Widget _buildIntroView() {
     if (_controller.chatStatus == ChatStatus.introTransition) {
       return Scaffold(backgroundColor: Colors.white, appBar: AppBar(backgroundColor: Colors.white, elevation: 0, leading: const BackButton(color: Colors.black)), body: const Center(child: Text("我們開始聊天！", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black87))));
@@ -327,7 +417,7 @@ class _LifeScreenState extends State<LifeScreen> {
             selectedLanguage: _controller.selectedLanguage,
             onLanguageSelected: _controller.playCurrentContextVoice,
             onLike: () { _controller.handleLikeAndGenerateExtension(); },
-            onDislike: () { _controller.chatStatus = ChatStatus.dislikePrepare; _controller.playCurrentContextVoice(_controller.selectedLanguage); _controller.notifyListeners(); }
+            onDislike: () { _controller.chatStatus = ChatStatus.dislikePrepare; _controller.playCurrentContextVoice(_controller.selectedLanguage); }
         );
 
       case ChatStatus.likePrepare:
@@ -341,7 +431,7 @@ class _LifeScreenState extends State<LifeScreen> {
           children: [
             CircularProgressIndicator(color: Colors.orange),
             SizedBox(height: 16),
-            Text('等待 AI 總結並產生新話題中...', style: TextStyle(fontSize: 16, color: Colors.grey)),
+            Text('等待 AI 總結並產生新問題中...', style: TextStyle(fontSize: 16, color: Colors.grey)),
           ],
         );
 

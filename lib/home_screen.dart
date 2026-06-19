@@ -15,7 +15,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return ReminiCareConfig.nvidiaApiKey.isNotEmpty &&
         ReminiCareConfig.siliconFlowApiKey.isNotEmpty &&
         ((ReminiCareConfig.nckuSttToken.isNotEmpty &&
-          ReminiCareConfig.nckuTtsToken.isNotEmpty) ||
+            ReminiCareConfig.nckuTtsToken.isNotEmpty) ||
             ReminiCareConfig.yatingApiKey.isNotEmpty);
   }
 
@@ -240,6 +240,18 @@ class _HomeScreenState extends State<HomeScreen> {
         centerTitle: true,
         // 頂部 AppBar 右側新增一個齒輪按鈕，方便使用者先在此設定好 API 金鑰，防範未然！
         actions: [
+          // 新增：回憶紀錄按鈕 (小歷史圖標)
+          IconButton(
+            icon: const Icon(Icons.history_rounded, color: Colors.black87),
+            onPressed: () {
+              if (!_isConfigComplete()) {
+                _showConfigWarning(); // 缺少金鑰 -> 跳出警告並擋下跳轉
+              } else {
+                context.push('/history_screen'); // 金鑰齊全 -> 正常跳轉
+              }
+            },
+            tooltip: "查看回憶紀錄",
+          ),
           IconButton(
             icon: const Icon(Icons.settings_outlined, color: Colors.black87),
             onPressed: _showSettingsDialog,
@@ -274,6 +286,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 routePath: '/life_screen',
               ),
 
+              // --- 3. 回憶紀錄按鈕 (已移至右上角 AppBar) ---
             ],
           ),
         ),

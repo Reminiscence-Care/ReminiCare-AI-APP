@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:remini_care_ai_app/home_screen.dart';
+import 'package:remini_care_ai_app/screens/history_screen.dart';
 import 'package:remini_care_ai_app/screens/life_screen/life_screen.dart';
 import 'package:remini_care_ai_app/screens/music_screen/music_screen.dart';
 import 'package:remini_care_ai_app/screens/music_screen/play_music.dart';
@@ -28,6 +29,10 @@ final GoRouter _router = GoRouter(
     GoRoute(
       path: '/music_screen',
       builder: (context, state) => const MusicScreen(),
+    ),
+    GoRoute(
+      path: '/history_screen',
+      builder: (context, state) => const HistoryScreen(),
     ),
     GoRoute(
       path: '/search_and_recommendation/:languageLabel',

@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:remini_care_ai_app/services/voice_assistant_services.dart';
 import 'package:remini_care_ai_app/services/image_gen_api_service.dart';
@@ -18,11 +20,12 @@ enum ChatStatus {
   prepare, chatting, generating, evaluation,
   dislikePrepare, dislikeChatting, dislikeGenerating, dislikeEvaluation,
   likePrepare, likeChatting, likeGenerating,
-  // --- 🌟 輪流與總結狀態 ---
+  // --- 輪流與總結狀態 ---
   nextElderPrompt,
   generatingNextTopic,
   roundSummary,
-  chatSummary
+  chatSummary,
+  chatMemories // 🌟 新增：最終儲存完畢的回憶展示狀態
 }
 
 class LifeScreenController extends ChangeNotifier {
@@ -232,7 +235,6 @@ class LifeScreenController extends ChangeNotifier {
       if (unspokenElders.isNotEmpty) {
         currentPromptElder = unspokenElders.removeAt(0);
         chatStatus = ChatStatus.nextElderPrompt; notifyListeners();
-        // 💡 透過 playCurrentContextVoice，它內部會自動去跑 _playAlternatingSequence
         playCurrentContextVoice(selectedLanguage);
       } else {
         chatStatus = ChatStatus.generatingNextTopic; notifyListeners();
@@ -292,7 +294,36 @@ class LifeScreenController extends ChangeNotifier {
     voiceManager.stopActiveAudioOperations();
   }
 
-  // 💡 核心升級：自動判斷要播放雙語迴圈(自動流程)還是單語(手動切換按鈕)
+  // 🌟 核心：將回憶寫入 SharedPreferences
+  Future<void> saveAndShowMemories() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final now = DateTime.now();
+      final String today = "${now.year}/${now.month.toString().padLeft(2, '0')}/${now.day.toString().padLeft(2, '0')}";
+
+      final Map<String, dynamic> memoryData = {
+        "date": today,
+        "topic": originalKeywords.isNotEmpty ? originalKeywords.first : "懷舊時光",
+        "content": originalKeywords.join("、"),
+        "elders": elderNames.isNotEmpty ? elderNames.join("、") : "未留名",
+        "imagePath": currentImageUrl,
+      };
+
+      List<String> history = prefs.getStringList('chat_memories') ?? [];
+      history.add(jsonEncode(memoryData));
+      await prefs.setStringList('chat_memories', history);
+
+      debugPrint("✅ 已成功儲存聊天紀錄！");
+
+      if (!_isDisposed) {
+        chatStatus = ChatStatus.chatMemories;
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint("❌ 儲存回憶失敗: $e");
+    }
+  }
+
   void playCurrentContextVoice(String lang, {bool isManualTap = false}) {
     if (_isDisposed) return;
     String textToPlay = aiGeneratedText;
@@ -384,22 +415,18 @@ class LifeScreenController extends ChangeNotifier {
     }
   }
 
-  // 💡 核心升級：組合上下文，讓 LLM 有充分的記憶可以萃取精準關鍵字
   Future<void> _processAudioAndExtractKeywords({String? manualText}) async {
     if (_isDisposed) return;
     String userMessage = manualText ?? "小時候我阿母都在灶腳煮那個蕃薯飯，配滷豆乾啦。";
     try {
-      // 1. 把之前的對話脈絡組裝起來，幫助生圖抓取準確場景
       String contextStr = chatHistory.map((msg) => "${msg['role'] == 'user' ? '長輩' : 'AI'}: ${msg['content']}").join("\n");
       String promptContext = contextStr.isNotEmpty ? "【之前的對話脈絡】\n$contextStr\n\n" : "";
       promptContext += "【AI最新提問】: $aiGeneratedText\n【長輩最新回答】: $userMessage\n\n請根據以上完整對話脈絡，提取出具體的懷舊畫面場景與視覺關鍵字。";
 
       if (chatStatus == ChatStatus.dislikeGenerating) {
-        // 如果是按爛修改，直接把長輩的最新反饋文字當成改圖 Prompt 傳進去！
         chatHistory.add({"role": "user", "content": userMessage});
         await triggerModifiedImageGeneration(userMessage);
       } else {
-        // 否則提取關鍵字進行正常生圖或延伸生圖
         final Map<String, dynamic> sceneData = await llmService.extractSceneData(promptContext);
         originalKeywords = List<String>.from(sceneData['keywords'] ?? []);
         dynamicScene = sceneData['scene']?.toString() ?? "台灣早期懷舊生活場景";
@@ -436,7 +463,6 @@ class LifeScreenController extends ChangeNotifier {
     } catch (e) { if (_isDisposed) return; chatStatus = ChatStatus.prepare; notifyListeners(); }
   }
 
-  // 💡 核心升級：直接套用長輩真實的抱怨/建議來改圖
   Future<void> triggerModifiedImageGeneration(String userFeedback) async {
     if (_isDisposed) return; await stopAudioSequence();
     try {
