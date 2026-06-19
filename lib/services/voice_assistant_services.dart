@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
@@ -13,6 +14,8 @@ import 'speech_services.dart';
 // =========================================================================
 class VoiceAssistantManager {
   final AudioRecorder _audioRecorder = AudioRecorder();
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  final ITTSService ttsService = YatingSpeechService();
   final ISTTService sttService = YatingSpeechService();
 
   bool _isRollingWakeWord = false;
@@ -21,6 +24,14 @@ class VoiceAssistantManager {
 
   int _wakeWordSessionId = 0;
   int _chatRecordSessionId = 0;
+
+  int _playSessionId = 0;
+
+// TTS 快取
+  final Map<String, File> _ttsCache = {};
+
+// 播放語言通知
+  void Function(String language)? onPlayingLanguageChanged;
 
   // ==========================================
   // 🎛️ VAD (音量偵測) 動態校正與防錯參數
@@ -363,6 +374,113 @@ class VoiceAssistantManager {
     } catch (e) {
       debugPrint("[助理] 結束錄音失敗: $e");
       onSpeechCompleted?.call([]);
+    }
+  }
+
+  Future<void> stopCurrentPlayback() async {
+    _playSessionId++;
+
+    try {
+      await _audioPlayer.stop();
+    } catch (_) {}
+  }
+
+  Future<void> playLanguageSequence(
+      String text, {
+        required List<String> languages,
+        int repeatCount = 1,
+        int gapMs = 300,
+      }) async {
+    if (text.isEmpty ||
+        kIsWeb ||
+        languages.isEmpty ||
+        repeatCount <= 0) {
+      return;
+    }
+
+    final currentSession = ++_playSessionId;
+
+    try {
+      final tempDir = await getTemporaryDirectory();
+
+      // 先建立快取
+      for (final lang in languages.toSet()) {
+        final cacheKey = '$lang::$text';
+
+        if (_ttsCache.containsKey(cacheKey)) {
+          continue;
+        }
+
+        final audioBytes = await ttsService.generateSpeech(text, lang);
+
+        if (audioBytes == null) {
+          debugPrint('[TTS失敗] $lang');
+          continue;
+        }
+
+        final safeLang = switch (lang) {
+          "台語" => "tw",
+          "中文" => "zh",
+          _ => lang,
+        };
+
+        final file = File(
+          '${tempDir.path}/tts_${safeLang}_${DateTime.now().millisecondsSinceEpoch}.wav',
+        );
+
+        await file.writeAsBytes(audioBytes, flush: true);
+
+        _ttsCache[cacheKey] = file;
+      }
+
+      // 開始播放
+      for (int repeat = 0; repeat < repeatCount; repeat++) {
+        for (final lang in languages) {
+
+          if (currentSession != _playSessionId) {
+            return;
+          }
+
+          final cacheKey = '$lang::$text';
+
+          final file = _ttsCache[cacheKey];
+
+          if (file == null) {
+            continue;
+          }
+
+          onPlayingLanguageChanged?.call(lang);
+
+          final completer = Completer<void>();
+
+          final subscription =
+          _audioPlayer.onPlayerComplete.listen((_) {
+            if (!completer.isCompleted) {
+              completer.complete();
+            }
+          });
+
+          await _audioPlayer.play(
+            DeviceFileSource(file.path),
+          );
+
+          await completer.future;
+
+          await subscription.cancel();
+
+          if (currentSession != _playSessionId) {
+            return;
+          }
+
+          if (gapMs > 0) {
+            await Future.delayed(
+              Duration(milliseconds: gapMs),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[播放語音序列失敗] $e');
     }
   }
 }

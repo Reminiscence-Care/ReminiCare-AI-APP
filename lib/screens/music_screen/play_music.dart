@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:remini_care_ai_app/screens/music_screen/question_generate.dart';
 import 'package:youtube_player_iframe/youtube_player_iframe.dart';
+import 'package:remini_care_ai_app/services/voice_assistant_services.dart';
 
 class PlayMusic extends StatefulWidget {
   final String embedUrl;
@@ -15,26 +16,71 @@ class _PlayMusicState extends State<PlayMusic> {
   late YoutubePlayerController _controller;
   String _selectedLanguage = '中文';
   final question = QuestionGenerate();
+  final VoiceAssistantManager _voiceAssistantManager = VoiceAssistantManager();
   late final List<String> questionAndSubQuestion = question.questionAndSubQuestionGenerate();
+  String _questionText = "";
+  bool _isPlayingSequence = false;
 
   @override
   void initState() {
     super.initState();
-    String? videoId = YoutubePlayerController.convertUrlToId(widget.embedUrl);
+
+    _init();
+  }
+
+  Future<void> _init() async {
+    String? videoId =
+    YoutubePlayerController.convertUrlToId(widget.embedUrl);
+
     _controller = YoutubePlayerController.fromVideoId(
       videoId: videoId ?? '',
       params: const YoutubePlayerParams(
-          showControls: true,
-          showFullscreenButton: true,
+        showControls: true,
+        showFullscreenButton: true,
       ),
     );
+
+    _questionText = questionAndSubQuestion.join(', ');
+
+    _voiceAssistantManager.onPlayingLanguageChanged =
+        (language) {
+      if (mounted) {
+        setState(() {
+          _selectedLanguage = language;
+        });
+      }
+    };
+
+    _isPlayingSequence = true;
+
+    await _voiceAssistantManager.playLanguageSequence(
+      _questionText,
+      languages: ["台語", "中文"],
+      repeatCount: 2,
+    );
+
+    _isPlayingSequence = false;
   }
 
   // 建立左側語言切換按鈕
   Widget _buildLanguageToggle(String label) {
     bool isSelected = _selectedLanguage == label;
     return GestureDetector(
-      onTap: () => setState(() => _selectedLanguage = label),
+      onTap: () async {
+        await _voiceAssistantManager.stopCurrentPlayback();
+
+        if (!mounted) return;
+
+        setState(() {
+          _selectedLanguage = label;
+        });
+
+        await _voiceAssistantManager.playLanguageSequence(
+          _questionText,
+          languages: [label],
+          repeatCount: 1,
+        );
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         margin: const EdgeInsets.only(bottom: 16),
@@ -52,6 +98,14 @@ class _PlayMusicState extends State<PlayMusic> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _voiceAssistantManager.stopCurrentPlayback();
+    _controller.close();
+
+    super.dispose();
   }
 
   @override
