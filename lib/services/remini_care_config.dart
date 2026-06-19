@@ -23,6 +23,11 @@ class ReminiCareConfig {
       hintText: 'sk-...'
     ),
     const ConfigField(
+      apiKey: 'OPENAI_API_KEY',
+      displayName: 'OPENAI API KEY (影像生成)',
+      hintText: 'sk-...'
+    ),
+    const ConfigField(
       apiKey: 'NCKU_TTS_TOKEN',
       displayName: 'NCKU TTS TOKEN (語音合成)',
       hintText: 'Token...'
@@ -73,6 +78,7 @@ class ReminiCareConfig {
 
   static String get nvidiaApiKey => _configs['NVIDIA_API_KEY'] ?? "";
   static String get siliconFlowApiKey => _configs['SILICONFLOW_API_KEY'] ?? "";
+  static String get openaiApiKey => _configs['OPENAI_API_KEY'] ?? "";
   static String get nckuTtsToken => _configs['NCKU_TTS_TOKEN'] ?? "";
   static String get nckuSttToken => _configs['NCKU_STT_TOKEN'] ?? "";
   static String get yatingApiKey => _configs['YATING_API_KEY'] ?? "";

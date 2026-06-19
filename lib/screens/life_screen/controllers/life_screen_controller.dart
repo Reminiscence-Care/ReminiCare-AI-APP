@@ -32,12 +32,16 @@ class LifeScreenController extends ChangeNotifier {
   final NvidiaLlmService llmService = NvidiaLlmService();
   final ISTTService sttService = YatingSpeechService();
 
-  final IImageGenService imageService = SiliconFlowImageService(
-    rawBaseUrl: "https://api.siliconflow.com/v1",
-    apiKeyProvider: () => ReminiCareConfig.siliconFlowApiKey,
-    generationModel: "Qwen/Qwen-Image",
-    editModel: "Qwen/Qwen-Image-Edit",
-    defaultNegativePrompt: "Simplified Chinese, deformed strokes",
+  // final IImageGenService imageService = SiliconFlowImageService(
+  //   rawBaseUrl: "https://api.siliconflow.com/v1",
+  //   apiKeyProvider: () => ReminiCareConfig.siliconFlowApiKey,
+  //   generationModel: "Qwen/Qwen-Image",
+  //   editModel: "Qwen/Qwen-Image-Edit",
+  //   defaultNegativePrompt: "Simplified Chinese, deformed strokes",
+  // );
+
+  final IImageGenService imageService = OpenAIImageService(
+    apiKeyProvider: () => ReminiCareConfig.openaiApiKey
   );
 
   final VoiceAssistantManager voiceManager = VoiceAssistantManager();

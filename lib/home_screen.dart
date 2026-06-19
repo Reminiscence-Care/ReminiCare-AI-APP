@@ -13,7 +13,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool _isConfigComplete() {
     return ReminiCareConfig.nvidiaApiKey.isNotEmpty &&
-        ReminiCareConfig.siliconFlowApiKey.isNotEmpty &&
+        (ReminiCareConfig.siliconFlowApiKey.isNotEmpty || ReminiCareConfig.openaiApiKey.isNotEmpty) &&
         ((ReminiCareConfig.nckuSttToken.isNotEmpty &&
             ReminiCareConfig.nckuTtsToken.isNotEmpty) ||
             ReminiCareConfig.yatingApiKey.isNotEmpty);

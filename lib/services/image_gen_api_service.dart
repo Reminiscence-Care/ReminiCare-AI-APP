@@ -41,28 +41,27 @@ abstract class BaseOpenAIImageService implements IImageGenService {
     this.baseUrl,
   });
 
-  /// 核心：動態實例化 OpenAIClient (支援原生或自訂的 URL, 如 SiliconFlow)
+  /// 動態實例化 OpenAIClient
   OpenAIClient get client {
     final String effectiveBaseUrl = baseUrl != null
-        ? (kIsWeb ? "https://corsproxy.io/?$baseUrl" : baseUrl!)
+        ? (kIsWeb ? "https://corsproxy.io" : baseUrl!)
         : "https://api.openai.com/v1";
 
     return OpenAIClient(
       config: OpenAIConfig(
         baseUrl: effectiveBaseUrl,
         authProvider: ApiKeyProvider(apiKeyProvider()),
-        timeout: const Duration(seconds: 30),
+        timeout: const Duration(seconds: 600), // 生圖時間較長，建議放寬至 45-60 秒
       ),
     );
   }
 
-  /// 讓子類別可以擴充 Prompt (例如 SiliconFlow 可以補上 Negative Prompt)
+  /// 讓子類別可以擴充 Prompt
   String buildPrompt(String scene, String era, String location) {
     return "A nostalgic real photography from $era $location, photorealistic, memory atmosphere, warm lighting. "
         "Detailed scene: $scene.";
   }
 
-  /// 🌟 共用的生圖邏輯：完全交由 openai_dart 處理，告別 JSON 手動解析！
   @override
   Future<String?> generateNostalgicImage({
     required String scene,
@@ -71,7 +70,6 @@ abstract class BaseOpenAIImageService implements IImageGenService {
     String location = "Taiwan",
   }) async {
     debugPrint("🔄 [ImageGen] 正在呼叫影像 API ($generationModel) 生成圖片...");
-
     final String finalPrompt = buildPrompt(scene, era, location);
 
     try {
@@ -84,20 +82,51 @@ abstract class BaseOpenAIImageService implements IImageGenService {
         ),
       );
 
-      final String? cloudImageUrl = response.data.first.url;
-      if (cloudImageUrl != null && cloudImageUrl.isNotEmpty) {
-        return await downloadAndSave(cloudImageUrl, prefix: "gen");
+      final imageResponse = response.data.first;
+
+      // 🌟 核心修正：同時相容 Base64 與 URL 回傳格式
+      if (imageResponse.b64Json != null && imageResponse.b64Json!.isNotEmpty) {
+        debugPrint("⚡ [ImageGen] 收到 Base64 影像數據，直接進行本地快取儲存...");
+        return await saveBase64Image(imageResponse.b64Json!, prefix: "gen");
+      } else if (imageResponse.url != null && imageResponse.url!.isNotEmpty) {
+        debugPrint("🌐 [ImageGen] 收到遠端圖片 URL，開始下載...");
+        return await downloadAndSave(imageResponse.url!, prefix: "gen");
       }
+
     } catch (e) {
       debugPrint("❌ [生圖失敗]: $e");
     }
     return null;
   }
 
-  /// 共用的圖片下載器
+  /// 處理最新的 Base64 直接儲存，免去二次網路請求
+  Future<String?> saveBase64Image(String base64String, {required String prefix}) async {
+    try {
+      final bytes = base64Decode(base64String);
+      if (kIsWeb) {
+        // Web 端無法直接操作 File System，直接回傳 Data URL 供 Image.network 或 Image.memory 渲染
+        return "data:image/png;base64,$base64String";
+      }
+
+      final directory = await getTemporaryDirectory();
+      final String outputPath = "${directory.path}/${prefix}_${DateTime.now().millisecondsSinceEpoch}.png";
+      final file = File(outputPath);
+      await file.writeAsBytes(bytes);
+      return outputPath;
+    } catch (e) {
+      debugPrint("❌ Base64 本地儲存失敗: $e");
+    }
+    return null;
+  }
+
+  /// 處理舊版模型或第三方相容端點的 URL 下載器
   Future<String?> downloadAndSave(String imageUrl, {required String prefix}) async {
     try {
-      final downloadUrl = kIsWeb ? "https://corsproxy.io/?$imageUrl" : imageUrl;
+      // 如果外層已經掛了 corsproxy 或者是自訂 baseUrl，imageUrl 有可能已經被處理過
+      // 這裡維持原有的 Web 代理邏輯，但加上防重複判定
+      final bool needsProxy = kIsWeb && !imageUrl.contains("corsproxy.io");
+      final downloadUrl = needsProxy ? "https://corsproxy.io" : imageUrl;
+
       final response = await http.get(Uri.parse(downloadUrl));
 
       if (response.statusCode == 200) {
@@ -116,7 +145,6 @@ abstract class BaseOpenAIImageService implements IImageGenService {
     return imageUrl;
   }
 }
-
 // ==========================================
 // 🎨 3. SiliconFlow 影像生成服務 (繼承自 Base Class)
 // ==========================================
