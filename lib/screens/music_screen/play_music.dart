@@ -56,7 +56,7 @@ class _PlayMusicState extends State<PlayMusic> {
     await _voiceAssistantManager.playLanguageSequence(
       _questionText,
       languages: ["台語", "中文"],
-      repeatCount: 2,
+      repeatCount: 1,
     );
 
     _isPlayingSequence = false;

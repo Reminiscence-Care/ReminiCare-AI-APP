@@ -1,11 +1,11 @@
 import 'package:remini_care_ai_app/services/music_services/music_api_service.dart';
+import 'package:remini_care_ai_app/services/nvidia_llm_service.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 class YoutubeApiServices implements MusicApiService {
-  YoutubeApiServices();
-
   Future<List<String>?> getArtistAndTracks(String query) async {
     final yt = YoutubeExplode();
+    final llm = NvidiaLlmService();
     print('正在搜尋 YouTube 關鍵字「$query」...\n');
 
     try {
@@ -23,22 +23,30 @@ class YoutubeApiServices implements MusicApiService {
 
       final List<String> searchResultsUrls = [];
 
-      final String artistName = video.author;
-      searchResultsUrls.add(artistName);
+      String artistName = video.author;
       print('頻道: $artistName');
-
-      final String trackName = video.title;
-      searchResultsUrls.add(trackName);
+      String trackName = video.title;
       print('標題: $trackName');
 
-      final String artistUrl = video.thumbnails.highResUrl;
-      searchResultsUrls.add(artistUrl);
-      print('縮圖: $artistUrl');
 
+
+      final String artistUrl = video.thumbnails.highResUrl;
+      print('縮圖: $artistUrl');
       final String trackUrl = video.url;
-      searchResultsUrls.add(trackUrl);
       print('網址: $trackUrl');
 
+      Map<String, dynamic> result = await llm.getSingerAndSongNameFromQuery("$artistName $trackName");
+
+      if(result.isNotEmpty && result['singer'].toString().isNotEmpty) {
+        artistName = result['singer'].toString();
+      }
+      if(result.isNotEmpty && result['song'].toString().isNotEmpty){
+        trackName = result['song'].toString();
+      }
+      searchResultsUrls.add(artistName);
+      searchResultsUrls.add(trackName);
+      searchResultsUrls.add(artistUrl);
+      searchResultsUrls.add(trackUrl);
       yt.close();
       return searchResultsUrls;
 

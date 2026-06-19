@@ -16,7 +16,7 @@ class SearchByTextsOrSpeech extends StatefulWidget {
 }
 
 class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
-  final TextEditingController _textController = TextEditingController(text: '我要你的愛');
+  final TextEditingController _textController = TextEditingController();
 
   String? artistName;
   String? trackName;
@@ -53,7 +53,9 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
 
     _voiceManager.onEndChatFlow = () async {
       await _voiceManager.stopActiveAudioOperations();
-      _navigateToNextPage();
+      if (speechText != null && speechText!.isNotEmpty) {
+        _navigateToNextPage();
+      }
     };
 
     _voiceManager.startBackgroundWakeWordCycle();
@@ -84,17 +86,16 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
     if (fullTranscript.isNotEmpty) {
       speechText = fullTranscript;
       _textController.text = fullTranscript;
+      await _setEmbedUrls(fullTranscript);
       _navigateToNextPage();
     } else {
+      _showEmptyWarning();
       _voiceManager.checkCompletedCommands = false;
       _voiceManager.startBackgroundWakeWordCycle();
     }
   }
 
   void _navigateToNextPage() async {
-    if(speechText == null) speechText = "";
-    await _setEmbedUrls(speechText!);
-
     final safeArtist = artistName ?? '未知歌手';
     final safeTrack = trackName ?? '未知歌曲';
     final safeLang = languageLabel ?? '國語歌';
@@ -117,6 +118,28 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
     if (mounted) context.push(uri);
   }
 
+  void _showEmptyWarning() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.lightbulb_outline, color: Colors.white, size: 28),
+            SizedBox(width: 10),
+            Text(
+              "請先輸入或說出想聽的歌哦！",
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFFFFA726), // 溫和的橘色，不會像紅色那麼有警告感
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        margin: const EdgeInsets.only(bottom: 40, left: 20, right: 20),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
   @override
   void dispose() {
     _textController.dispose();
@@ -232,11 +255,17 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
             autofocus: true,
             textInputAction: TextInputAction.search,
             onSubmitted: (String value) async {
-              if (value.trim().isEmpty) return;
+              if (value.trim().isEmpty) {
+                _showEmptyWarning();
+                return;
+              }
+              speechText = value;
               await _setEmbedUrls(value);
               _navigateToNextPage();
             },
             decoration: InputDecoration(
+              hintText: "請在此輸入歌手及歌名，例如: 葛蘭 我要你的愛",
+              hintStyle: const TextStyle(color: Colors.black38, fontSize: 18),
               filled: true,
               fillColor: const Color(0xFFFDE065),
               contentPadding: const EdgeInsets.symmetric(vertical: 24),

@@ -15,7 +15,7 @@ class SearchAndRecommendation extends StatefulWidget {
 class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
   final NvidiaLlmService _llmService = NvidiaLlmService();
   final ScrollController _scrollController = ScrollController();
-  List<String> recommendationSongsName = [];
+  List<Map<String, String>> recommendationSongsName = [];
   List<Map<String, String>> songs = [];
 
   bool _isLoading = true;
@@ -24,8 +24,8 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
     try {
       recommendationSongsName = await _llmService.recommendationSongsName(widget.languageLabel);
 
-      for (String name in recommendationSongsName) {
-        await _getEmbedUrls(name);
+      for (var item in recommendationSongsName) {
+        await _getEmbedUrls(item['singer'] ?? "", item['song'] ?? "");
       }
     } catch (e) {
       print("抓取歌曲資料發生錯誤: $e");
@@ -38,9 +38,9 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
     }
   }
 
-  Future<void> _getEmbedUrls(String query) async {
+  Future<void> _getEmbedUrls(String singer, String song) async {
     final api = YoutubeApiServices();
-    final List<String>? searchResults = await api.getArtistAndTracks(query);
+    final List<String>? searchResults = await api.getArtistAndTracks("$singer $song");
 
     if (searchResults != null && searchResults.length >= 4) {
       String artistName = searchResults[0];
@@ -49,9 +49,9 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
       String trackUrl = searchResults[3];
 
       songs.add({
-        "artistName": artistName,
+        "artistName": singer,
         "artistUrl": artistUrl,
-        "trackName": trackName,
+        "trackName": song,
         "trackUrl": trackUrl,
       });
       print("成功加入: $trackName");

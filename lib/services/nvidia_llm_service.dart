@@ -192,7 +192,14 @@ class NvidiaLlmService {
     return defaultResult;
   }
 
-  Future<List<String>> recommendationSongsName(String? language) async {
+  List<Map<String, String>> _getCleanRecommendationSongs(String rawOutput) {
+    final List<dynamic> decoded = jsonDecode(rawOutput);
+    return decoded.map((item) {
+      return Map<String, String>.from(item as Map);
+    }).toList();
+  }
+
+  Future<List<Map<String, String>>> recommendationSongsName(String? language) async {
     try {
       final response = await _client.chat.completions.create(
         ChatCompletionCreateRequest(
@@ -201,7 +208,7 @@ class NvidiaLlmService {
           maxTokens: 1000,
           messages: [
             ChatMessage.system(SONG_RECOMMENDATION_PROMPT.replaceAll("\$language", language ?? "國語")),
-            ChatMessage.user("請挑選十首老歌的歌名給我。(隨機碼：${DateTime.now().millisecondsSinceEpoch})"),
+            ChatMessage.user("請挑選十首老歌的歌名及歌手名給我。(${DateTime.now().millisecondsSinceEpoch})"),
           ],
         ),
       );
@@ -215,8 +222,7 @@ class NvidiaLlmService {
       }
 
       try {
-        final List<dynamic> decoded = jsonDecode(rawOutput);
-        return decoded.map((e) => e.toString()).toList();
+        return _getCleanRecommendationSongs(rawOutput);
       } catch (e) {
         print("[NVIDIA] JSON 解析失敗，LLM 回傳的原始字串為: $rawOutput");
         return [];
@@ -225,6 +231,40 @@ class NvidiaLlmService {
     } catch(e) {
       print("[NVIDIA] 歌曲推薦錯誤: $e");
       return [];
+    }
+  }
+
+  Future<Map<String, dynamic>> getSingerAndSongNameFromQuery(String query) async {
+    try {
+      final response = await _client.chat.completions.create(
+        ChatCompletionCreateRequest(
+          model: _model,
+          temperature: 0.1,
+          maxTokens: 1000,
+          messages: [
+            ChatMessage.system(SONG_INFO_EXTRACTOR_PROMPT),
+            ChatMessage.user("請告訴我根據以下資料，這首歌是哪位歌手的，以及歌名是甚麼。資料: $query"),
+          ],
+        ),
+      );
+      String rawOutput = (response.text ?? '').trim();
+
+      if (rawOutput.startsWith("```json")) {
+        rawOutput = rawOutput.replaceAll("```json", "").replaceAll("```", "").trim();
+      } else if (rawOutput.startsWith("```")) {
+        rawOutput = rawOutput.replaceAll("```", "").trim();
+      }
+
+      try {
+        final Map<String, dynamic> decode = jsonDecode(rawOutput);
+        return decode;
+      } catch (e) {
+        print("[NVIDIA] JSON 解析失敗，LLM 回傳的原始字串為: $rawOutput");
+        return {};
+      }
+    } catch(e) {
+      print("取得歌手及歌名時發生未預期錯誤");
+      return {};
     }
   }
 }

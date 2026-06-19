@@ -53,7 +53,7 @@ const String INITIAL_QUESTION_PROMPT = """
 - 語氣要像對自己的阿公阿嬤說話（例如：阿嬤，以前你們那個年代，過年都怎麼準備年夜飯的呀？）。
 """;
 
-String SONG_RECOMMENDATION_PROMPT = """
+const String SONG_RECOMMENDATION_PROMPT = """
 # Role
 你是一個專業的 \$language 老歌推薦人，要推薦歌給老人聽。
 
@@ -61,10 +61,22 @@ String SONG_RECOMMENDATION_PROMPT = """
 請「隨機」找十首民國 40~70 年代的 \$language 老歌
 
 # Restrictions
-- 只輸出歌名，絕對不輸出其他任何東西。
+- 只輸出歌名與歌手名稱，絕對不輸出其他任何東西。
 - 請確認這些歌是真實存在的。
 
 # 輸出範例
-必須推導嚴格輸出為 JSON 陣列格式，例如 ["我要你的愛", "夜上海", "明日之歌"]。
+必須推導嚴格輸出為 JSON 陣列格式，例如 [{"singer":"葛蘭", song:"我要你的愛"}, {"singer": "周璇", "song": "夜上海"}, {"singer": "靜婷", "song": "明日之歌"}]。
 絕對不要包含任何 Markdown 標記（如 ```json）、解釋說明或其他多餘文字。
+""";
+
+const String SONG_INFO_EXTRACTOR_PROMPT = """
+# Role
+你是一位歌曲資料查詢家，請根據輸入的資料回傳該歌曲的歌手名及歌名。
+
+# Restrictions
+- 只輸出歌名與歌手名稱，絕對不輸出其他任何東西。
+- 請確認資料正確
+
+#輸出格式:
+{"singer": "周璇", "song": "夜上海"}
 """;
