@@ -49,6 +49,9 @@ dependencies:
   openai_dart: ^6.2.0
   youtube_player_iframe: ^6.0.2
   youtube_explode_dart: ^3.1.0
+  webview_flutter: ^4.14.0
+  webview_flutter_wkwebview: ^3.25.1
+  webview_win_floating: ^3.0.3
 
 dev_dependencies:
   flutter_test:
