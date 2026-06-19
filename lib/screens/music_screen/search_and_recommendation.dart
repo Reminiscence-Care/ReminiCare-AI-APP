@@ -161,7 +161,7 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
                         color: const Color(0xFFFFF59D), // 淺黃色
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Text('歌手名字', style: TextStyle(fontSize: 18, color: Colors.black87)),
+                      child: const Text('歌手名字', style: TextStyle(fontSize: 26, color: Colors.black87)),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -174,7 +174,7 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
                         color: const Color(0xFFFFF59D), // 淺黃色
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Text('歌名', style: TextStyle(fontSize: 18, color: Colors.black87)),
+                      child: const Text('歌名', style: TextStyle(fontSize: 26, color: Colors.black87)),
                     ),
                   ),
                   const SizedBox(width: 80), // 預留給右邊聽歌按鈕的寬度
@@ -223,7 +223,7 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
                           child: Text(
                             song['artistName'] ?? '未知歌手',
                             textAlign: TextAlign.center,
-                            style: const TextStyle(fontSize: 20, color: Colors.black87),
+                            style: const TextStyle(fontSize: 30, color: Colors.black87),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -236,7 +236,7 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
                           child: Text(
                             song['trackName'] ?? '未知歌曲',
                             textAlign: TextAlign.center,
-                            style: const TextStyle(fontSize: 20, color: Colors.black87),
+                            style: const TextStyle(fontSize: 30, color: Colors.black87),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -257,7 +257,7 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
                               color: const Color(0xFFFDE065), // 鮮黃色
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: const Text('聽歌', style: TextStyle(fontSize: 18, color: Colors.black87)),
+                            child: const Text('聽歌', style: TextStyle(fontSize: 20, color: Colors.black87)),
                           ),
                         ),
                       ],
