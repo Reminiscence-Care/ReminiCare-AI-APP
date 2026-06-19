@@ -32,7 +32,7 @@ class LifeScreenController extends ChangeNotifier {
   final NvidiaLlmService llmService = NvidiaLlmService();
   final ISTTService sttService = YatingSpeechService();
 
-  final UniversalImageService imageService = UniversalImageService(
+  final IImageGenService imageService = SiliconFlowImageService(
     rawBaseUrl: "https://api.siliconflow.com/v1",
     apiKeyProvider: () => ReminiCareConfig.siliconFlowApiKey,
     generationModel: "Qwen/Qwen-Image",
