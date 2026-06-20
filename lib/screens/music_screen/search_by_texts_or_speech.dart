@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -18,12 +19,9 @@ class SearchByTextsOrSpeech extends StatefulWidget {
 class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
   final TextEditingController _textController = TextEditingController();
 
-  String? artistName;
-  String? trackName;
-  String? artistUrl;
-  String? trackUrl;
-  String? languageLabel;
+  List<Map<String, String>> top5Songs = [];
 
+  String? languageLabel;
   final ISTTService sttService = YatingSpeechService();
   final _voiceManager = VoiceAssistantManager();
   bool _isRecording = false;
@@ -89,25 +87,21 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
       await _setEmbedUrls(fullTranscript);
       _navigateToNextPage();
     } else {
-      _showEmptyWarning();
+      _showEmptyWarning("請先說出想聽的歌哦！");
       _voiceManager.checkCompletedCommands = false;
       _voiceManager.startBackgroundWakeWordCycle();
     }
   }
 
   void _navigateToNextPage() async {
-    final safeArtist = artistName ?? '未知歌手';
-    final safeTrack = trackName ?? '未知歌曲';
+    if(top5Songs.isEmpty) {
+      _showEmptyWarning("搜尋不到結果，請重新搜尋!");
+      return;
+    }
     final safeLang = languageLabel ?? '國語歌';
-    final safeArtistUrl = artistUrl ?? '';
-    final safeTrackUrl = trackUrl ?? '';
-
     final queryParams = {
-      'artistName': safeArtist,
-      'trackName': safeTrack,
       'languageLabel': safeLang,
-      'artistUrl': safeArtistUrl,
-      'trackUrl': safeTrackUrl,
+      'songsData': jsonEncode(top5Songs),
     };
 
     final uri = Uri(
@@ -118,16 +112,16 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
     if (mounted) context.push(uri);
   }
 
-  void _showEmptyWarning() {
+  void _showEmptyWarning(String warningStr) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Row(
+        content: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.lightbulb_outline, color: Colors.white, size: 28),
             SizedBox(width: 10),
             Text(
-              "請先輸入或說出想聽的歌哦！",
+              warningStr,
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
             ),
           ],
@@ -149,13 +143,12 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
 
   Future<void> _setEmbedUrls(String query) async {
     final api = YoutubeApiServices();
-    final List<String>? searchResults = await api.getArtistAndTracks(query);
+    final List<Map<String, String>>? searchResults = await api.getTop5ArtistAndTracks(query);
 
-    if (searchResults != null && searchResults.length >= 4) {
-      artistName = searchResults[0];
-      trackName = searchResults[1];
-      artistUrl = searchResults[2];
-      trackUrl = searchResults[3];
+    if (searchResults != null && searchResults.isNotEmpty) {
+      top5Songs = searchResults;
+    } else {
+      top5Songs = [];
     }
   }
 
@@ -256,7 +249,7 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
             textInputAction: TextInputAction.search,
             onSubmitted: (String value) async {
               if (value.trim().isEmpty) {
-                _showEmptyWarning();
+                _showEmptyWarning("請先輸入想聽的歌哦！");
                 return;
               }
               speechText = value;

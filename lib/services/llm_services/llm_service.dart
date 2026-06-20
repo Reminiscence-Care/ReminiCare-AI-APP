@@ -165,7 +165,7 @@ class LlmService {
   Future<List<Map<String, String>>> recommendationSongsName(String? language) async {
     final response = await request(
       SONG_RECOMMENDATION_PROMPT.replaceAll("\$language", language ?? "國語"),
-      "請挑選十首老歌的歌名及歌手名給我。(${DateTime.now().millisecondsSinceEpoch})",
+      "請挑選十首老歌的歌名及歌手名給我。(隨機碼:${DateTime.now().millisecondsSinceEpoch})",
       [],
       temperature: 0.9,
       maxTokens: 1000,

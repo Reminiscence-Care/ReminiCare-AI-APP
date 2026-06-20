@@ -60,12 +60,9 @@ final GoRouter _router = GoRouter(
     GoRoute(
       path: '/search_results',
       builder: (context, state) {
-        final artistName = state.uri.queryParameters['artistName'];
-        final trackName = state.uri.queryParameters['trackName'];
-        final languageLabel = state.uri.queryParameters['languageLabel'];
-        final artistUrl = state.uri.queryParameters['artistUrl'];
-        final trackUrl = state.uri.queryParameters['trackUrl'];
-        return SearchResults(artistName: artistName, trackName: trackName, artistUrl: artistUrl, trackUrl: trackUrl, languageLabel: languageLabel);
+        final languageLabel = state.uri.queryParameters['languageLabel']!;
+        final songsData = state.uri.queryParameters['songsData']!;
+        return SearchResults(languageLabel: languageLabel, songsDataJson: songsData);
       }
     ),
     GoRoute(
