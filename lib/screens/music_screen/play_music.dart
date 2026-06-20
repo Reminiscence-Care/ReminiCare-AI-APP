@@ -1,6 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:remini_care_ai_app/screens/music_screen/question_generate.dart';
+import 'package:remini_care_ai_app/screens/question_generator.dart';
 import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 import 'package:remini_care_ai_app/services/voice_assistant_services.dart';
 
@@ -15,9 +15,8 @@ class PlayMusic extends StatefulWidget {
 class _PlayMusicState extends State<PlayMusic> {
   late YoutubePlayerController _controller;
   String _selectedLanguage = '中文';
-  final question = QuestionGenerate();
   final VoiceAssistantManager _voiceAssistantManager = VoiceAssistantManager();
-  late final List<String> questionAndSubQuestion = question.questionAndSubQuestionGenerate();
+  late final List<String> questionAndSubQuestion = TopicQuestionGenerator.generateMusicQuestion();
   String _questionText = "";
   bool _isPlayingSequence = false;
 

@@ -12,20 +12,14 @@ import 'package:remini_care_ai_app/services/image_gen_api_service.dart';
 import 'package:remini_care_ai_app/services/llm_services/nvidia_llm_service.dart';
 import 'package:remini_care_ai_app/services/speech_services.dart';
 import 'package:remini_care_ai_app/services/remini_care_config.dart';
+import 'package:remini_care_ai_app/screens/question_generator.dart';
 
 enum ChatStatus {
-  // --- 自我介紹狀態 ---
   introPrepare, introRecording, introProcessing, introNameExtracted, introTransition,
-  // --- 原有的對話狀態 ---
   prepare, chatting, generating, evaluation,
   dislikePrepare, dislikeChatting, dislikeGenerating, dislikeEvaluation,
   likePrepare, likeChatting, likeGenerating,
-  // --- 輪流與總結狀態 ---
-  nextElderPrompt,
-  generatingNextTopic,
-  roundSummary,
-  chatSummary,
-  chatMemories // 🌟 新增：最終儲存完畢的回憶展示狀態
+  nextElderPrompt, generatingNextTopic, roundSummary, chatSummary, chatMemories
 }
 
 class LifeScreenController extends ChangeNotifier {
@@ -40,23 +34,24 @@ class LifeScreenController extends ChangeNotifier {
     defaultNegativePrompt: "Simplified Chinese, deformed strokes",
   );
 
-  // final IImageGenService imageService = OpenAIImageService(
-  //   apiKeyProvider: () => ReminiCareConfig.openaiApiKey
-  // );
-
   final VoiceAssistantManager voiceManager = VoiceAssistantManager();
 
   ChatStatus chatStatus = ChatStatus.introPrepare;
   bool _isDisposed = false;
 
-  // --- 長輩名單與輪流機制 ---
   List<String> elderNames = [];
   String currentElderName = "";
   List<String> unspokenElders = [];
   String currentPromptElder = "";
   ChatStatus currentChatPhase = ChatStatus.chatting;
 
-  String aiGeneratedText = "";
+  // 💡 替換：拆分為主標題與副標題
+  String currentMainQuestion = "";
+  String currentSubQuestion = "";
+
+  // 提供給 TTS 或整體讀取的完整問句
+  String get fullQuestionText => "$currentMainQuestion $currentSubQuestion".trim();
+
   String selectedLanguage = "台語";
   bool isLoading = false;
   bool isExtractingKeywords = false;
@@ -137,7 +132,6 @@ class LifeScreenController extends ChangeNotifier {
     }
   }
 
-  // --- Intro Logic ---
   void startIntroRecording() async { await stopAudioSequence(); chatStatus = ChatStatus.introRecording; notifyListeners(); voiceManager.startChatFlow(); }
   void stopIntroRecordingManually() async => await voiceManager.forceEndChat();
   Future<void> _handleIntroSpeechCompleted(List<String> paths) async {
@@ -146,17 +140,13 @@ class LifeScreenController extends ChangeNotifier {
     String chunkText = "";
     for (String path in paths) {
       String? t = await sttService.transcribe(path);
-      try {
-        File(path).deleteSync();
-      } catch (_) {}
-
-      if (t != null && t.trim().isNotEmpty) chunkText += t; }
+      try { File(path).deleteSync(); } catch (_) {}
+      if (t != null && t.trim().isNotEmpty) chunkText += t;
+    }
     if (chunkText.isNotEmpty) {
       try {
         currentElderName = await llmService.extractElderName(chunkText);
-      } catch (e) {
-        currentElderName = "長輩";
-      }
+      } catch (e) { currentElderName = "長輩"; }
     } else {
       currentElderName = "無名氏";
     }
@@ -174,9 +164,7 @@ class LifeScreenController extends ChangeNotifier {
     chatStatus = ChatStatus.introTransition; notifyListeners();
     await Future.delayed(const Duration(seconds: 3));
 
-    // 💡 準備開始新話題：重置發言名單
     _resetUnspokenElders();
-
     chatStatus = ChatStatus.prepare;
     await fetchInitialQuestion();
 
@@ -184,25 +172,19 @@ class LifeScreenController extends ChangeNotifier {
     voiceManager.startBackgroundWakeWordCycle(); notifyListeners();
   }
 
-  // 💡 輔助方法：重置發言名單
   void _resetUnspokenElders() {
     if (elderNames.isNotEmpty) {
-      // 打亂名單，讓每次第一個人都不一樣
       unspokenElders = List.from(elderNames)..shuffle();
-      // 抽出第一個人作為這輪的發言者
       currentPromptElder = unspokenElders.removeAt(0);
     } else {
-      currentPromptElder = ""; // 如果沒有介紹任何人，就保持空
+      currentPromptElder = "";
     }
   }
 
   void startTimer() {
     recordTimer?.cancel();
     recordTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_isDisposed) {
-        timer.cancel();
-        return;
-      }
+      if (_isDisposed) { timer.cancel(); return; }
       recordSeconds++;
       notifyListeners();
       if (recordSeconds >= int.parse(ReminiCareConfig.maxRecordLimit)) handleEndChat();
@@ -289,12 +271,10 @@ class LifeScreenController extends ChangeNotifier {
     }
     else if (chatStatus == ChatStatus.likeChatting) {
       if (unspokenElders.isNotEmpty) {
-        // 💡 還有長輩沒發言過，切換到 nextElderPrompt 狀態
         currentPromptElder = unspokenElders.removeAt(0);
         chatStatus = ChatStatus.nextElderPrompt; notifyListeners();
         playCurrentContextVoice();
       } else {
-        // 💡 所有長輩都發言過了，準備進入下一個循環 (總結並產生新話題)
         chatStatus = ChatStatus.generatingNextTopic; notifyListeners();
         _generateNextTopicAndSummary(manualText: cleanTextForLLM);
       }
@@ -303,46 +283,58 @@ class LifeScreenController extends ChangeNotifier {
 
   Future<void> fetchInitialQuestion() async {
     if (_isDisposed) return; isLoading = true; notifyListeners();
-    try {
-      final String rawQuestion = await llmService.generateInitialQuestion();
-      // 💡 將長輩名字安插進問題中
-      aiGeneratedText = currentPromptElder.isNotEmpty ? "$currentPromptElder， $rawQuestion" : rawQuestion;
-    } catch (e) {
-      aiGeneratedText = currentPromptElder.isNotEmpty ? "$currentPromptElder，哈囉！小時候家裡最常吃什麼呢？" : "哈囉！小時候家裡最常吃什麼呢？";
+
+    final List<String> q = TopicQuestionGenerator.generateLifeQuestion();
+    final String rawMain = q[0];
+    final String rawSub = q[1];
+
+    currentMainQuestion = currentPromptElder.isNotEmpty ? "$currentPromptElder， $rawMain" : rawMain;
+    currentSubQuestion = rawSub;
+
+    if (!_isDisposed) {
+      isLoading = false;
+      notifyListeners();
+      playCurrentContextVoice();
     }
-    finally { if (!_isDisposed) { isLoading = false; notifyListeners(); playCurrentContextVoice(); } }
   }
 
   Future<void> handleLikeAndGenerateExtension() async {
     if (_isDisposed) return; isLoading = true; chatStatus = ChatStatus.likePrepare; notifyListeners();
     try {
-      String previousQuestion = aiGeneratedText; String lastUserMessage = "";
+      String previousQuestion = fullQuestionText;
+      String lastUserMessage = "";
       for (var msg in chatHistory.reversed) { if (msg['role'] == 'user') { lastUserMessage = msg['content'] ?? ""; break; } }
       if (lastUserMessage.isEmpty) lastUserMessage = accumulatedChatText;
       final String rawQuestion = await llmService.generateExtendedQuestion(previousQuestion, lastUserMessage);
 
-      // 💡 判斷是否還有長輩未發言，有的話在按「像」之後的這題，也 Cue 下一個長輩
       if(unspokenElders.isNotEmpty) {
         currentPromptElder = unspokenElders.removeAt(0);
-        aiGeneratedText = "$currentPromptElder， $rawQuestion";
+        currentMainQuestion = "$currentPromptElder， $rawQuestion";
       } else {
-        aiGeneratedText = rawQuestion;
+        currentMainQuestion = rawQuestion;
       }
+      currentSubQuestion = ""; // LLM延伸話題暫無副標
 
     } catch (e) {
-      aiGeneratedText = currentPromptElder.isNotEmpty ? "$currentPromptElder，這張照片有讓您想起更多小時候的趣味往事嗎？" : "這張照片有讓您想起更多小時候的趣味往事嗎？";
+      currentMainQuestion = currentPromptElder.isNotEmpty ? "$currentPromptElder，這張照片有讓您想起更多小時候的趣味往事嗎？" : "這張照片有讓您想起更多小時候的趣味往事嗎？";
+      currentSubQuestion = "";
     }
     finally { if (!_isDisposed) { isLoading = false; notifyListeners(); playCurrentContextVoice(); } }
   }
 
   Future<void> _generateNextTopicAndSummary({required String manualText}) async {
     try {
-      String previousQuestion = aiGeneratedText;
+      String previousQuestion = fullQuestionText;
       String extendedQuestion = await llmService.generateExtendedQuestion(previousQuestion, manualText);
       chatHistory.add({"role": "user", "content": manualText});
       chatHistory.add({"role": "assistant", "content": extendedQuestion});
-      aiGeneratedText = extendedQuestion;
-    } catch (e) { aiGeneratedText = "剛剛聊得很棒！大家還有想到什麼有趣的事嗎？"; }
+
+      currentMainQuestion = extendedQuestion;
+      currentSubQuestion = "";
+    } catch (e) {
+      currentMainQuestion = "剛剛聊得很棒！大家還有想到什麼有趣的事嗎？";
+      currentSubQuestion = "";
+    }
     finally {
       if (!_isDisposed) {
         chatStatus = ChatStatus.roundSummary; notifyListeners();
@@ -353,15 +345,10 @@ class LifeScreenController extends ChangeNotifier {
   }
 
   void continueChatFromSummary() {
-    // 💡 準備開始新話題：重置發言名單
     _resetUnspokenElders();
-
-    chatStatus = ChatStatus.prepare; // 這裡改成 prepare 而非 likePrepare，因為是一個全新的開始
+    chatStatus = ChatStatus.prepare;
     accumulatedChatText = "";
-
-    // 重新取得一個新問題 (會套用新的 currentPromptElder)
     fetchInitialQuestion();
-
     voiceManager.checkCompletedCommands = false;
     voiceManager.startBackgroundWakeWordCycle();
   }
@@ -372,7 +359,6 @@ class LifeScreenController extends ChangeNotifier {
     voiceManager.stopActiveAudioOperations();
   }
 
-  // 🌟 核心：將回憶寫入 SharedPreferences
   Future<void> saveAndShowMemories() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -391,8 +377,6 @@ class LifeScreenController extends ChangeNotifier {
       history.add(jsonEncode(memoryData));
       await prefs.setStringList('chat_memories', history);
 
-      debugPrint("✅ 已成功儲存聊天紀錄！");
-
       if (!_isDisposed) {
         chatStatus = ChatStatus.chatMemories;
         notifyListeners();
@@ -407,7 +391,7 @@ class LifeScreenController extends ChangeNotifier {
   }) async {
     if (_isDisposed) return;
 
-    String textToPlay = aiGeneratedText;
+    String textToPlay = fullQuestionText;
 
     if (chatStatus == ChatStatus.evaluation ||
         chatStatus == ChatStatus.dislikeEvaluation) {
@@ -426,7 +410,7 @@ class LifeScreenController extends ChangeNotifier {
     if (isManualTap) {
       await voiceManager.playLanguageSequence(
         textToPlay,
-        languages: [selectedLanguage], // 改為直接使用 class 變數
+        languages: [selectedLanguage],
         repeatCount: 1,
       );
     } else {
@@ -448,7 +432,7 @@ class LifeScreenController extends ChangeNotifier {
     try {
       String contextStr = chatHistory.map((msg) => "${msg['role'] == 'user' ? '長輩' : 'AI'}: ${msg['content']}").join("\n");
       String promptContext = contextStr.isNotEmpty ? "【之前的對話脈絡】\n$contextStr\n\n" : "";
-      promptContext += "【AI最新提問】: $aiGeneratedText\n【長輩最新回答】: $userMessage\n\n請根據以上完整對話脈絡，提取出具體的懷舊畫面場景與視覺關鍵字。";
+      promptContext += "【AI最新提問】: $fullQuestionText\n【長輩最新回答】: $userMessage\n\n請根據以上完整對話脈絡，提取出具體的懷舊畫面場景與視覺關鍵字。";
 
       if (chatStatus == ChatStatus.dislikeGenerating) {
         chatHistory.add({"role": "user", "content": userMessage});
@@ -472,11 +456,12 @@ class LifeScreenController extends ChangeNotifier {
       }
     } catch (e) {
       if (_isDisposed) return;
-      aiGeneratedText = "阿公阿嬤拍謝，我剛才不小心恍神了，可以再跟我說一次嗎？";
+      currentMainQuestion = "阿公阿嬤拍謝，我剛才不小心恍神了，可以再跟我說一次嗎？";
+      currentSubQuestion = "";
       chatStatus = chatStatus == ChatStatus.dislikeGenerating ? ChatStatus.dislikePrepare : ChatStatus.prepare;
       notifyListeners();
       await voiceManager.playLanguageSequence(
-        aiGeneratedText,
+        fullQuestionText,
         languages: ["台語", "中文"],
         repeatCount: 2,
       );

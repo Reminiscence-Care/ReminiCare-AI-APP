@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:remini_care_ai_app/services/remini_care_config.dart';
 
 import 'speech_services.dart';
@@ -27,10 +29,18 @@ class VoiceAssistantManager {
 
   int _playSessionId = 0;
 
-// TTS 快取
+  // ==========================================
+  // 💾 TTS 持久化快取與容量管理
+  // ==========================================
+  static const String _spKeyTtsCache = "tts_audio_cache_index_v1";
+  static const int _maxCacheSizeBytes = 100 * 1024 * 1024; // 預設 100MB
+  
+  bool _cacheInitialized = false;
   final Map<String, File> _ttsCache = {};
+  // 儲存中繼資料：{ cacheKey: { "path": string, "lastUsed": int, "size": int } }
+  Map<String, dynamic> _cacheMetadata = {};
 
-// 播放語言通知
+  // 播放語言通知
   void Function(String language)? onPlayingLanguageChanged;
 
   // 💡 新增：背景辨識文字廣播！讓 Controller 可以自訂攔截「下一位」、「開始介紹」等口令
@@ -66,6 +76,89 @@ class VoiceAssistantManager {
 
   bool checkCompletedCommands = false;
   bool get isListening => _isRollingWakeWord || _isRollingChatRecord;
+
+  // ==========================================
+  // 🛠️ 初始化與快取管理邏輯
+  // ==========================================
+  
+  Future<void> _initCacheIfNeeded() async {
+    if (_cacheInitialized) return;
+    
+    try {
+      final sp = await SharedPreferences.getInstance();
+      final String? jsonStr = sp.getString(_spKeyTtsCache);
+      
+      if (jsonStr != null) {
+        final Map<String, dynamic> decoded = jsonDecode(jsonStr);
+        _cacheMetadata = decoded;
+        
+        // 載入實際存在的檔案到記憶體
+        _cacheMetadata.forEach((key, data) {
+          final String path = data['path'];
+          final file = File(path);
+          if (file.existsSync()) {
+            _ttsCache[key] = file;
+          }
+        });
+        
+        // 清理不存在的紀錄
+        _cacheMetadata.removeWhere((key, _) => !_ttsCache.containsKey(key));
+      }
+      
+      debugPrint("📦 [TTS 快取] 已初始化，現有項目: ${_ttsCache.length} 個");
+      _cacheInitialized = true;
+    } catch (e) {
+      debugPrint("[TTS 快取] 初始化失敗: $e");
+      _cacheMetadata = {};
+      _cacheInitialized = true;
+    }
+  }
+
+  Future<void> _saveCacheIndex() async {
+    try {
+      final sp = await SharedPreferences.getInstance();
+      await sp.setString(_spKeyTtsCache, jsonEncode(_cacheMetadata));
+    } catch (e) {
+      debugPrint("[TTS 快取] 儲存索引失敗: $e");
+    }
+  }
+
+  Future<void> _checkAndCleanupCache(int newFileSize) async {
+    int currentTotalSize = 0;
+    _cacheMetadata.values.forEach((data) {
+      currentTotalSize += (data['size'] as int? ?? 0);
+    });
+
+    if (currentTotalSize + newFileSize <= _maxCacheSizeBytes) return;
+
+    debugPrint("🧹 [TTS 快取] 容量超出限制，開始清理舊檔案...");
+
+    // 按最後使用時間排序 (LRU)
+    final sortedKeys = _cacheMetadata.keys.toList()
+      ..sort((a, b) {
+        final lastA = _cacheMetadata[a]?['lastUsed'] ?? 0;
+        final lastB = _cacheMetadata[b]?['lastUsed'] ?? 0;
+        return lastA.compareTo(lastB);
+      });
+
+    for (final key in sortedKeys) {
+      if (currentTotalSize + newFileSize <= _maxCacheSizeBytes * 0.8) break; // 清理到 80%
+
+      final data = _cacheMetadata[key];
+      if (data != null) {
+        final int size = data['size'] ?? 0;
+        final file = _ttsCache[key];
+        if (file != null && file.existsSync()) {
+          try { file.deleteSync(); } catch (_) {}
+        }
+        _ttsCache.remove(key);
+        _cacheMetadata.remove(key);
+        currentTotalSize -= size;
+        debugPrint("🗑️ 已刪除舊快取: $key");
+      }
+    }
+    await _saveCacheIndex();
+  }
 
   void forceRecalibrateVad() {
     _isCalibrated = false;
@@ -402,13 +495,16 @@ class VoiceAssistantManager {
     final currentSession = ++_playSessionId;
 
     try {
-      final tempDir = await getTemporaryDirectory();
+      await _initCacheIfNeeded();
+      final storageDir = await getApplicationDocumentsDirectory();
 
       // 先建立快取
       for (final lang in languages.toSet()) {
         final cacheKey = '$lang::$text';
 
         if (_ttsCache.containsKey(cacheKey)) {
+          // 更新最後使用時間
+          _cacheMetadata[cacheKey]?['lastUsed'] = DateTime.now().millisecondsSinceEpoch;
           continue;
         }
 
@@ -425,13 +521,22 @@ class VoiceAssistantManager {
           _ => lang,
         };
 
-        final file = File(
-          '${tempDir.path}/tts_${safeLang}_${DateTime.now().millisecondsSinceEpoch}.wav',
-        );
+        final fileSize = audioBytes.length;
+        await _checkAndCleanupCache(fileSize);
+
+        final fileName = 'tts_${safeLang}_${DateTime.now().millisecondsSinceEpoch}.wav';
+        final file = File('${storageDir.path}/$fileName');
 
         await file.writeAsBytes(audioBytes, flush: true);
 
         _ttsCache[cacheKey] = file;
+        _cacheMetadata[cacheKey] = {
+          "path": file.path,
+          "lastUsed": DateTime.now().millisecondsSinceEpoch,
+          "size": fileSize,
+        };
+        
+        await _saveCacheIndex();
       }
 
       // 開始播放
