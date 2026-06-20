@@ -35,7 +35,7 @@ class _PlayMusicState extends State<PlayMusic> {
       videoId: videoId ?? '',
       params: const YoutubePlayerParams(
         showControls: true,
-        showFullscreenButton: true,
+        showFullscreenButton: true ,
       ),
     );
 
@@ -111,92 +111,99 @@ class _PlayMusicState extends State<PlayMusic> {
   Widget build(BuildContext context) {
     final double playerHeight = MediaQuery.of(context).size.height * 0.5;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
-      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
-      body: Center(
-        child: Container(
-          width: MediaQuery.of(context).size.width * 0.9,
-          padding: const EdgeInsets.all(16),
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                // 1. 播放器區域
-                SizedBox(
-                  height: playerHeight,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(15),
-                    child: AspectRatio(
-                      aspectRatio: 16 / 9,
-                      child: YoutubePlayer(controller: _controller),
+    return YoutubePlayerControllerProvider(
+        controller: _controller,
+        child: Scaffold(
+          backgroundColor: const Color(0xFFF5F5F5),
+          appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
+          body: Center(
+            child: Container(
+              width: MediaQuery.of(context).size.width * 0.9,
+              padding: const EdgeInsets.all(16),
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    // 1. 播放器區域
+                    SizedBox(
+                      height: playerHeight,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(15),
+                        child: AspectRatio(
+                          aspectRatio: 16 / 9,
+                          child: YoutubePlayer(
+                              controller: _controller,
+                              autoFullScreen: false,
+                              enableFullScreenOnVerticalDrag: false,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 20),
+                    const SizedBox(height: 20),
 
-                // 2. 一體化卡片區域
-                // 不再用 Expanded，改用固定高度或動態高度，防止溢出
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 10)],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min, // 讓容器根據內容自動適應高度
-                    children: [
-                      // 💡 關鍵修改：將 Row 改為 Wrap
-                      Wrap(
-                        alignment: WrapAlignment.center, // 置中對齊
-                        crossAxisAlignment: WrapCrossAlignment.center, // 垂直置中對齊
-                        spacing: 16.0, // 按鈕之間的水平間距 (取代原有的 SizedBox)
-                        runSpacing: 16.0, // 當空間不足自動換行時，上下兩行的垂直間距
+                    // 2. 一體化卡片區域
+                    // 不再用 Expanded，改用固定高度或動態高度，防止溢出
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 10)],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min, // 讓容器根據內容自動適應高度
                         children: [
-                          _buildLanguageToggle('台語'),
-                          _buildLanguageToggle('中文'),
-                          ElevatedButton(
-                            onPressed: () => Navigator.pop(context),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFFDE065),
-                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                            ),
-                            child: const Text(
-                              "想換歌",
-                              style: TextStyle(
-                                color: Colors.black,
-                                fontSize: 30, // 保持大字體，Wrap 會自動處理空間
-                              ),
-                            ),
-                          )
+                          // 💡 關鍵修改：將 Row 改為 Wrap
+                          Wrap(
+                            alignment: WrapAlignment.center, // 置中對齊
+                            crossAxisAlignment: WrapCrossAlignment.center, // 垂直置中對齊
+                            spacing: 16.0, // 按鈕之間的水平間距 (取代原有的 SizedBox)
+                            runSpacing: 16.0, // 當空間不足自動換行時，上下兩行的垂直間距
+                            children: [
+                              _buildLanguageToggle('台語'),
+                              _buildLanguageToggle('中文'),
+                              ElevatedButton(
+                                onPressed: () => Navigator.pop(context),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFFDE065),
+                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                ),
+                                child: const Text(
+                                  "想換歌",
+                                  style: TextStyle(
+                                    color: Colors.black,
+                                    fontSize: 30, // 保持大字體，Wrap 會自動處理空間
+                                  ),
+                                ),
+                              )
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          const Divider(height: 1), // 將 Divider 簡化，避免高度干擾
+                          const SizedBox(height: 20),
+
+                          Text(
+                            questionAndSubQuestion[0],
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            questionAndSubQuestion[1],
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 20, color: Colors.grey),
+                          ),
+                          const SizedBox(height: 10),
                         ],
                       ),
-                      const SizedBox(height: 20),
-                      const Divider(height: 1), // 將 Divider 簡化，避免高度干擾
-                      const SizedBox(height: 20),
-
-                      Text(
-                        questionAndSubQuestion[0],
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        questionAndSubQuestion[1],
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 20, color: Colors.grey),
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
                 ),
-                const SizedBox(height: 10),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        )
     );
   }
 }
