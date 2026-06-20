@@ -83,7 +83,6 @@ class _LifeScreenState extends State<LifeScreen> {
               icon: const Icon(Icons.arrow_back, color: Colors.black87),
               onPressed: () => Navigator.maybePop(context),
             ),
-            // AppBar 標題也可以稍微放大，但通常不超過 28
             title: Text(appBarTitle, style: TextStyle(color: Colors.black, fontSize: fontSize * 0.8, fontWeight: FontWeight.bold)),
           ),
           body: SafeArea(
@@ -184,9 +183,8 @@ class _LifeScreenState extends State<LifeScreen> {
   // ==========================================
   Widget _buildEvaluationImage() {
     double screenWidth = MediaQuery.sizeOf(context).width;
-    // 圖片寬度最大不超過 600，且隨螢幕縮放
     double imgWidth = (screenWidth * 0.7).clamp(280.0, 600.0);
-    double imgHeight = imgWidth * 0.75; // 維持 4:3 比例
+    double imgHeight = imgWidth * 0.75;
 
     return Container(
       width: imgWidth, height: imgHeight,
@@ -201,7 +199,7 @@ class _LifeScreenState extends State<LifeScreen> {
   }
 
   // ==========================================
-  // 🌟 最終儲存總結卡片 (動態縮放 + Wrap 防止爆版)
+  // 🌟 最終儲存總結卡片 (完美修正寬度擠壓)
   // ==========================================
   Widget _buildChatSummaryView() {
     double fontSize = _getResponsiveFontSize(context);
@@ -216,10 +214,11 @@ class _LifeScreenState extends State<LifeScreen> {
       body: Center(
         child: SingleChildScrollView(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 800),
+            constraints: const BoxConstraints(maxWidth: 900), // 💡 適度放寬最大限制
             child: Container(
+              width: double.infinity,
               margin: EdgeInsets.all(fontSize),
-              padding: EdgeInsets.symmetric(vertical: fontSize * 1.5, horizontal: fontSize),
+              padding: EdgeInsets.symmetric(vertical: fontSize * 1.5, horizontal: fontSize * 1.5),
               decoration: BoxDecoration(
                 color: Colors.white, borderRadius: BorderRadius.circular(24),
                 boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
@@ -228,27 +227,29 @@ class _LifeScreenState extends State<LifeScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    padding: EdgeInsets.symmetric(horizontal: fontSize * 1.2, vertical: fontSize * 0.5),
-                    decoration: BoxDecoration(color: const Color(0xFFFFF9E6), borderRadius: BorderRadius.circular(16)),
-                    child: Text("儲存今天的聊天", style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold, color: Colors.black87)),
+                    width: double.infinity,
+                    constraints: const BoxConstraints(maxWidth: 500),
+                    padding: EdgeInsets.symmetric(vertical: fontSize * 0.8),
+                    decoration: BoxDecoration(color: const Color(0xFFFFF9E6), borderRadius: BorderRadius.circular(fontSize * 2)),
+                    alignment: Alignment.center,
+                    child: Text("儲存今天的聊天", style: TextStyle(fontSize: fontSize * 1.1, fontWeight: FontWeight.bold, color: Colors.black87)),
                   ),
-                  SizedBox(height: fontSize * 1.5),
+                  SizedBox(height: fontSize * 2.0),
                   _buildSummaryRow("主題：", _controller.originalKeywords.isNotEmpty ? _controller.originalKeywords.first : "懷舊時光", fontSize),
-                  SizedBox(height: fontSize),
                   _buildSummaryRow("內容：", _controller.originalKeywords.join("、"), fontSize),
-                  SizedBox(height: fontSize),
                   _buildSummaryRow("分享者：", _controller.elderNames.isNotEmpty ? _controller.elderNames.join("、") : "未留名", fontSize),
-                  SizedBox(height: fontSize * 2),
+                  SizedBox(height: fontSize * 2.5),
+
                   ElevatedButton(
                     onPressed: () => _controller.saveAndShowMemories(),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFFFD54F),
                       foregroundColor: Colors.black87,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(fontSize)),
-                      padding: EdgeInsets.symmetric(horizontal: fontSize * 2, vertical: fontSize * 0.6),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(fontSize * 2)),
+                      padding: EdgeInsets.symmetric(horizontal: fontSize * 4.0, vertical: fontSize * 0.8),
                       elevation: 0,
                     ),
-                    child: Text("下一步", style: TextStyle(fontSize: fontSize * 0.9, fontWeight: FontWeight.bold)),
+                    child: Text("下一步", style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold)),
                   )
                 ],
               ),
@@ -259,40 +260,59 @@ class _LifeScreenState extends State<LifeScreen> {
     );
   }
 
+  // 💡 表格化對齊列 (重新調整了標籤與內容的黃金比例)
   Widget _buildSummaryRow(String label, String value, double fontSize) {
-    // 💡 將原本會爆版的 Row + Expanded 改成 Wrap，小螢幕自動換行！
-    return Wrap(
-        alignment: WrapAlignment.center,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: fontSize * 0.6,
-        runSpacing: fontSize * 0.4,
-        children: [
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: fontSize * 0.8, vertical: fontSize * 0.4),
-            decoration: BoxDecoration(color: const Color(0xFFFFF9E6), borderRadius: BorderRadius.circular(16)),
-            child: Text(label, style: TextStyle(fontSize: fontSize * 0.8, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-          ),
-          Text(value, style: TextStyle(fontSize: fontSize * 0.9, color: Colors.black87), textAlign: TextAlign.center),
-        ]
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: fontSize * 0.4), // 略微收緊行距
+      child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 左側圓潤小膠囊標籤
+            Container(
+              width: fontSize * 4.2, // 💡 縮小標籤不必要的寬度，把空間還給右邊的文字
+              padding: EdgeInsets.symmetric(vertical: fontSize * 0.3),
+              decoration: BoxDecoration(color: const Color(0xFFFFF9E6), borderRadius: BorderRadius.circular(fontSize)),
+              alignment: Alignment.center,
+              child: Text(label, style: TextStyle(fontSize: fontSize * 0.8, fontWeight: FontWeight.bold, color: Colors.black87)),
+            ),
+            SizedBox(width: fontSize * 0.8), // 💡 縮小左邊標籤與右邊文字的距離
+            // 右側內容文字
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(top: fontSize * 0.15),
+                child: Text(value, style: TextStyle(fontSize: fontSize * 0.9, color: Colors.black87, height: 1.4), textAlign: TextAlign.left),
+              ),
+            ),
+          ]
+      ),
     );
   }
 
   // ==========================================
-  // 🌟 今天聊天的回憶卡片 (動態縮放 + 圖片比例化)
+  // 🌟 今天聊天的回憶卡片 (完美還原並解決擠壓問題)
   // ==========================================
   Widget _buildChatMemoriesView() {
     double fontSize = _getResponsiveFontSize(context);
     double screenWidth = MediaQuery.sizeOf(context).width;
 
+    // 💡 提高觸發並排的門檻：只有在螢幕真的很大(>850)時才左右並排，不然就維持漂亮的上下圖二版型！
+    bool isWideScreen = screenWidth >= 850;
+
     return Scaffold(
       backgroundColor: Colors.grey[200],
+      appBar: AppBar(
+        backgroundColor: Colors.grey[200],
+        elevation: 0,
+        leading: IconButton(icon: Icon(Icons.arrow_back, color: Colors.black, size: fontSize), onPressed: () => Navigator.maybePop(context)),
+      ),
       body: Center(
         child: SingleChildScrollView(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 900),
+            constraints: const BoxConstraints(maxWidth: 1200), // 💡 放寬大螢幕卡片極限，保護文字不被擠壓
             child: Container(
+              width: double.infinity,
               margin: EdgeInsets.all(fontSize),
-              padding: EdgeInsets.all(fontSize * 1.5),
+              padding: EdgeInsets.symmetric(vertical: fontSize * 1.5, horizontal: fontSize * 1.5),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(24),
@@ -302,60 +322,52 @@ class _LifeScreenState extends State<LifeScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    padding: EdgeInsets.symmetric(horizontal: fontSize * 1.5, vertical: fontSize * 0.5),
-                    decoration: BoxDecoration(color: const Color(0xFFFFF9E6), borderRadius: BorderRadius.circular(16)),
-                    child: Text("今天聊天的回憶", style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold, color: Colors.black87)),
+                    width: double.infinity,
+                    constraints: const BoxConstraints(maxWidth: 600),
+                    padding: EdgeInsets.symmetric(vertical: fontSize * 0.8),
+                    decoration: BoxDecoration(color: const Color(0xFFFFF9E6), borderRadius: BorderRadius.circular(fontSize * 2)),
+                    alignment: Alignment.center,
+                    child: Text("今天聊天的回憶", style: TextStyle(fontSize: fontSize * 1.1, fontWeight: FontWeight.bold, color: Colors.black87)),
                   ),
-                  SizedBox(height: fontSize * 1.5),
+                  SizedBox(height: fontSize * 2.5),
 
-                  // 💡 將 Row 改成 Wrap，如果平板轉直向，文字跟圖片會自動上下堆疊，不會擠爆
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: fontSize * 1.5,
-                    runSpacing: fontSize * 1.5,
-                    children: [
-                      // 左側：文字資訊
-                      SizedBox(
-                        width: screenWidth > 700 ? 350 : screenWidth * 0.8,
-                        child: Column(
-                          children: [
-                            _buildSummaryRow("主題：", _controller.originalKeywords.isNotEmpty ? _controller.originalKeywords.first : "懷舊時光", fontSize),
-                            SizedBox(height: fontSize * 0.8),
-                            _buildSummaryRow("內容：", _controller.originalKeywords.join("、"), fontSize),
-                            SizedBox(height: fontSize * 0.8),
-                            _buildSummaryRow("分享者：", _controller.elderNames.isNotEmpty ? _controller.elderNames.join("、") : "未留名", fontSize),
-                          ],
+                  // 💡 響應式排版：依照寬度決定呈現模式
+                  if (isWideScreen)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          flex: 3, // 💡 給予文字 60% 的空間，絕對不會再被擠成直行字！
+                          child: _buildMemoryTextInfo(fontSize),
                         ),
-                      ),
-                      // 右側：AI 生成的圖片 (動態比例)
-                      Container(
-                        width: screenWidth > 700 ? 300 : screenWidth * 0.8,
-                        height: (screenWidth > 700 ? 300 : screenWidth * 0.8) * 0.75, // 4:3 比例
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          color: Colors.grey[200],
+                        SizedBox(width: fontSize * 1.5),
+                        Expanded(
+                          flex: 2, // 💡 圖片佔 40% 的空間即可
+                          child: _buildMemoryImage(fontSize),
                         ),
-                        clipBehavior: Clip.antiAlias,
-                        child: _controller.currentImageUrl.isNotEmpty
-                            ? (_controller.currentImageUrl.startsWith('http') || _controller.currentImageUrl.startsWith('https')
-                            ? Image.network(_controller.currentImageUrl, fit: BoxFit.cover)
-                            : (kIsWeb ? Center(child: Text('Web 無法預覽', style: TextStyle(color: Colors.grey, fontSize: fontSize*0.6))) : Image.file(File(_controller.currentImageUrl), fit: BoxFit.cover)))
-                            : Center(child: Icon(Icons.image, size: fontSize * 2, color: Colors.grey)),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: fontSize * 2),
+                      ],
+                    )
+                  else
+                    Column(
+                      children: [
+                        _buildMemoryTextInfo(fontSize),
+                        SizedBox(height: fontSize * 2.0),
+                        _buildMemoryImage(fontSize),
+                      ],
+                    ),
+
+                  SizedBox(height: fontSize * 3.0),
+
                   ElevatedButton(
                     onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFFFD54F),
                       foregroundColor: Colors.black87,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(fontSize)),
-                      padding: EdgeInsets.symmetric(horizontal: fontSize * 2.5, vertical: fontSize * 0.6),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(fontSize * 2)),
+                      padding: EdgeInsets.symmetric(horizontal: fontSize * 4.5, vertical: fontSize * 0.8),
                       elevation: 0,
                     ),
-                    child: Text("結束", style: TextStyle(fontSize: fontSize * 0.9, fontWeight: FontWeight.bold)),
+                    child: Text("結束", style: TextStyle(fontSize: fontSize * 1.0, fontWeight: FontWeight.bold)),
                   )
                 ],
               ),
@@ -366,8 +378,37 @@ class _LifeScreenState extends State<LifeScreen> {
     );
   }
 
+  Widget _buildMemoryTextInfo(double fontSize) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildSummaryRow("主題：", _controller.originalKeywords.isNotEmpty ? _controller.originalKeywords.first : "懷舊時光", fontSize),
+        _buildSummaryRow("內容：", _controller.originalKeywords.join("、"), fontSize),
+        _buildSummaryRow("分享者：", _controller.elderNames.isNotEmpty ? _controller.elderNames.join("、") : "未留名", fontSize),
+      ],
+    );
+  }
+
+  Widget _buildMemoryImage(double fontSize) {
+    return AspectRatio(
+      aspectRatio: 4 / 3, // 維持懷舊照片的復古比例
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          color: Colors.grey[200],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: _controller.currentImageUrl.isNotEmpty
+            ? (_controller.currentImageUrl.startsWith('http') || _controller.currentImageUrl.startsWith('https')
+            ? Image.network(_controller.currentImageUrl, fit: BoxFit.cover)
+            : (kIsWeb ? Center(child: Text('Web 無法預覽', style: TextStyle(color: Colors.grey, fontSize: fontSize*0.6))) : Image.file(File(_controller.currentImageUrl), fit: BoxFit.cover)))
+            : Center(child: Icon(Icons.image, size: fontSize * 3, color: Colors.grey)),
+      ),
+    );
+  }
+
   // ==========================================
-  // 👥 自我介紹系列視圖 (動態縮放 + Wrap)
+  // 👥 自我介紹系列視圖
   // ==========================================
   Widget _buildIntroView() {
     double fontSize = _getResponsiveFontSize(context);
@@ -399,7 +440,6 @@ class _LifeScreenState extends State<LifeScreen> {
                   _buildCircleButton("停止", () => _controller.stopIntroRecordingManually(), fontSize, color: Colors.redAccent)
                 ])
               else if (_controller.chatStatus == ChatStatus.introNameExtracted)
-                // 💡 使用 Wrap 來放置按鈕，窄螢幕時按鈕會上下排列
                   Wrap(
                       alignment: WrapAlignment.center,
                       spacing: fontSize * 1.5,
@@ -421,7 +461,6 @@ class _LifeScreenState extends State<LifeScreen> {
         onTap: onPressed,
         borderRadius: BorderRadius.circular(fontSize * 3),
         child: Container(
-          // 動態放大圓形按鈕
             width: fontSize * 4.5,
             height: fontSize * 4.5,
             alignment: Alignment.center,

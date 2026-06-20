@@ -3,8 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:audioplayers/audioplayers.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:remini_care_ai_app/screens/question_generator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:remini_care_ai_app/services/voice_assistant_services.dart';
@@ -12,7 +11,6 @@ import 'package:remini_care_ai_app/services/image_gen_api_service.dart';
 import 'package:remini_care_ai_app/services/llm_services/nvidia_llm_service.dart';
 import 'package:remini_care_ai_app/services/speech_services.dart';
 import 'package:remini_care_ai_app/services/remini_care_config.dart';
-import 'package:remini_care_ai_app/screens/question_generator.dart';
 
 enum ChatStatus {
   introPrepare, introRecording, introProcessing, introNameExtracted, introTransition,
@@ -39,6 +37,9 @@ class LifeScreenController extends ChangeNotifier {
   ChatStatus chatStatus = ChatStatus.introPrepare;
   bool _isDisposed = false;
 
+  // 💡 新增：用來記錄是否已經播放過「請大家介紹自己」的歡迎詞
+  bool _hasPlayedIntroGreeting = false;
+
   List<String> elderNames = [];
   String currentElderName = "";
   List<String> unspokenElders = [];
@@ -60,7 +61,6 @@ class LifeScreenController extends ChangeNotifier {
   String accumulatedChatText = "";
   bool isProcessingEnd = false;
 
-  // 💡 新增：用來追蹤還在排隊等 Yating STT 辨識的任務數量與觸發狀態
   int _activeSttTasks = 0;
   bool _hasTriggeredEndProcess = false;
 
@@ -110,8 +110,33 @@ class LifeScreenController extends ChangeNotifier {
       notifyListeners();
     };
 
-    voiceManager.startBackgroundWakeWordCycle();
+    // 💡 初始化時：如果一開始就是介紹階段，就觸發第一次的歡迎詞廣播
+    if (chatStatus == ChatStatus.introPrepare && !_hasPlayedIntroGreeting) {
+      _playIntroGreeting();
+    } else {
+      voiceManager.startBackgroundWakeWordCycle();
+    }
+
     notifyListeners();
+  }
+
+  // 💡 新增：專門播放介紹階段歡迎詞的方法
+  Future<void> _playIntroGreeting() async {
+    _hasPlayedIntroGreeting = true;
+    await stopAudioSequence();
+    await voiceManager.stopActiveAudioOperations();
+
+    // 播報歡迎詞 (兩次，台語與中文)
+    await voiceManager.playLanguageSequence(
+      texts: ["請大家介紹自己"],
+      languages: ["台語", "中文"],
+      repeatCount: 1,
+    );
+
+    // 播報完畢後，開啟背景喚醒詞監聽 (等待「開始介紹」)
+    if (!_isDisposed && chatStatus == ChatStatus.introPrepare) {
+      voiceManager.startBackgroundWakeWordCycle();
+    }
   }
 
   bool _isIntroStatus() =>
@@ -119,19 +144,22 @@ class LifeScreenController extends ChangeNotifier {
           chatStatus == ChatStatus.introProcessing || chatStatus == ChatStatus.introNameExtracted ||
           chatStatus == ChatStatus.introTransition;
 
+  // 💡 核心修復：只處理「特定階段專屬」的口令，全域通用口令交還給 voiceManager
   void _handleBackgroundCommands(String text) {
     if (_isIntroStatus()) {
+      // 專屬：自我介紹階段
       if (chatStatus == ChatStatus.introPrepare && text.contains("開始介紹")) startIntroRecording();
       else if (chatStatus == ChatStatus.introNameExtracted) {
         if (text.contains("下一位")) nextPersonIntro();
         else if (text.contains("結束介紹")) finishIntro();
       }
-    } else if (chatStatus == ChatStatus.nextElderPrompt && (text.contains("開始") || text.contains("聊天") || text.contains("錄音"))) {
-      triggerStartChatFlow();
     } else if (chatStatus == ChatStatus.roundSummary) {
+      // 專屬：總結階段
       if (text.contains("繼續")) continueChatFromSummary();
       else if (text.contains("完成") || text.contains("結束")) finishTodayChat();
     }
+    // ⚠️ 已經移除了 nextElderPrompt 判斷「開始」的邏輯，
+    // 因為 voiceManager 聽到「開始」會自動觸發 onStartChatFlow，避免重複執行！
   }
 
   void startIntroRecording() async { await stopAudioSequence(); chatStatus = ChatStatus.introRecording; notifyListeners(); voiceManager.startChatFlow(); }
@@ -157,13 +185,21 @@ class LifeScreenController extends ChangeNotifier {
   }
   void nextPersonIntro() {
     if (currentElderName.isNotEmpty && currentElderName != "無名氏" && currentElderName != "長輩") elderNames.add(currentElderName);
-    currentElderName = ""; chatStatus = ChatStatus.introPrepare; voiceManager.startBackgroundWakeWordCycle(); notifyListeners();
+    currentElderName = "";
+    chatStatus = ChatStatus.introPrepare;
+    // 這裡按下下一位時，不會觸發 _playIntroGreeting，只會重啟監聽
+    voiceManager.startBackgroundWakeWordCycle();
+    notifyListeners();
   }
 
   Future<void> finishIntro() async {
     if (currentElderName.isNotEmpty && currentElderName != "無名氏" && currentElderName != "長輩") elderNames.add(currentElderName);
     await voiceManager.stopActiveAudioOperations();
     chatStatus = ChatStatus.introTransition; notifyListeners();
+
+    // 💡 重置標記，這樣如果未來有機會重新回到自我介紹階段，就能再次播放
+    _hasPlayedIntroGreeting = false;
+
     await Future.delayed(const Duration(seconds: 3));
 
     _resetUnspokenElders();
@@ -211,7 +247,7 @@ class LifeScreenController extends ChangeNotifier {
       currentChatPhase = ChatStatus.dislikeChatting;
     } else if (chatStatus == ChatStatus.likePrepare) {
       chatStatus = ChatStatus.likeChatting;
-      currentChatPhase = ChatStatus.likeChatting;
+      currentChatPhase = ChatStatus.likePrepare;
     } else if (chatStatus == ChatStatus.nextElderPrompt) {
       isResumingNextElder = true;
       chatStatus = currentChatPhase;
@@ -242,7 +278,6 @@ class LifeScreenController extends ChangeNotifier {
     if (!isProcessingEnd && isChatting) voiceManager.startChatFlow();
     if (paths.isEmpty) return;
 
-    // 💡 標記：有一個 STT 任務正在進行中
     _activeSttTasks++;
 
     String chunkText = "";
@@ -252,7 +287,6 @@ class LifeScreenController extends ChangeNotifier {
       if (t != null && t.trim().isNotEmpty) chunkText += t + "，";
     }
 
-    // 💡 標記：這個 STT 任務完成了
     _activeSttTasks--;
 
     if (chunkText.isEmpty) {
@@ -277,7 +311,6 @@ class LifeScreenController extends ChangeNotifier {
   }
 
   Future<void> handleFinalChunk(List<String> paths) async {
-    // 💡 標記：最後一段強制結算的 STT 任務正在進行中
     _activeSttTasks++;
 
     String chunkText = "";
@@ -288,7 +321,6 @@ class LifeScreenController extends ChangeNotifier {
     }
     accumulatedChatText += chunkText;
 
-    // 💡 標記：任務完成
     _activeSttTasks--;
 
     _checkAndTriggerEndProcess();
@@ -354,12 +386,8 @@ class LifeScreenController extends ChangeNotifier {
       if (lastUserMessage.isEmpty) lastUserMessage = accumulatedChatText;
       final String rawQuestion = await llmService.generateExtendedQuestion(previousQuestion, lastUserMessage);
 
-      if(unspokenElders.isNotEmpty) {
-        currentPromptElder = unspokenElders.removeAt(0);
-        currentMainQuestion = "$currentPromptElder， $rawQuestion";
-      } else {
-        currentMainQuestion = rawQuestion;
-      }
+
+      currentMainQuestion = currentPromptElder.isNotEmpty ? "$currentPromptElder， $rawQuestion" : rawQuestion;
       currentSubQuestion = "";
 
     } catch (e) {
@@ -433,7 +461,6 @@ class LifeScreenController extends ChangeNotifier {
     }
   }
 
-  // 💡 關鍵分割：把「長輩名字」與「實際問題」拆開成為字串陣列，讓快取能精準命中！
   Future<void> playCurrentContextVoice({
     bool isManualTap = false,
   }) async {
@@ -447,16 +474,14 @@ class LifeScreenController extends ChangeNotifier {
     } else if (chatStatus == ChatStatus.dislikePrepare) {
       textsToPlay = ["哪裡不對？"];
     } else if (chatStatus == ChatStatus.nextElderPrompt) {
-      textsToPlay = ["$currentPromptElder呢？"]; // 短句子可以直接合成一組
+      textsToPlay = ["$currentPromptElder呢？"];
     } else {
-      // 提取並拆分長輩姓名，其餘部分合併成一個純淨的題目字串
       if (currentPromptElder.isNotEmpty) {
         textsToPlay.add(currentPromptElder);
       }
 
       String rawMain = currentMainQuestion;
       if (currentPromptElder.isNotEmpty && rawMain.startsWith(currentPromptElder)) {
-        // 移除名字與緊接在後的逗點與空白
         rawMain = rawMain.substring(currentPromptElder.length).replaceAll(RegExp(r'^[，,\s]+'), '');
       }
 
@@ -524,7 +549,6 @@ class LifeScreenController extends ChangeNotifier {
       currentSubQuestion = "";
       chatStatus = chatStatus == ChatStatus.dislikeGenerating ? ChatStatus.dislikePrepare : ChatStatus.prepare;
       notifyListeners();
-      // 💡 錯誤處理也使用陣列模式送出
       await voiceManager.playLanguageSequence(
         texts: [currentMainQuestion],
         languages: ["台語", "中文"],
