@@ -24,7 +24,11 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
   String? languageLabel;
   final ISTTService sttService = YatingSpeechService();
   final _voiceManager = VoiceAssistantManager();
+
   bool _isRecording = false;
+  bool _isCalibrating = true; // 環境音檢測狀態標記
+  bool _isProcessing = false; // 💡 新增：正在辨識與搜尋的 Loading 狀態標記
+
   String? speechText;
 
   @override
@@ -32,6 +36,15 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
     super.initState();
     _initVoiceAssistant();
     languageLabel = widget.languageLabel;
+
+    // 等待 2 秒鐘讓底層 VoiceManager 完成環境雜音採樣 (約需 1.6 秒)
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) {
+        setState(() {
+          _isCalibrating = false;
+        });
+      }
+    });
   }
 
   void _initVoiceAssistant() {
@@ -56,6 +69,7 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
       }
     };
 
+    // 這裡啟動後，底層就開始進行 1.6 秒的背景雜音校正
     _voiceManager.startBackgroundWakeWordCycle();
   }
 
@@ -65,7 +79,11 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
   }
 
   Future<void> _processMergedAudio(List<String>? paths) async {
-    setState(() { _isRecording = false; });
+    // 💡 錄音結束，進入處理狀態
+    setState(() {
+      _isRecording = false;
+      _isProcessing = true;
+    });
     print("取得無損拼接回憶 WAV 檔 (共 ${paths?.length ?? 0} 段)");
 
     String fullTranscript = "";
@@ -87,6 +105,8 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
       await _setEmbedUrls(fullTranscript);
       _navigateToNextPage();
     } else {
+      // 💡 處理失敗或無聲音，解除 Loading 狀態
+      setState(() { _isProcessing = false; });
       _showEmptyWarning("請先說出想聽的歌哦！");
       _voiceManager.checkCompletedCommands = false;
       _voiceManager.startBackgroundWakeWordCycle();
@@ -94,6 +114,9 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
   }
 
   void _navigateToNextPage() async {
+    // 💡 在準備跳轉前解除 Loading，這樣如果使用者按返回鍵回來，才不會卡在轉圈圈
+    setState(() { _isProcessing = false; });
+
     if(top5Songs.isEmpty) {
       _showEmptyWarning("搜尋不到結果，請重新搜尋!");
       return;
@@ -118,15 +141,15 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
         content: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.lightbulb_outline, color: Colors.white, size: 28),
-            SizedBox(width: 10),
+            const Icon(Icons.lightbulb_outline, color: Colors.white, size: 28),
+            const SizedBox(width: 10),
             Text(
               warningStr,
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
             ),
           ],
         ),
-        backgroundColor: const Color(0xFFFFA726), // 溫和的橘色，不會像紅色那麼有警告感
+        backgroundColor: const Color(0xFFFFA726), // 溫和的橘色
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         margin: const EdgeInsets.only(bottom: 40, left: 20, right: 20),
@@ -134,6 +157,7 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
       ),
     );
   }
+
   @override
   void dispose() {
     _textController.dispose();
@@ -171,13 +195,11 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
           ),
         ),
         body: SingleChildScrollView(
-          //  加上 SizedBox 強迫寬度撐滿整個螢幕
           child: SizedBox(
             width: double.infinity,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Column(
-                //  因為外面撐滿了螢幕，這裡的 center 就會讓所有東西置中
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   SizedBox(height: size.height * 0.05),
@@ -215,7 +237,6 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
                     ),
                   ),
 
-                  // 依據螢幕高度動態推開下方區域
                   SizedBox(height: size.height * 0.1),
 
                   // 條件渲染區塊
@@ -238,7 +259,6 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
     return Column(
       children: [
         SizedBox(
-          //  寬度佔螢幕 80%，限制在 250~400 之間
           width: (screenWidth * 0.8).clamp(250.0, 400.0),
           child: TextField(
             controller: _textController,
@@ -247,11 +267,15 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
             cursorWidth: 4.0,
             autofocus: true,
             textInputAction: TextInputAction.search,
+            // 💡 文字模式在處理時也禁用輸入框
+            enabled: !_isProcessing,
             onSubmitted: (String value) async {
               if (value.trim().isEmpty) {
                 _showEmptyWarning("請先輸入想聽的歌哦！");
                 return;
               }
+              // 💡 點擊鍵盤送出後，也顯示 Loading 狀態
+              setState(() { _isProcessing = true; });
               speechText = value;
               await _setEmbedUrls(value);
               _navigateToNextPage();
@@ -260,7 +284,7 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
               hintText: "請在此輸入歌手及歌名，例如: 葛蘭 我要你的愛",
               hintStyle: const TextStyle(color: Colors.black38, fontSize: 18),
               filled: true,
-              fillColor: const Color(0xFFFDE065),
+              fillColor: _isProcessing ? Colors.grey[300] : const Color(0xFFFDE065),
               contentPadding: const EdgeInsets.symmetric(vertical: 24),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -272,9 +296,13 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
         ),
         const SizedBox(height: 32),
         // 下方提示文字
-        const Text(
-          "文字輸入中",
-          style: TextStyle(fontSize: 24, color: Colors.black87),
+        Text(
+          _isProcessing ? "正在搜尋歌曲..." : "文字輸入中", // 💡 文字模式 Loading 提示
+          style: TextStyle(
+            fontSize: 24,
+            color: _isProcessing ? Colors.grey[600] : Colors.black87,
+            fontWeight: _isProcessing ? FontWeight.normal : FontWeight.bold,
+          ),
         ),
       ],
     );
@@ -282,14 +310,16 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
 
   // 獨立出來的語音輸入 UI
   Widget _buildSpeechInputUI(double screenWidth) {
-    //  根據螢幕寬度動態計算麥克風圓形的大小
     final double circleSize = (screenWidth * 0.35).clamp(120.0, 160.0);
+    // 判斷是否為「任何」不可點擊的狀態 (檢測中 or 正在搜尋處理中)
+    final bool isBusy = _isCalibrating || _isProcessing;
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         InkWell(
-          onTap: () {
+          // 💡 檢測環境音或處理搜尋時，按鈕設為 null 使其失效，防止誤觸
+          onTap: isBusy ? null : () {
             if(_isRecording) {
               setState(() => _isRecording = false);
               _voiceManager.forceEndChat();
@@ -301,22 +331,39 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
           child: Container(
             width: circleSize,
             height: circleSize,
-            decoration: const BoxDecoration(
-              color: Color(0xFFFDE065),
+            decoration: BoxDecoration(
+              // 💡 檢測中或處理中顯示灰色，否則顯示黃色
+              color: isBusy ? Colors.grey[300] : const Color(0xFFFDE065),
               shape: BoxShape.circle,
             ),
-            child: Icon(
+            // 💡 檢測中或處理中顯示轉圈圈，否則顯示麥克風/停止圖示
+            child: isBusy
+                ? Center(
+              child: CircularProgressIndicator(
+                color: Colors.grey[500],
+                strokeWidth: 4.0,
+              ),
+            )
+                : Icon(
               _isRecording ? Icons.stop : Icons.mic,
-              size: circleSize * 0.5, //  Icon 大小永遠是圓形的一半
+              size: circleSize * 0.5,
               color: _isRecording ? Colors.red : Colors.black87,
             ),
           ),
         ),
         const SizedBox(height: 32),
-        // 下方提示文字
+        // 💡 下方提示文字：根據狀態顯示不同文案
         Text(
-          _isRecording ? "錄音中..." : "開始",
-          style: const TextStyle(fontSize: 24, color: Colors.black87),
+          _isCalibrating
+              ? "正在檢測環境音..."
+              : _isProcessing
+              ? "正在辨識並搜尋歌曲..." // 💡 新增的處理中提示
+              : (_isRecording ? "錄音中..." : "開始"),
+          style: TextStyle(
+            fontSize: 24,
+            color: isBusy ? Colors.grey[600] : Colors.black87,
+            fontWeight: isBusy ? FontWeight.normal : FontWeight.bold,
+          ),
         ),
       ],
     );
