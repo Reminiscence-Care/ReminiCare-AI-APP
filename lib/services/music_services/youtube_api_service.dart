@@ -9,12 +9,11 @@ class YoutubeApiServices implements MusicApiService {
     print('正在搜尋 YouTube 關鍵字「$query」...\n');
 
     try {
-      // 執行搜尋，預設會回傳最相關的影片清單
       final searchResults = await yt.search.search(query);
 
       if (searchResults.isEmpty) {
         print('找不到任何相關結果');
-        yt.close(); // 記得關閉釋放資源
+        yt.close();
         return [];
       }
 
@@ -54,6 +53,60 @@ class YoutubeApiServices implements MusicApiService {
       print('發生錯誤: $e');
       yt.close();
       return null;
+    }
+  }
+
+  Future<List<Map<String, String>>?> getTop5ArtistAndTracks(String query) async {
+    final yt = YoutubeExplode();
+    final llm = NvidiaLlmService();
+    print('正在搜尋 YouTube 關鍵字「$query」...\n');
+
+    try {
+      // 執行搜尋
+      final searchResults = await yt.search.search(query);
+
+      if (searchResults.isEmpty) {
+        print('找不到任何相關結果');
+        return [];
+      }
+
+      // 抓取前 5 筆結果（如果搜尋結果只有 3 筆，它也只會拿 3 筆，不會報錯）
+      final topVideos = searchResults.take(5).toList();
+      final List<Map<String, String>> finalSongsList = [];
+
+      // 依序處理這 5 支影片
+      for (var video in topVideos) {
+        String artistName = video.author;
+        String trackName = video.title;
+        final String artistUrl = video.thumbnails.highResUrl;
+        final String trackUrl = video.url;
+
+        print('處理影片: $trackName');
+
+        Map<String, dynamic> result = await llm.getSingerAndSongNameFromQuery("$artistName $trackName");
+
+        if (result.isNotEmpty && result['singer'].toString().isNotEmpty) {
+          artistName = result['singer'].toString();
+        }
+        if (result.isNotEmpty && result['song'].toString().isNotEmpty) {
+          trackName = result['song'].toString();
+        }
+
+        finalSongsList.add({
+          'artistName': artistName,
+          'trackName': trackName,
+          'artistUrl': artistUrl,
+          'trackUrl': trackUrl,
+        });
+      }
+
+      return finalSongsList;
+
+    } catch (e) {
+      print('發生錯誤: $e');
+      return null;
+    } finally {
+      yt.close();
     }
   }
 }
