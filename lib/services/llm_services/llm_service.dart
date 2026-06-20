@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:openai_dart/openai_dart.dart';
-import 'package:remini_care_ai_app/services/prompts.dart';
+import 'package:remini_care_ai_app/services/llm_services/prompts.dart';
 
 class LlmService {
   final String baseUrl;
