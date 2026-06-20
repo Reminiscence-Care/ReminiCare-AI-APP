@@ -75,7 +75,7 @@ abstract class BaseOpenAIImageService implements IImageGenService {
     try {
       final response = await client.images.generate(
         ImageGenerationRequest(
-          model: ImageModels.gptImage2,
+          model: generationModel,
           prompt: finalPrompt,
           n: 1,
           size: ImageSize.size1024x1024,
@@ -223,7 +223,7 @@ class SiliconFlowImageService extends BaseOpenAIImageService {
 // ==========================================
 class OpenAIImageService extends BaseOpenAIImageService {
   OpenAIImageService({required super.apiKeyProvider})
-      : super(generationModel: 'dall-e-3');
+      : super(generationModel: 'gpt-image-2');
   // 預設不傳 baseUrl，它會自動使用基底的 https://api.openai.com/v1
 
   @override

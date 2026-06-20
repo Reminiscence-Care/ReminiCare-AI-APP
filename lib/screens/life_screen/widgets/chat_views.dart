@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:remini_care_ai_app/services/remini_care_config.dart';
-// import 'language_selector.dart'; // 視您的專案需求決定是否保留
 
 /// 取得根據螢幕寬度等比例縮放的字體大小 (限制在 24 ~ 40 之間)
 double _getResponsiveFontSize(BuildContext context) {
@@ -21,30 +20,33 @@ class PrepareView extends StatelessWidget {
     double fontSize = _getResponsiveFontSize(context);
 
     return SingleChildScrollView(
-      child: Wrap(
-        alignment: WrapAlignment.center,
-        children: [
-          TextButton(
-            onPressed: onStartChat,
-            style: TextButton.styleFrom(
-              backgroundColor: const Color(0xFFFDE065),
-              padding: EdgeInsets.symmetric(horizontal: fontSize * 1.5, vertical: fontSize * 0.8),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(fontSize),
+      child: SizedBox(
+        width: double.infinity, // 💡 強迫撐滿寬度，讓內部的 Center 能夠發揮作用
+        child: Wrap(
+          alignment: WrapAlignment.center,
+          children: [
+            TextButton(
+              onPressed: onStartChat,
+              style: TextButton.styleFrom(
+                backgroundColor: const Color(0xFFFDE065),
+                padding: EdgeInsets.symmetric(horizontal: fontSize * 1.5, vertical: fontSize * 0.8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(fontSize),
+                ),
+              ),
+              child: Text(
+                '開始聊天',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: fontSize,
+                  color: Colors.grey[800],
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 1.2,
+                ),
               ),
             ),
-            child: Text(
-              '開始聊天',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: fontSize,
-                color: Colors.grey[800],
-                fontWeight: FontWeight.w500,
-                letterSpacing: 1.2,
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -61,10 +63,16 @@ class ListeningView extends StatelessWidget {
     required this.onEndRecording,
   });
 
-  String _formatDuration(int totalSeconds) {
-    final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
-    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
-    return "$minutes:$seconds";
+  String _formatTime() {
+    int maxLimit = int.tryParse(ReminiCareConfig.maxRecordLimit) ?? 180;
+    int remaining = maxLimit - recordSeconds;
+    if (remaining < 0) remaining = 0;
+
+    final minutes = (remaining ~/ 60).toString();
+    final seconds = (remaining % 60).toString().padLeft(2, '0');
+    final maxMinutes = (maxLimit ~/ 60).toString();
+
+    return "還剩$minutes:$seconds/$maxMinutes分鐘";
   }
 
   @override
@@ -72,68 +80,53 @@ class ListeningView extends StatelessWidget {
     double fontSize = _getResponsiveFontSize(context);
 
     return SingleChildScrollView(
-      child: Wrap(
-        alignment: WrapAlignment.center,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: 40.0,
-        runSpacing: 24.0,
-        children: [
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                // 根據字體大小動態調整圓形大小，確保不會 Overflow
-                width: fontSize * 5.5,
-                height: fontSize * 5.5,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.grey[300],
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  '正在聆聽中',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: fontSize,
-                    color: Colors.grey[800],
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
+      child: SizedBox(
+        width: double.infinity, // 💡 強迫撐滿寬度
+        child: Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: fontSize, // 動態水平間距
+          runSpacing: fontSize * 0.8, // 換行垂直間距
+          children: [
+            // 左側：倒數計時框 (淺黃底 + 黃邊)
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: fontSize * 1.2, vertical: fontSize * 0.6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF9E6), // 淺黃色背景
+                borderRadius: BorderRadius.circular(fontSize * 0.6), // 圓角適配
+                border: Border.all(color: const Color(0xFFFFD54F), width: 1.5), // 黃色邊框
               ),
-              const SizedBox(height: 12),
-              Text(
-                '還剩 ${_formatDuration(recordSeconds)}/${ReminiCareConfig.maxRecordLimitM}:${ReminiCareConfig.maxRecordLimitS}',
-                textAlign: TextAlign.center,
+              child: Text(
+                _formatTime(),
                 style: TextStyle(
-                  // 提示文字稍微調整但同樣遵守最低 24 的要求
-                  fontSize: (fontSize * 0.9).clamp(24.0, 40.0),
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.w400,
+                  fontSize: fontSize,
+                  color: Colors.black87,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
-            ],
-          ),
-          TextButton(
-            onPressed: onEndRecording,
-            style: TextButton.styleFrom(
-              backgroundColor: Colors.grey[300],
-              padding: EdgeInsets.symmetric(horizontal: fontSize * 1.5, vertical: fontSize * 0.8),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(fontSize),
+            ),
+            // 右側：結束聊天按鈕 (實心黃底)
+            ElevatedButton(
+              onPressed: onEndRecording,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFFD54F),
+                foregroundColor: Colors.black87,
+                elevation: 0,
+                padding: EdgeInsets.symmetric(horizontal: fontSize * 1.5, vertical: fontSize * 0.6),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(fontSize * 0.6),
+                ),
+              ),
+              child: Text(
+                '結束聊天',
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
-            child: Text(
-              '聊完了!',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: fontSize,
-                color: Colors.grey[800],
-                fontWeight: FontWeight.w500,
-                letterSpacing: 1.2,
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -169,8 +162,8 @@ class AdvancedChattingControlView extends StatelessWidget {
     double fontSize = _getResponsiveFontSize(context);
 
     return SingleChildScrollView(
-      child: Align(
-        alignment: Alignment.center,
+      child: SizedBox(
+        width: double.infinity, // 💡 強迫撐滿寬度
         child: Wrap(
           alignment: WrapAlignment.center,
           crossAxisAlignment: WrapCrossAlignment.center,
@@ -235,35 +228,39 @@ class AdvancedPrepareView extends StatelessWidget {
     double fontSize = _getResponsiveFontSize(context);
 
     return SingleChildScrollView(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ElevatedButton(
-            onPressed: onStartChat,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFFD54F), // 黃色按鈕
-              foregroundColor: Colors.black87,
-              elevation: 0,
-              padding: EdgeInsets.symmetric(horizontal: fontSize * 1.5, vertical: fontSize * 0.8),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(fontSize),
+      child: SizedBox(
+        width: double.infinity, // 💡 強迫撐滿寬度
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center, // 💡 確保 Column 內元件居中
+          children: [
+            ElevatedButton(
+              onPressed: onStartChat,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFFD54F), // 黃色按鈕
+                foregroundColor: Colors.black87,
+                elevation: 0,
+                padding: EdgeInsets.symmetric(horizontal: fontSize * 1.5, vertical: fontSize * 0.8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(fontSize),
+                ),
+              ),
+              child: Text(
+                '點開始聊天',
+                style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold),
               ),
             ),
-            child: Text(
-              '點開始聊天',
-              style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold),
+            const SizedBox(height: 12),
+            Text(
+              '注意：只有${ReminiCareConfig.maxRecordLimitM}分鐘分享',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: (fontSize * 0.9).clamp(24.0, 40.0),
+                  color: Colors.grey[700]
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '注意：只有${ReminiCareConfig.maxRecordLimitM}分鐘分享',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                fontSize: (fontSize * 0.9).clamp(24.0, 40.0),
-                color: Colors.grey[700]
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -281,34 +278,37 @@ class RoundSummaryControls extends StatelessWidget {
     double fontSize = _getResponsiveFontSize(context);
 
     return SingleChildScrollView(
-      child: Wrap(
-        alignment: WrapAlignment.center,
-        spacing: 24.0,
-        runSpacing: 24.0,
-        children: [
-          ElevatedButton(
-            onPressed: onContinue,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFFD54F),
-              foregroundColor: Colors.black87,
-              elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(fontSize)),
-              padding: EdgeInsets.symmetric(horizontal: fontSize * 1.2, vertical: fontSize * 0.6),
+      child: SizedBox(
+        width: double.infinity, // 💡 強迫撐滿寬度
+        child: Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 24.0,
+          runSpacing: 24.0,
+          children: [
+            ElevatedButton(
+              onPressed: onContinue,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFFD54F),
+                foregroundColor: Colors.black87,
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(fontSize)),
+                padding: EdgeInsets.symmetric(horizontal: fontSize * 1.2, vertical: fontSize * 0.6),
+              ),
+              child: Text('繼續聊天', style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold)),
             ),
-            child: Text('繼續聊天', style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold)),
-          ),
-          ElevatedButton(
-            onPressed: onFinish,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFFD54F),
-              foregroundColor: Colors.black87,
-              elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(fontSize)),
-              padding: EdgeInsets.symmetric(horizontal: fontSize * 1.2, vertical: fontSize * 0.6),
+            ElevatedButton(
+              onPressed: onFinish,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFFD54F),
+                foregroundColor: Colors.black87,
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(fontSize)),
+                padding: EdgeInsets.symmetric(horizontal: fontSize * 1.2, vertical: fontSize * 0.6),
+              ),
+              child: Text('完成今天聊天', style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold)),
             ),
-            child: Text('完成今天聊天', style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold)),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

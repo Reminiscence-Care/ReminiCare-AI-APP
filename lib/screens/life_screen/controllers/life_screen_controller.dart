@@ -32,17 +32,17 @@ class LifeScreenController extends ChangeNotifier {
   final NvidiaLlmService llmService = NvidiaLlmService();
   final ISTTService sttService = YatingSpeechService();
 
-  // final IImageGenService imageService = SiliconFlowImageService(
-  //   rawBaseUrl: "https://api.siliconflow.com/v1",
-  //   apiKeyProvider: () => ReminiCareConfig.siliconFlowApiKey,
-  //   generationModel: "Qwen/Qwen-Image",
-  //   editModel: "Qwen/Qwen-Image-Edit",
-  //   defaultNegativePrompt: "Simplified Chinese, deformed strokes",
-  // );
-
-  final IImageGenService imageService = OpenAIImageService(
-    apiKeyProvider: () => ReminiCareConfig.openaiApiKey
+  final IImageGenService imageService = SiliconFlowImageService(
+    rawBaseUrl: "https://api.siliconflow.com/v1",
+    apiKeyProvider: () => ReminiCareConfig.siliconFlowApiKey,
+    generationModel: "Qwen/Qwen-Image",
+    editModel: "Qwen/Qwen-Image-Edit",
+    defaultNegativePrompt: "Simplified Chinese, deformed strokes",
   );
+
+  // final IImageGenService imageService = OpenAIImageService(
+  //   apiKeyProvider: () => ReminiCareConfig.openaiApiKey
+  // );
 
   final VoiceAssistantManager voiceManager = VoiceAssistantManager();
 
@@ -153,7 +153,7 @@ class LifeScreenController extends ChangeNotifier {
       if (t != null && t.trim().isNotEmpty) chunkText += t; }
     if (chunkText.isNotEmpty) {
       try {
-        currentElderName = await llmService.generateChatReply("從這句擷取長輩名字或稱呼(如王阿嬤),沒有就回傳「無名氏」: $chunkText", []);
+        currentElderName = await llmService.extractElderName(chunkText);
       } catch (e) {
         currentElderName = "長輩";
       }
@@ -173,9 +173,27 @@ class LifeScreenController extends ChangeNotifier {
     await voiceManager.stopActiveAudioOperations();
     chatStatus = ChatStatus.introTransition; notifyListeners();
     await Future.delayed(const Duration(seconds: 3));
-    chatStatus = ChatStatus.prepare; await fetchInitialQuestion();
+
+    // 💡 準備開始新話題：重置發言名單
+    _resetUnspokenElders();
+
+    chatStatus = ChatStatus.prepare;
+    await fetchInitialQuestion();
+
     voiceManager.checkCompletedCommands = false;
     voiceManager.startBackgroundWakeWordCycle(); notifyListeners();
+  }
+
+  // 💡 輔助方法：重置發言名單
+  void _resetUnspokenElders() {
+    if (elderNames.isNotEmpty) {
+      // 打亂名單，讓每次第一個人都不一樣
+      unspokenElders = List.from(elderNames)..shuffle();
+      // 抽出第一個人作為這輪的發言者
+      currentPromptElder = unspokenElders.removeAt(0);
+    } else {
+      currentPromptElder = ""; // 如果沒有介紹任何人，就保持空
+    }
   }
 
   void startTimer() {
@@ -207,13 +225,9 @@ class LifeScreenController extends ChangeNotifier {
     } else if (chatStatus == ChatStatus.dislikePrepare) {
       chatStatus = ChatStatus.dislikeChatting;
       currentChatPhase = ChatStatus.dislikeChatting;
-      unspokenElders = List.from(elderNames)..shuffle();
-      if (unspokenElders.isNotEmpty) unspokenElders.removeAt(0);
     } else if (chatStatus == ChatStatus.likePrepare) {
       chatStatus = ChatStatus.likeChatting;
       currentChatPhase = ChatStatus.likeChatting;
-      unspokenElders = List.from(elderNames)..shuffle();
-      if (unspokenElders.isNotEmpty) unspokenElders.removeAt(0);
     } else if (chatStatus == ChatStatus.nextElderPrompt) {
       isResumingNextElder = true;
       chatStatus = currentChatPhase;
@@ -275,10 +289,12 @@ class LifeScreenController extends ChangeNotifier {
     }
     else if (chatStatus == ChatStatus.likeChatting) {
       if (unspokenElders.isNotEmpty) {
+        // 💡 還有長輩沒發言過，切換到 nextElderPrompt 狀態
         currentPromptElder = unspokenElders.removeAt(0);
         chatStatus = ChatStatus.nextElderPrompt; notifyListeners();
         playCurrentContextVoice();
       } else {
+        // 💡 所有長輩都發言過了，準備進入下一個循環 (總結並產生新話題)
         chatStatus = ChatStatus.generatingNextTopic; notifyListeners();
         _generateNextTopicAndSummary(manualText: cleanTextForLLM);
       }
@@ -288,8 +304,12 @@ class LifeScreenController extends ChangeNotifier {
   Future<void> fetchInitialQuestion() async {
     if (_isDisposed) return; isLoading = true; notifyListeners();
     try {
-      aiGeneratedText = await llmService.generateInitialQuestion();
-    } catch (e) { aiGeneratedText = "哈囉！小時候家裡最常吃什麼呢？"; }
+      final String rawQuestion = await llmService.generateInitialQuestion();
+      // 💡 將長輩名字安插進問題中
+      aiGeneratedText = currentPromptElder.isNotEmpty ? "$currentPromptElder， $rawQuestion" : rawQuestion;
+    } catch (e) {
+      aiGeneratedText = currentPromptElder.isNotEmpty ? "$currentPromptElder，哈囉！小時候家裡最常吃什麼呢？" : "哈囉！小時候家裡最常吃什麼呢？";
+    }
     finally { if (!_isDisposed) { isLoading = false; notifyListeners(); playCurrentContextVoice(); } }
   }
 
@@ -299,8 +319,19 @@ class LifeScreenController extends ChangeNotifier {
       String previousQuestion = aiGeneratedText; String lastUserMessage = "";
       for (var msg in chatHistory.reversed) { if (msg['role'] == 'user') { lastUserMessage = msg['content'] ?? ""; break; } }
       if (lastUserMessage.isEmpty) lastUserMessage = accumulatedChatText;
-      aiGeneratedText = await llmService.generateExtendedQuestion(previousQuestion, lastUserMessage);
-    } catch (e) { aiGeneratedText = "這張照片有讓您想起更多小時候的趣味往事嗎？"; }
+      final String rawQuestion = await llmService.generateExtendedQuestion(previousQuestion, lastUserMessage);
+
+      // 💡 判斷是否還有長輩未發言，有的話在按「像」之後的這題，也 Cue 下一個長輩
+      if(unspokenElders.isNotEmpty) {
+        currentPromptElder = unspokenElders.removeAt(0);
+        aiGeneratedText = "$currentPromptElder， $rawQuestion";
+      } else {
+        aiGeneratedText = rawQuestion;
+      }
+
+    } catch (e) {
+      aiGeneratedText = currentPromptElder.isNotEmpty ? "$currentPromptElder，這張照片有讓您想起更多小時候的趣味往事嗎？" : "這張照片有讓您想起更多小時候的趣味往事嗎？";
+    }
     finally { if (!_isDisposed) { isLoading = false; notifyListeners(); playCurrentContextVoice(); } }
   }
 
@@ -322,10 +353,15 @@ class LifeScreenController extends ChangeNotifier {
   }
 
   void continueChatFromSummary() {
-    chatStatus = ChatStatus.likePrepare;
+    // 💡 準備開始新話題：重置發言名單
+    _resetUnspokenElders();
+
+    chatStatus = ChatStatus.prepare; // 這裡改成 prepare 而非 likePrepare，因為是一個全新的開始
     accumulatedChatText = "";
-    notifyListeners();
-    playCurrentContextVoice();
+
+    // 重新取得一個新問題 (會套用新的 currentPromptElder)
+    fetchInitialQuestion();
+
     voiceManager.checkCompletedCommands = false;
     voiceManager.startBackgroundWakeWordCycle();
   }

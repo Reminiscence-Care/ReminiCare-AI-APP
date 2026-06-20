@@ -25,41 +25,23 @@ class LlmService {
     );
   }
 
-  Future<String> generateInitialQuestion() async {
+  /// 泛用的請求 Function，整合歷史紀錄、角色設定與錯誤處理
+  Future<String> request(
+    String? systemPrompt,
+    String userPrompt,
+    List<Map<String, String>> history, {
+    double temperature = 0.6,
+    int maxTokens = 150,
+  }) async {
     try {
-      final response = await _client.chat.completions.create(
-        ChatCompletionCreateRequest(
-          model: model,
-          temperature: 0.9,
-          maxTokens: 50,
-          messages: [
-            ChatMessage.system(INITIAL_QUESTION_PROMPT),
-            ChatMessage.user("請隨機挑選一個全新的懷舊主題來問我。(隨機碼：${DateTime.now().millisecondsSinceEpoch})"),
-          ],
-        ),
-      );
-
-      print("[NVIDIA] 初始隨機出題成功！");
-      final String text = response.text ?? '';
-      return text.trim().isNotEmpty ? text.trim() : "哈囉！小時候家裡最常吃什麼呢？";
-
-    } catch (e) {
-      print("[NVIDIA] 初始出題發生錯誤: $e");
-      return "哈囉！小時候家裡最常吃什麼呢？";
-    }
-  }
-
-  /// 產生與長輩的陪伴溫慢對話
-  Future<String> generateChatReply(String userMessage, List<Map<String, String>> history) async {
-    try {
-      List<ChatMessage> messages = [
-        ChatMessage.system(CHATBOT_SYSTEM_PROMPT),
-      ];
+      List<ChatMessage> messages = [];
+      if (systemPrompt != null) {
+        messages.add(ChatMessage.system(systemPrompt));
+      }
 
       for (var msg in history) {
         final role = msg['role'];
         final content = msg['content'] ?? '';
-
         if (role == 'user') {
           messages.add(ChatMessage.user(content));
         } else if (role == 'assistant') {
@@ -67,84 +49,94 @@ class LlmService {
         }
       }
 
-      messages.add(ChatMessage.user(userMessage));
+      messages.add(ChatMessage.user(userPrompt));
 
       final response = await _client.chat.completions.create(
         ChatCompletionCreateRequest(
           model: model,
-          temperature: 0.6,
-          maxTokens: 150,
+          temperature: temperature,
+          maxTokens: maxTokens,
           messages: messages,
         ),
       );
 
-      final String text = response.text ?? '';
-      return text.trim().isNotEmpty ? text.trim() : "阿公阿嬤拍謝，我這邊稍微聽不清楚，您可以再說一次嗎？";
-
+      final String text = (response.text ?? '').trim();
+      return text.isNotEmpty ? text : "";
     } catch (e) {
-      print("[NVIDIA] 陪伴對話錯誤: $e");
-      return "阿公阿嬤拍謝，我這邊稍微聽不清楚，您可以再說一次嗎？";
+      print("[LLM ERROR] $e");
+      return "[ERROR]";
     }
-
-
   }
 
-  /// 💡 新增：根據目前的對話脈絡與長輩的聊天內容，自動生成有深度的延伸懷舊問題
-  Future<String> generateExtendedQuestion(String previousQuestion, String elderResponse) async {
-    try {
-      final response = await _client.chat.completions.create(
-        ChatCompletionCreateRequest(
-          model: model,
-          temperature: 0.8,
-          maxTokens: 100,
-          messages: [
-            ChatMessage.system("你是一個親切的台灣早期懷舊引導助理。請根據先前的提問，以及長輩剛剛的回答，延伸出一個有溫度、口語化且具體的新問題，字數控制在 25 到 45 字以內。請直接回傳該新問題，不要附帶任何引號、前言、多餘問候或解釋。使用台灣繁體中文（可穿插親切的台語口吻助詞，例如『那那時...』『那那時候...』）。"),
-            ChatMessage.user("先前的提問：『$previousQuestion』\n長輩的回答：『$elderResponse』\n請產生一個延伸問題："),
-          ],
-        ),
-      );
-
-      print("[NVIDIA] 延伸問題生成成功！");
-      final String text = response.text ?? '';
-      return text.trim().isNotEmpty ? text.trim() : "這張照片有讓您想起更多小時候的趣味往事嗎？";
-
-    } catch (e) {
-      print("[NVIDIA] 延伸問題生成失敗: $e");
-      return "這張照片有讓您想起更多小時候的趣味往事嗎？";
+  /// 輔助：移除 Markdown 的 JSON 區塊標記
+  String _cleanJson(String raw) {
+    String cleaned = raw.trim();
+    if (cleaned.startsWith("```json")) {
+      cleaned = cleaned.replaceAll("```json", "").replaceAll("```", "").trim();
+    } else if (cleaned.startsWith("```")) {
+      cleaned = cleaned.replaceAll("```", "").trim();
     }
+    return cleaned;
+  }
+
+  /// 產生初始隨機懷舊問題
+  Future<String> generateInitialQuestion() async {
+    final response = await request(
+      INITIAL_QUESTION_PROMPT,
+      "請隨機挑選一個全新的懷舊主題來問我。(隨機碼：${DateTime.now().millisecondsSinceEpoch})",
+      [],
+      temperature: 0.9,
+      maxTokens: 50,
+    );
+
+    return (response == "[ERROR]" || response.isEmpty)
+        ? "哈囉！小時候家裡最常吃什麼呢？"
+        : response;
+  }
+
+  /// 產生與長輩的陪伴溫慢對話
+  Future<String> generateChatReply(String userMessage, List<Map<String, String>> history) async {
+    final response = await request(
+      CHATBOT_SYSTEM_PROMPT,
+      userMessage,
+      history,
+    );
+
+    return (response == "[ERROR]" || response.isEmpty)
+        ? "阿公阿嬤拍謝，我這邊稍微聽不清楚，您可以再說一次嗎？"
+        : response;
+  }
+
+  /// 根據目前的對話脈絡與長輩的聊天內容，自動生成有深度的延伸懷舊問題
+  Future<String> generateExtendedQuestion(String previousQuestion, String elderResponse) async {
+    final response = await request(
+      "你是一個親切的台灣早期懷舊引導助理。請根據先前的提問，以及長輩剛剛的回答，延伸出一個有溫度、口語化且具體的新問題，字數控制在 25 到 45 字以內。請直接回傳該新問題，不要附帶任何引號、前言、多餘問候或解釋。使用台灣繁體中文（可穿插親切的台語口吻助詞，例如『那那時...』『那那時候...』）。",
+      "先前的提問：『$previousQuestion』\n長輩的回答：『$elderResponse』\n請產生一個延伸問題：",
+      [],
+      temperature: 0.8,
+      maxTokens: 100,
+    );
+
+    return (response == "[ERROR]" || response.isEmpty)
+        ? "這張照片有讓您想起更多小時候的趣味往事嗎？"
+        : response;
   }
 
   /// 從逐字稿中精準抓取 1~5 個視覺關鍵字
   Future<List<String>> extractKeywords(String transcript) async {
+    final response = await request(EXTRACTOR_SYSTEM_PROMPT, transcript, [], temperature: 0.1);
+    if (response == "[ERROR]" || response.isEmpty) return [];
+
     try {
-      final response = await _client.chat.completions.create(
-        ChatCompletionCreateRequest(
-          model: model,
-          temperature: 0.1,
-          messages: [
-            ChatMessage.system(EXTRACTOR_SYSTEM_PROMPT),
-            ChatMessage.user(transcript),
-          ],
-        ),
-      );
-
-      String rawOutput = (response.text ?? '').trim();
-
-      if (rawOutput.startsWith("```json")) {
-        rawOutput = rawOutput.replaceAll("```json", "").replaceAll("```", "").trim();
-      } else if (rawOutput.startsWith("```")) {
-        rawOutput = rawOutput.replaceAll("```", "").trim();
-      }
-
-      final List<dynamic> decoded = jsonDecode(rawOutput);
+      final List<dynamic> decoded = jsonDecode(_cleanJson(response));
       return decoded.map((e) => e.toString()).toList();
-
     } catch (e) {
       print("[NVIDIA] 關鍵字擷取錯誤: $e");
       return [];
     }
   }
 
+  /// 擷取場景詳細資料 (場景、年代、地點、關鍵字)
   Future<Map<String, dynamic>> extractSceneData(String transcript) async {
     final Map<String, dynamic> defaultResult = {
       "scene": "台灣早期懷舊生活場景",
@@ -153,121 +145,73 @@ class LlmService {
       "keywords": <String>[]
     };
 
+    final response = await request(EXTRACTOR_SYSTEM_PROMPT, transcript, [], temperature: 0.1);
+    if (response == "[ERROR]" || response.isEmpty) return defaultResult;
+
     try {
-      final response = await _client.chat.completions.create(
-        ChatCompletionCreateRequest(
-          model: model,
-          temperature: 0.1,
-          messages: [
-            ChatMessage.system(EXTRACTOR_SYSTEM_PROMPT),
-            ChatMessage.user(transcript),
-          ],
-        ),
-      );
-
-      String rawOutput = (response.text ?? '').trim();
-
-      if (rawOutput.startsWith("```json")) {
-        rawOutput = rawOutput.replaceAll("```json", "").replaceAll("```", "").trim();
-      } else if (rawOutput.startsWith("```")) {
-        rawOutput = rawOutput.replaceAll("```", "").trim();
-      }
-
-      final dynamic decoded = jsonDecode(rawOutput);
-
+      final dynamic decoded = jsonDecode(_cleanJson(response));
       if (decoded is List) {
-        debugPrint("[NVIDIA] 警告: LLM 回傳了陣列而非物件，已自動容錯處理。");
-        return {
-          "scene": "台灣早期懷舊生活場景",
-          "era": "1980s",
-          "location": "Taiwan",
-          "keywords": decoded.map((e) => e.toString()).toList()
-        };
+        return {...defaultResult, "keywords": decoded.map((e) => e.toString()).toList()};
       } else if (decoded is Map<String, dynamic>) {
         return decoded;
-      } else {
-        return defaultResult;
       }
-
     } catch (e) {
       print("[NVIDIA] 場景擷取錯誤: $e");
     }
     return defaultResult;
   }
 
-  List<Map<String, String>> _getCleanRecommendationSongs(String rawOutput) {
-    final List<dynamic> decoded = jsonDecode(rawOutput);
-    return decoded.map((item) {
-      return Map<String, String>.from(item as Map);
-    }).toList();
-  }
-
+  /// 根據語言推薦懷舊老歌
   Future<List<Map<String, String>>> recommendationSongsName(String? language) async {
+    final response = await request(
+      SONG_RECOMMENDATION_PROMPT.replaceAll("\$language", language ?? "國語"),
+      "請挑選十首老歌的歌名及歌手名給我。(${DateTime.now().millisecondsSinceEpoch})",
+      [],
+      temperature: 0.9,
+      maxTokens: 1000,
+    );
+
+    if (response == "[ERROR]" || response.isEmpty) return [];
+
     try {
-      final response = await _client.chat.completions.create(
-        ChatCompletionCreateRequest(
-          model: model,
-          temperature: 0.9,
-          maxTokens: 1000,
-          messages: [
-            ChatMessage.system(SONG_RECOMMENDATION_PROMPT.replaceAll("\$language", language ?? "國語")),
-            ChatMessage.user("請挑選十首老歌的歌名及歌手名給我。(${DateTime.now().millisecondsSinceEpoch})"),
-          ],
-        ),
-      );
-
-      String rawOutput = (response.text ?? '').trim();
-
-      if (rawOutput.startsWith("```json")) {
-        rawOutput = rawOutput.replaceAll("```json", "").replaceAll("```", "").trim();
-      } else if (rawOutput.startsWith("```")) {
-        rawOutput = rawOutput.replaceAll("```", "").trim();
-      }
-
-      try {
-        return _getCleanRecommendationSongs(rawOutput);
-      } catch (e) {
-        print("[NVIDIA] JSON 解析失敗，LLM 回傳的原始字串為: $rawOutput");
-        return [];
-      }
-
-    } catch(e) {
-      print("[NVIDIA] 歌曲推薦錯誤: $e");
+      final List<dynamic> decoded = jsonDecode(_cleanJson(response));
+      return decoded.map((item) => Map<String, String>.from(item as Map)).toList();
+    } catch (e) {
+      print("[NVIDIA] JSON 解析失敗: $e");
       return [];
     }
   }
 
+  /// 從查詢字串中提取歌手與歌名
   Future<Map<String, dynamic>> getSingerAndSongNameFromQuery(String query) async {
+    final response = await request(
+      SONG_INFO_EXTRACTOR_PROMPT,
+      "請告訴我根據以下資料，這首歌是哪位歌手的，以及歌名是甚麼。資料: $query",
+      [],
+      temperature: 0.1,
+      maxTokens: 1000,
+    );
+
+    if (response == "[ERROR]" || response.isEmpty) return {};
+
     try {
-      final response = await _client.chat.completions.create(
-        ChatCompletionCreateRequest(
-          model: model,
-          temperature: 0.1,
-          maxTokens: 1000,
-          messages: [
-            ChatMessage.system(SONG_INFO_EXTRACTOR_PROMPT),
-            ChatMessage.user("請告訴我根據以下資料，這首歌是哪位歌手的，以及歌名是甚麼。資料: $query"),
-          ],
-        ),
-      );
-      String rawOutput = (response.text ?? '').trim();
-
-      if (rawOutput.startsWith("```json")) {
-        rawOutput = rawOutput.replaceAll("```json", "").replaceAll("```", "").trim();
-      } else if (rawOutput.startsWith("```")) {
-        rawOutput = rawOutput.replaceAll("```", "").trim();
-      }
-
-      try {
-        final Map<String, dynamic> decode = jsonDecode(rawOutput);
-        return decode;
-      } catch (e) {
-        print("[NVIDIA] JSON 解析失敗，LLM 回傳的原始字串為: $rawOutput");
-        return {};
-      }
-    } catch(e) {
-      print("取得歌手及歌名時發生未預期錯誤");
+      return jsonDecode(_cleanJson(response));
+    } catch (e) {
+      print("[NVIDIA] JSON 解析失敗: $e");
       return {};
     }
+  }
+
+  /// 從輸入文字中擷取長輩姓名或稱呼
+  Future<String> extractElderName(String text) async {
+    final response = await request(
+      NAME_EXTRACT_PROMPT,
+      "請從這句擷取長輩名字或稱呼：$text",
+      [],
+      temperature: 0.1,
+      maxTokens: 10,
+    );
+
+    return (response == "[ERROR]" || response.isEmpty) ? "無名氏" : response;
   }
 }
