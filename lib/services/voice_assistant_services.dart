@@ -34,16 +34,12 @@ class VoiceAssistantManager {
   // ==========================================
   static const String _spKeyTtsCache = "tts_audio_cache_index_v1";
   static const int _maxCacheSizeBytes = 100 * 1024 * 1024; // 預設 100MB
-  
+
   bool _cacheInitialized = false;
   final Map<String, File> _ttsCache = {};
-  // 儲存中繼資料：{ cacheKey: { "path": string, "lastUsed": int, "size": int } }
   Map<String, dynamic> _cacheMetadata = {};
 
-  // 播放語言通知
   void Function(String language)? onPlayingLanguageChanged;
-
-  // 💡 新增：背景辨識文字廣播！讓 Controller 可以自訂攔截「下一位」、「開始介紹」等口令
   void Function(String recognizedText)? onBackgroundTextRecognized;
 
   // ==========================================
@@ -56,7 +52,6 @@ class VoiceAssistantManager {
   bool _isCalibrated = false;
   int _calibrationTicks = 0;
   double _calibrationSumDb = 0.0;
-
   int _consecutiveLoudTicks = 0;
 
   Timer? _vadTimer;
@@ -65,14 +60,10 @@ class VoiceAssistantManager {
   bool _hasSpoken = false;
   String? _currentRecordPath;
 
-  // ==========================================
-  // 🔗 回調函數 (Callbacks)
-  // ==========================================
   void Function()? onStartChatFlow;
   void Function()? onRestartChatFlow;
   void Function()? onEndChatFlow;
   void Function(List<String> mergedAudioPaths)? onSpeechCompleted;
-
 
   bool checkCompletedCommands = false;
   bool get isListening => _isRollingWakeWord || _isRollingChatRecord;
@@ -80,31 +71,24 @@ class VoiceAssistantManager {
   // ==========================================
   // 🛠️ 初始化與快取管理邏輯
   // ==========================================
-  
   Future<void> _initCacheIfNeeded() async {
     if (_cacheInitialized) return;
-    
     try {
       final sp = await SharedPreferences.getInstance();
       final String? jsonStr = sp.getString(_spKeyTtsCache);
-      
+
       if (jsonStr != null) {
         final Map<String, dynamic> decoded = jsonDecode(jsonStr);
         _cacheMetadata = decoded;
-        
-        // 載入實際存在的檔案到記憶體
+
         _cacheMetadata.forEach((key, data) {
           final String path = data['path'];
           final file = File(path);
-          if (file.existsSync()) {
-            _ttsCache[key] = file;
-          }
+          if (file.existsSync()) _ttsCache[key] = file;
         });
-        
-        // 清理不存在的紀錄
+
         _cacheMetadata.removeWhere((key, _) => !_ttsCache.containsKey(key));
       }
-      
       debugPrint("📦 [TTS 快取] 已初始化，現有項目: ${_ttsCache.length} 個");
       _cacheInitialized = true;
     } catch (e) {
@@ -132,8 +116,6 @@ class VoiceAssistantManager {
     if (currentTotalSize + newFileSize <= _maxCacheSizeBytes) return;
 
     debugPrint("🧹 [TTS 快取] 容量超出限制，開始清理舊檔案...");
-
-    // 按最後使用時間排序 (LRU)
     final sortedKeys = _cacheMetadata.keys.toList()
       ..sort((a, b) {
         final lastA = _cacheMetadata[a]?['lastUsed'] ?? 0;
@@ -142,7 +124,7 @@ class VoiceAssistantManager {
       });
 
     for (final key in sortedKeys) {
-      if (currentTotalSize + newFileSize <= _maxCacheSizeBytes * 0.8) break; // 清理到 80%
+      if (currentTotalSize + newFileSize <= _maxCacheSizeBytes * 0.8) break;
 
       final data = _cacheMetadata[key];
       if (data != null) {
@@ -321,10 +303,8 @@ class VoiceAssistantManager {
         final String cleanText = transcript.replaceAll(" ", "");
         debugPrint("[喚醒助理] 解析內容: '$cleanText'，完成監聽狀態為: $checkCompletedCommands");
 
-        // 💡 新增：無論是什麼文字，都先廣播給 Controller 處理 (例如：處理自我介紹流程)
         onBackgroundTextRecognized?.call(cleanText);
 
-        // 處理內建的核心對話狀態口令
         if (_matchesCommand(cleanText, ReminiCareConfig.restartWakeWords)) {
           debugPrint("🎉 [助理喚醒成功] 重新聊天 (口令: $cleanText)");
           _isRollingWakeWord = false;
@@ -473,24 +453,18 @@ class VoiceAssistantManager {
 
   Future<void> stopCurrentPlayback() async {
     _playSessionId++;
-
-    try {
-      await _audioPlayer.stop();
-    } catch (_) {}
+    try { await _audioPlayer.stop(); } catch (_) {}
   }
 
-  Future<void> playLanguageSequence(
-      String text, {
-        required List<String> languages,
-        int repeatCount = 1,
-        int gapMs = 300,
-      }) async {
-    if (text.isEmpty ||
-        kIsWeb ||
-        languages.isEmpty ||
-        repeatCount <= 0) {
-      return;
-    }
+  // 💡 關鍵改變：接收 List<String> texts，實現切段合成，完美增加 Cache 命中率！
+  Future<void> playLanguageSequence({
+    required List<String> texts,
+    required List<String> languages,
+    int repeatCount = 1,
+    int gapMs = 300,
+    int partGapMs = 150, // 💡 新增：同語言內「長輩」與「問題」之間的微小停頓
+  }) async {
+    if (texts.isEmpty || kIsWeb || languages.isEmpty || repeatCount <= 0) return;
 
     final currentSession = ++_playSessionId;
 
@@ -498,90 +472,85 @@ class VoiceAssistantManager {
       await _initCacheIfNeeded();
       final storageDir = await getApplicationDocumentsDirectory();
 
-      // 先建立快取
-      for (final lang in languages.toSet()) {
-        final cacheKey = '$lang::$text';
-
-        if (_ttsCache.containsKey(cacheKey)) {
-          // 更新最後使用時間
-          _cacheMetadata[cacheKey]?['lastUsed'] = DateTime.now().millisecondsSinceEpoch;
-          continue;
-        }
-
-        final audioBytes = await ttsService.generateSpeech(text, lang);
-
-        if (audioBytes == null) {
-          debugPrint('[TTS失敗] $lang');
-          continue;
-        }
-
-        final safeLang = switch (lang) {
-          "台語" => "tw",
-          "中文" => "zh",
-          _ => lang,
-        };
-
-        final fileSize = audioBytes.length;
-        await _checkAndCleanupCache(fileSize);
-
-        final fileName = 'tts_${safeLang}_${DateTime.now().millisecondsSinceEpoch}.wav';
-        final file = File('${storageDir.path}/$fileName');
-
-        await file.writeAsBytes(audioBytes, flush: true);
-
-        _ttsCache[cacheKey] = file;
-        _cacheMetadata[cacheKey] = {
-          "path": file.path,
-          "lastUsed": DateTime.now().millisecondsSinceEpoch,
-          "size": fileSize,
-        };
-        
-        await _saveCacheIndex();
-      }
-
-      // 開始播放
-      for (int repeat = 0; repeat < repeatCount; repeat++) {
-        for (final lang in languages) {
-
-          if (currentSession != _playSessionId) {
-            return;
-          }
-
+      // 1. 批次建立所有片段的快取
+      for (final text in texts) {
+        if (text.isEmpty) continue;
+        for (final lang in languages.toSet()) {
           final cacheKey = '$lang::$text';
 
-          final file = _ttsCache[cacheKey];
-
-          if (file == null) {
+          if (_ttsCache.containsKey(cacheKey)) {
+            _cacheMetadata[cacheKey]?['lastUsed'] = DateTime.now().millisecondsSinceEpoch;
             continue;
           }
 
-          onPlayingLanguageChanged?.call(lang);
-
-          final completer = Completer<void>();
-
-          final subscription =
-          _audioPlayer.onPlayerComplete.listen((_) {
-            if (!completer.isCompleted) {
-              completer.complete();
-            }
-          });
-
-          await _audioPlayer.play(
-            DeviceFileSource(file.path),
-          );
-
-          await completer.future;
-
-          await subscription.cancel();
-
-          if (currentSession != _playSessionId) {
-            return;
+          final audioBytes = await ttsService.generateSpeech(text, lang);
+          if (audioBytes == null) {
+            debugPrint('[TTS失敗] $lang - $text');
+            continue;
           }
 
+          final safeLang = switch (lang) {
+            "台語" => "tw",
+            "中文" => "zh",
+            _ => lang,
+          };
+
+          final fileSize = audioBytes.length;
+          await _checkAndCleanupCache(fileSize);
+
+          final fileName = 'tts_${safeLang}_${DateTime.now().millisecondsSinceEpoch}.wav';
+          final file = File('${storageDir.path}/$fileName');
+
+          await file.writeAsBytes(audioBytes, flush: true);
+
+          _ttsCache[cacheKey] = file;
+          _cacheMetadata[cacheKey] = {
+            "path": file.path,
+            "lastUsed": DateTime.now().millisecondsSinceEpoch,
+            "size": fileSize,
+          };
+
+          await _saveCacheIndex();
+        }
+      }
+
+      // 2. 依照切段順序播放，達成無縫連播
+      for (int repeat = 0; repeat < repeatCount; repeat++) {
+        for (final lang in languages) {
+          if (currentSession != _playSessionId) return;
+          onPlayingLanguageChanged?.call(lang);
+
+          for (int i = 0; i < texts.length; i++) {
+            final text = texts[i];
+            if (text.isEmpty) continue;
+            if (currentSession != _playSessionId) return;
+
+            final cacheKey = '$lang::$text';
+            final file = _ttsCache[cacheKey];
+            if (file == null) continue;
+
+            final completer = Completer<void>();
+            final subscription = _audioPlayer.onPlayerComplete.listen((_) {
+              if (!completer.isCompleted) completer.complete();
+            });
+
+            await _audioPlayer.play(DeviceFileSource(file.path));
+            await completer.future;
+            await subscription.cancel();
+
+            if (currentSession != _playSessionId) return;
+
+            // 💡 短停頓：在「王阿嬤」跟「小時候...」之間模擬講話呼吸感
+            if (i < texts.length - 1 && partGapMs > 0) {
+              await Future.delayed(Duration(milliseconds: partGapMs));
+            }
+          }
+
+          if (currentSession != _playSessionId) return;
+
+          // 換語言時的長停頓
           if (gapMs > 0) {
-            await Future.delayed(
-              Duration(milliseconds: gapMs),
-            );
+            await Future.delayed(Duration(milliseconds: gapMs));
           }
         }
       }

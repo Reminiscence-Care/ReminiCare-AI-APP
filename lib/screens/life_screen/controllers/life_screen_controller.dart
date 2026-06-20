@@ -45,11 +45,9 @@ class LifeScreenController extends ChangeNotifier {
   String currentPromptElder = "";
   ChatStatus currentChatPhase = ChatStatus.chatting;
 
-  // 💡 替換：拆分為主標題與副標題
   String currentMainQuestion = "";
   String currentSubQuestion = "";
 
-  // 提供給 TTS 或整體讀取的完整問句
   String get fullQuestionText => "$currentMainQuestion $currentSubQuestion".trim();
 
   String selectedLanguage = "台語";
@@ -61,6 +59,10 @@ class LifeScreenController extends ChangeNotifier {
 
   String accumulatedChatText = "";
   bool isProcessingEnd = false;
+
+  // 💡 新增：用來追蹤還在排隊等 Yating STT 辨識的任務數量與觸發狀態
+  int _activeSttTasks = 0;
+  bool _hasTriggeredEndProcess = false;
 
   List<String> originalKeywords = [];
   List<String> newKeywords = [];
@@ -219,7 +221,14 @@ class LifeScreenController extends ChangeNotifier {
 
     recordSeconds = 0;
     if (!isResumingNextElder) accumulatedChatText = "";
-    isProcessingEnd = false; startTimer(); notifyListeners(); voiceManager.startChatFlow();
+
+    isProcessingEnd = false;
+    _hasTriggeredEndProcess = false;
+    _activeSttTasks = 0;
+
+    startTimer();
+    notifyListeners();
+    voiceManager.startChatFlow();
   }
 
   Future<void> handleEndChat() async {
@@ -233,30 +242,68 @@ class LifeScreenController extends ChangeNotifier {
     if (!isProcessingEnd && isChatting) voiceManager.startChatFlow();
     if (paths.isEmpty) return;
 
+    // 💡 標記：有一個 STT 任務正在進行中
+    _activeSttTasks++;
+
     String chunkText = "";
-    for (String path in paths) { String? t = await sttService.transcribe(path); try { File(path).deleteSync(); } catch (_) {} if (t != null && t.trim().isNotEmpty) chunkText += t + "，"; }
-    if (chunkText.isEmpty) return;
-    if (isProcessingEnd) { accumulatedChatText += chunkText; return; }
+    for (String path in paths) {
+      String? t = await sttService.transcribe(path);
+      try { File(path).deleteSync(); } catch (_) {}
+      if (t != null && t.trim().isNotEmpty) chunkText += t + "，";
+    }
+
+    // 💡 標記：這個 STT 任務完成了
+    _activeSttTasks--;
+
+    if (chunkText.isEmpty) {
+      if (isProcessingEnd) _checkAndTriggerEndProcess();
+      return;
+    }
+
+    accumulatedChatText += chunkText;
+
+    if (isProcessingEnd) {
+      _checkAndTriggerEndProcess();
+      return;
+    }
 
     bool isEnd = false; String cleanText = chunkText.replaceAll(" ", "");
     for (String cmd in ReminiCareConfig.endWakeWords) { if (cleanText.contains(cmd)) { isEnd = true; break; } }
 
     if (isEnd) {
       isProcessingEnd = true; stopTimer(); await voiceManager.stopActiveAudioOperations();
-      accumulatedChatText += chunkText;
-      String cleanTextForLLM = accumulatedChatText; for (String cmd in ReminiCareConfig.endWakeWords) cleanTextForLLM = cleanTextForLLM.replaceAll(cmd, "");
-      await _processEndOfSpeechChunk(cleanTextForLLM);
-    } else {
-      accumulatedChatText += chunkText;
+      _checkAndTriggerEndProcess();
     }
   }
 
   Future<void> handleFinalChunk(List<String> paths) async {
+    // 💡 標記：最後一段強制結算的 STT 任務正在進行中
+    _activeSttTasks++;
+
     String chunkText = "";
-    for (String path in paths) { String? t = await sttService.transcribe(path); try { File(path).deleteSync(); } catch (e) {} if (t != null && t.trim().isNotEmpty) chunkText += t + "，"; }
+    for (String path in paths) {
+      String? t = await sttService.transcribe(path);
+      try { File(path).deleteSync(); } catch (e) {}
+      if (t != null && t.trim().isNotEmpty) chunkText += t + "，";
+    }
     accumulatedChatText += chunkText;
-    String cleanTextForLLM = accumulatedChatText; for (String cmd in ReminiCareConfig.endWakeWords) cleanTextForLLM = cleanTextForLLM.replaceAll(cmd, "");
-    await _processEndOfSpeechChunk(cleanTextForLLM);
+
+    // 💡 標記：任務完成
+    _activeSttTasks--;
+
+    _checkAndTriggerEndProcess();
+  }
+
+  void _checkAndTriggerEndProcess() {
+    // 必須符合：1. 已經標記結束 2. 所有翻譯都回來了 3. 還沒觸發過 AI
+    if (isProcessingEnd && _activeSttTasks == 0 && !_hasTriggeredEndProcess) {
+      _hasTriggeredEndProcess = true; // 鎖上，避免重複觸發
+      String cleanTextForLLM = accumulatedChatText;
+      for (String cmd in ReminiCareConfig.endWakeWords) {
+        cleanTextForLLM = cleanTextForLLM.replaceAll(cmd, "");
+      }
+      _processEndOfSpeechChunk(cleanTextForLLM);
+    }
   }
 
   Future<void> _processEndOfSpeechChunk(String cleanTextForLLM) async {
@@ -313,7 +360,7 @@ class LifeScreenController extends ChangeNotifier {
       } else {
         currentMainQuestion = rawQuestion;
       }
-      currentSubQuestion = ""; // LLM延伸話題暫無副標
+      currentSubQuestion = "";
 
     } catch (e) {
       currentMainQuestion = currentPromptElder.isNotEmpty ? "$currentPromptElder，這張照片有讓您想起更多小時候的趣味往事嗎？" : "這張照片有讓您想起更多小時候的趣味往事嗎？";
@@ -386,36 +433,53 @@ class LifeScreenController extends ChangeNotifier {
     }
   }
 
+  // 💡 關鍵分割：把「長輩名字」與「實際問題」拆開成為字串陣列，讓快取能精準命中！
   Future<void> playCurrentContextVoice({
     bool isManualTap = false,
   }) async {
     if (_isDisposed) return;
 
-    String textToPlay = fullQuestionText;
+    List<String> textsToPlay = [];
 
     if (chatStatus == ChatStatus.evaluation ||
         chatStatus == ChatStatus.dislikeEvaluation) {
-      textToPlay = "這張圖符合您的回憶嗎？";
+      textsToPlay = ["這張圖符合您的回憶嗎？"];
     } else if (chatStatus == ChatStatus.dislikePrepare) {
-      textToPlay = "哪裡不對？";
+      textsToPlay = ["哪裡不對？"];
     } else if (chatStatus == ChatStatus.nextElderPrompt) {
-      textToPlay = "$currentPromptElder呢？";
+      textsToPlay = ["$currentPromptElder呢？"]; // 短句子可以直接合成一組
+    } else {
+      // 提取並拆分長輩姓名，其餘部分合併成一個純淨的題目字串
+      if (currentPromptElder.isNotEmpty) {
+        textsToPlay.add(currentPromptElder);
+      }
+
+      String rawMain = currentMainQuestion;
+      if (currentPromptElder.isNotEmpty && rawMain.startsWith(currentPromptElder)) {
+        // 移除名字與緊接在後的逗點與空白
+        rawMain = rawMain.substring(currentPromptElder.length).replaceAll(RegExp(r'^[，,\s]+'), '');
+      }
+
+      String combinedQuestion = "$rawMain $currentSubQuestion".trim();
+      if (combinedQuestion.isNotEmpty) {
+        textsToPlay.add(combinedQuestion);
+      }
     }
 
-    if (textToPlay.isEmpty) return;
+    if (textsToPlay.isEmpty) return;
 
     await stopAudioSequence();
     await voiceManager.stopActiveAudioOperations();
 
     if (isManualTap) {
       await voiceManager.playLanguageSequence(
-        textToPlay,
+        texts: textsToPlay,
         languages: [selectedLanguage],
         repeatCount: 1,
       );
     } else {
       await voiceManager.playLanguageSequence(
-        textToPlay,
+        texts: textsToPlay,
         languages: ["台語", "中文"],
         repeatCount: 2,
       );
@@ -460,8 +524,9 @@ class LifeScreenController extends ChangeNotifier {
       currentSubQuestion = "";
       chatStatus = chatStatus == ChatStatus.dislikeGenerating ? ChatStatus.dislikePrepare : ChatStatus.prepare;
       notifyListeners();
+      // 💡 錯誤處理也使用陣列模式送出
       await voiceManager.playLanguageSequence(
-        fullQuestionText,
+        texts: [currentMainQuestion],
         languages: ["台語", "中文"],
         repeatCount: 2,
       );
