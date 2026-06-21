@@ -12,7 +12,7 @@ import 'speech_services.dart';
 
 // =========================================================================
 // 🎙️ 💡 獨立語音助手核心控制器 (VoiceAssistantManager)
-// 【專業 VAD 版】自動測量環境雜音 + 防突發噪音 + 靜音掛斷 + 背景文字廣播
+// 完美整合 iOS PlayAndRecord 音訊模式 + VAD 智慧對話流 + TTS 本機快取
 // =========================================================================
 class VoiceAssistantManager {
   final AudioRecorder _audioRecorder = AudioRecorder();
@@ -26,13 +26,12 @@ class VoiceAssistantManager {
 
   int _wakeWordSessionId = 0;
   int _chatRecordSessionId = 0;
-
   int _playSessionId = 0;
 
   // ==========================================
   // 💾 TTS 持久化快取與容量管理
   // ==========================================
-  static String _spKeyTtsCache = ReminiCareConfig.ttsCacheName;
+  static const String _spKeyTtsCache = "tts_audio_cache_index_v1";
   static const int _maxCacheSizeBytes = 100 * 1024 * 1024; // 預設 100MB
 
   bool _cacheInitialized = false;
@@ -68,6 +67,43 @@ class VoiceAssistantManager {
   bool checkCompletedCommands = false;
   bool get isListening => _isRollingWakeWord || _isRollingChatRecord;
 
+  // 💡 建構子：初始化 iOS 音訊設定
+  VoiceAssistantManager() {
+    _initAudioSession();
+  }
+
+  // ==========================================
+  // 🍎 解決 iPad/iOS 錄音閃退崩潰的核心設定
+  // ==========================================
+  Future<void> _initAudioSession() async {
+    try {
+      if (!kIsWeb && (Platform.isIOS || Platform.isAndroid)) {
+        // 強制設定全局 AudioContext 為「邊播邊錄」與「強制擴音模式」
+        await AudioPlayer.global.setAudioContext(AudioContext(
+          iOS: AudioContextIOS(
+            category: AVAudioSessionCategory.playAndRecord, // 💡 允許同時播放與錄音
+            // 💡 將 List [] 改為 Set {}，以符合新版 audioplayers 參數要求
+            options: const {
+              AVAudioSessionOptions.defaultToSpeaker,     // 💡 強制從下方喇叭擴音 (不設會變成聽筒模式)
+              AVAudioSessionOptions.allowBluetooth,       // 允許藍牙
+              AVAudioSessionOptions.mixWithOthers,        // 允許混音，防止獨佔崩潰
+            },
+          ),
+          android: AudioContextAndroid(
+            isSpeakerphoneOn: true,
+            stayAwake: true,
+            contentType: AndroidContentType.speech,
+            usageType: AndroidUsageType.media,
+            audioFocus: AndroidAudioFocus.gainTransientExclusive,
+          ),
+        ));
+        debugPrint("🍎 [AudioSession] iOS/Android 邊播邊錄模式配置完成！");
+      }
+    } catch (e) {
+      debugPrint("❌ [AudioSession] 初始化配置失敗: $e");
+    }
+  }
+
   // ==========================================
   // 🛠️ 初始化與快取管理邏輯
   // ==========================================
@@ -89,10 +125,8 @@ class VoiceAssistantManager {
 
         _cacheMetadata.removeWhere((key, _) => !_ttsCache.containsKey(key));
       }
-      debugPrint("📦 [TTS 快取] 已初始化，現有項目: ${_ttsCache.length} 個");
       _cacheInitialized = true;
     } catch (e) {
-      debugPrint("[TTS 快取] 初始化失敗: $e");
       _cacheMetadata = {};
       _cacheInitialized = true;
     }
@@ -102,9 +136,7 @@ class VoiceAssistantManager {
     try {
       final sp = await SharedPreferences.getInstance();
       await sp.setString(_spKeyTtsCache, jsonEncode(_cacheMetadata));
-    } catch (e) {
-      debugPrint("[TTS 快取] 儲存索引失敗: $e");
-    }
+    } catch (_) {}
   }
 
   Future<void> _checkAndCleanupCache(int newFileSize) async {
@@ -115,7 +147,6 @@ class VoiceAssistantManager {
 
     if (currentTotalSize + newFileSize <= _maxCacheSizeBytes) return;
 
-    debugPrint("🧹 [TTS 快取] 容量超出限制，開始清理舊檔案...");
     final sortedKeys = _cacheMetadata.keys.toList()
       ..sort((a, b) {
         final lastA = _cacheMetadata[a]?['lastUsed'] ?? 0;
@@ -136,7 +167,6 @@ class VoiceAssistantManager {
         _ttsCache.remove(key);
         _cacheMetadata.remove(key);
         currentTotalSize -= size;
-        debugPrint("🗑️ 已刪除舊快取: $key");
       }
     }
     await _saveCacheIndex();
@@ -146,7 +176,6 @@ class VoiceAssistantManager {
     _isCalibrated = false;
     _calibrationTicks = 0;
     _calibrationSumDb = 0.0;
-    debugPrint("🎛️ [VAD] 已重置校正狀態，將於下次錄音時重新測量環境雜音。");
   }
 
   Future<void> stopActiveAudioOperations() async {
@@ -175,7 +204,7 @@ class VoiceAssistantManager {
   }
 
   // ==========================================
-  // 🎙️ 引擎 A：背景喚醒詞檢測 (升級為 VAD 智慧過濾)
+  // 🎙️ 引擎 A：背景喚醒詞檢測 (VAD 智慧過濾)
   // ==========================================
   Future<void> startBackgroundWakeWordCycle() async {
     await stopActiveAudioOperations();
@@ -203,10 +232,8 @@ class VoiceAssistantManager {
         );
         _isRecordingOnHardware = true;
 
-        if (_isCalibrated) {
-          debugPrint("👂 [背景 VAD] 正在監聽口令...");
-        } else {
-          debugPrint("🎛️ [背景 VAD] 啟動環境雜音採樣校正 (約需 1.6 秒)...");
+        if (!_isCalibrated) {
+          debugPrint("🎛️ [背景 VAD] 啟動環境雜音採樣校正...");
         }
 
         _vadTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) async {
@@ -226,8 +253,7 @@ class VoiceAssistantManager {
                 double avgNoise = _calibrationSumDb / 8;
                 _vadThresholdDb = (avgNoise + 12.0).clamp(-45.0, -20.0);
                 _isCalibrated = true;
-                debugPrint("🎛️ [VAD 自動校正完成] 房間雜音: ${avgNoise.toStringAsFixed(1)} dB, 門檻設為: ${_vadThresholdDb.toStringAsFixed(1)} dB");
-                debugPrint("👂 [背景 VAD] 開始監聽口令...");
+                debugPrint("🎛️ [VAD 自動校正完成] 房間雜音: ${avgNoise.toStringAsFixed(1)} dB, 門檻: ${_vadThresholdDb.toStringAsFixed(1)} dB");
               }
             }
             return;
@@ -236,7 +262,6 @@ class VoiceAssistantManager {
           if (currentDb >= _vadThresholdDb) {
             _consecutiveLoudTicks++;
             if (_consecutiveLoudTicks >= 2 && !_hasSpoken) {
-              debugPrint("🗣️ [背景 VAD] 偵測到聲音！(音量: ${currentDb.toStringAsFixed(1)} dB)");
               _hasSpoken = true;
             }
             if (_hasSpoken) {
@@ -249,14 +274,12 @@ class VoiceAssistantManager {
             if (_hasSpoken) {
               _silenceMs += 200;
               if (_silenceMs >= _silenceThresholdMs) {
-                debugPrint("🔇 [背景 VAD] 聲音結束，開始辨識口令！");
                 timer.cancel();
                 await _processWakeWordChunk(_currentRecordPath!, sessionId);
               }
             } else {
               _idleMs += 200;
               if (_idleMs >= _idleTimeoutMs) {
-                debugPrint("💤 [背景 VAD] 15秒無聲，清理暫存並重啟監聽。");
                 timer.cancel();
                 await _restartWakeWordSilently(sessionId);
               }
@@ -293,7 +316,6 @@ class VoiceAssistantManager {
     if (!kIsWeb) await Future.delayed(const Duration(milliseconds: 150));
 
     try {
-      debugPrint("🔍 [背景 VAD] 送交 ASR 分析...");
       final String? transcript = await sttService.transcribe(audioPath);
       try { File(audioPath).deleteSync(); } catch (_) {}
 
@@ -301,22 +323,19 @@ class VoiceAssistantManager {
 
       if (transcript != null) {
         final String cleanText = transcript.replaceAll(" ", "");
-        debugPrint("[喚醒助理] 解析內容: '$cleanText'，完成監聽狀態為: $checkCompletedCommands");
+        debugPrint("[喚醒助理] 解析內容: '$cleanText'");
 
         onBackgroundTextRecognized?.call(cleanText);
 
         if (_matchesCommand(cleanText, ReminiCareConfig.restartWakeWords)) {
-          debugPrint("🎉 [助理喚醒成功] 重新聊天 (口令: $cleanText)");
           _isRollingWakeWord = false;
           onRestartChatFlow?.call();
           return;
         } else if (_matchesCommand(cleanText, ReminiCareConfig.endWakeWords)) {
-          debugPrint("🎉 [助理喚醒成功] 結束聊天 (口令: $cleanText)");
           _isRollingWakeWord = false;
           onEndChatFlow?.call();
           return;
         } else if (_matchesCommand(cleanText, ReminiCareConfig.startWakeWords)) {
-          debugPrint("🎉 [助理喚醒成功] 開始聊天 (口令: $cleanText)");
           _isRollingWakeWord = false;
           onStartChatFlow?.call();
           return;
@@ -363,8 +382,6 @@ class VoiceAssistantManager {
         );
         _isRecordingOnHardware = true;
 
-        debugPrint("🎤 [聊天 VAD] 開始智慧聊天錄音監聽...");
-
         _vadTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) async {
           if (!_isRecordingOnHardware || !_isRollingChatRecord || timer.tick == 0) {
             timer.cancel();
@@ -382,7 +399,6 @@ class VoiceAssistantManager {
                 double avgNoise = _calibrationSumDb / 8;
                 _vadThresholdDb = (avgNoise + 12.0).clamp(-45.0, -20.0);
                 _isCalibrated = true;
-                debugPrint("🎛️ [聊天 VAD 自動校正完成] 房間雜音: ${avgNoise.toStringAsFixed(1)} dB, 講話門檻設為: ${_vadThresholdDb.toStringAsFixed(1)} dB");
               }
             }
             return;
@@ -391,7 +407,6 @@ class VoiceAssistantManager {
           if (currentDb >= _vadThresholdDb) {
             _consecutiveLoudTicks++;
             if (_consecutiveLoudTicks >= 2 && !_hasSpoken) {
-              debugPrint("🗣️ [聊天 VAD] 偵測到真實語音開始！(音量: ${currentDb.toStringAsFixed(1)} dB)");
               _hasSpoken = true;
             }
             if (_hasSpoken) {
@@ -405,14 +420,12 @@ class VoiceAssistantManager {
             if (_hasSpoken) {
               _silenceMs += 200;
               if (_silenceMs >= _silenceThresholdMs) {
-                debugPrint("🔇 [聊天 VAD] 偵測到連續 ${_silenceThresholdMs/1000} 秒靜音，判斷句子結束，自動停止！");
                 timer.cancel();
                 await forceEndChat();
               }
             } else {
               _idleMs += 200;
               if (_idleMs >= _idleTimeoutMs) {
-                debugPrint("💤 [聊天 VAD] 使用者連續 ${_idleTimeoutMs/1000} 秒未發言，自動超時停止。");
                 timer.cancel();
                 await forceEndChat();
               }
@@ -451,18 +464,20 @@ class VoiceAssistantManager {
     }
   }
 
+  // ==========================================
+  // 🔊 TTS 快取與無縫連續播放邏輯
+  // ==========================================
   Future<void> stopCurrentPlayback() async {
     _playSessionId++;
     try { await _audioPlayer.stop(); } catch (_) {}
   }
 
-  // 💡 關鍵改變：接收 List<String> texts，實現切段合成，完美增加 Cache 命中率！
   Future<void> playLanguageSequence({
     required List<String> texts,
     required List<String> languages,
     int repeatCount = 1,
-    int gapMs = 500,
-    int partGapMs = 150, // 💡 新增：同語言內「長輩」與「問題」之間的微小停頓
+    int gapMs = 300,
+    int partGapMs = 150,
   }) async {
     if (texts.isEmpty || kIsWeb || languages.isEmpty || repeatCount <= 0) return;
 
@@ -484,10 +499,7 @@ class VoiceAssistantManager {
           }
 
           final audioBytes = await ttsService.generateSpeech(text, lang);
-          if (audioBytes == null) {
-            debugPrint('[TTS失敗] $lang - $text');
-            continue;
-          }
+          if (audioBytes == null) continue;
 
           final safeLang = switch (lang) {
             "台語" => "tw",
@@ -540,7 +552,6 @@ class VoiceAssistantManager {
 
             if (currentSession != _playSessionId) return;
 
-            // 💡 短停頓：在「王阿嬤」跟「小時候...」之間模擬講話呼吸感
             if (i < texts.length - 1 && partGapMs > 0) {
               await Future.delayed(Duration(milliseconds: partGapMs));
             }
@@ -548,7 +559,6 @@ class VoiceAssistantManager {
 
           if (currentSession != _playSessionId) return;
 
-          // 換語言時的長停頓
           if (gapMs > 0) {
             await Future.delayed(Duration(milliseconds: gapMs));
           }
