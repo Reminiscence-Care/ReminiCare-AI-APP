@@ -2,8 +2,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:openai_dart/openai_dart.dart';
 import 'package:remini_care_ai_app/services/llm_services/prompts.dart';
+import 'package:remini_care_ai_app/services/api_services.dart';
 
-class LlmService {
+class LlmService implements ILLMService {
   final String baseUrl;
   final String model;
   final String apiKey;
@@ -13,6 +14,10 @@ class LlmService {
     required this.model,
     required this.apiKey,
   });
+
+  String get modelName {
+    return model;
+  }
 
   OpenAIClient get _client {
     final finalBaseUrl = kIsWeb ? "https://corsproxy.io/?$baseUrl" : baseUrl;
@@ -27,12 +32,12 @@ class LlmService {
 
   /// 泛用的請求 Function，整合歷史紀錄、角色設定與錯誤處理
   Future<String> request(
-    String? systemPrompt,
-    String userPrompt,
-    List<Map<String, String>> history, {
-    double temperature = 0.6,
-    int maxTokens = 150,
-  }) async {
+      String? systemPrompt,
+      String userPrompt,
+      List<Map<String, String>> history, {
+        double temperature = 0.6,
+        int maxTokens = 150,
+      }) async {
     try {
       List<ChatMessage> messages = [];
       if (systemPrompt != null) {
@@ -63,7 +68,7 @@ class LlmService {
       final String text = (response.text ?? '').trim();
       return text.isNotEmpty ? text : "";
     } catch (e) {
-      print("[LLM ERROR] $e");
+      debugPrint("[LLM ERROR] $e");
       return "[ERROR]";
     }
   }
@@ -94,7 +99,7 @@ class LlmService {
         : response;
   }
 
-  /// 產生與長輩的陪伴溫慢對話
+  @override
   Future<String> generateChatReply(String userMessage, List<Map<String, String>> history) async {
     final response = await request(
       CHATBOT_SYSTEM_PROMPT,
@@ -107,7 +112,7 @@ class LlmService {
         : response;
   }
 
-  /// 根據目前的對話脈絡與長輩的聊天內容，自動生成有深度的延伸懷舊問題
+  @override
   Future<String> generateExtendedQuestion(String previousQuestion, String elderResponse) async {
     final response = await request(
       "你是一個親切的台灣早期懷舊引導助理。請根據先前的提問，以及長輩剛剛的回答，延伸出一個有溫度、口語化且具體的新問題，字數控制在 25 到 45 字以內。請直接回傳該新問題，不要附帶任何引號、前言、多餘問候或解釋。使用台灣繁體中文（可穿插親切的台語口吻助詞，例如『那那時...』『那那時候...』）。",
@@ -122,7 +127,7 @@ class LlmService {
         : response;
   }
 
-  /// 從逐字稿中精準抓取 1~5 個視覺關鍵字
+  @override
   Future<List<String>> extractKeywords(String transcript) async {
     final response = await request(EXTRACTOR_SYSTEM_PROMPT, transcript, [], temperature: 0.1);
     if (response == "[ERROR]" || response.isEmpty) return [];
@@ -131,12 +136,12 @@ class LlmService {
       final List<dynamic> decoded = jsonDecode(_cleanJson(response));
       return decoded.map((e) => e.toString()).toList();
     } catch (e) {
-      print("[NVIDIA] 關鍵字擷取錯誤: $e");
+      debugPrint("[LLM] 關鍵字擷取錯誤: $e");
       return [];
     }
   }
 
-  /// 擷取場景詳細資料 (場景、年代、地點、關鍵字)
+  @override
   Future<Map<String, dynamic>> extractSceneData(String transcript) async {
     final Map<String, dynamic> defaultResult = {
       "scene": "台灣早期懷舊生活場景",
@@ -156,12 +161,12 @@ class LlmService {
         return decoded;
       }
     } catch (e) {
-      print("[NVIDIA] 場景擷取錯誤: $e");
+      debugPrint("[LLM] 場景擷取錯誤: $e");
     }
     return defaultResult;
   }
 
-  /// 根據語言推薦懷舊老歌
+  @override
   Future<List<Map<String, String>>> recommendationSongsName(String? language) async {
     final response = await request(
       SONG_RECOMMENDATION_PROMPT.replaceAll("\$language", language ?? "國語"),
@@ -177,12 +182,12 @@ class LlmService {
       final List<dynamic> decoded = jsonDecode(_cleanJson(response));
       return decoded.map((item) => Map<String, String>.from(item as Map)).toList();
     } catch (e) {
-      print("[NVIDIA] JSON 解析失敗: $e");
+      debugPrint("[LLM] JSON 解析失敗: $e");
       return [];
     }
   }
 
-  /// 從查詢字串中提取歌手與歌名
+  @override
   Future<Map<String, dynamic>> getSingerAndSongNameFromQuery(String query) async {
     final response = await request(
       SONG_INFO_EXTRACTOR_PROMPT,
@@ -197,12 +202,12 @@ class LlmService {
     try {
       return jsonDecode(_cleanJson(response));
     } catch (e) {
-      print("[NVIDIA] JSON 解析失敗: $e");
+      debugPrint("[LLM] JSON 解析失敗: $e");
       return {};
     }
   }
 
-  /// 從輸入文字中擷取長輩姓名或稱呼
+  @override
   Future<String> extractElderName(String text) async {
     final response = await request(
       NAME_EXTRACT_PROMPT,

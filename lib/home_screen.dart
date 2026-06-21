@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:remini_care_ai_app/services/remini_care_config.dart';
+import 'package:remini_care_ai_app/services/api_services.dart'; // 💡 引入統一服務中心
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -11,12 +12,30 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
 
+  /// 💡 智慧檢查：只檢查「當前選定」的模型是否有填寫金鑰
   bool _isConfigComplete() {
-    return ReminiCareConfig.nvidiaApiKey.isNotEmpty &&
-        (ReminiCareConfig.siliconFlowApiKey.isNotEmpty || ReminiCareConfig.openaiApiKey.isNotEmpty) &&
-        ((ReminiCareConfig.nckuSttToken.isNotEmpty &&
-            ReminiCareConfig.nckuTtsToken.isNotEmpty) ||
-            ReminiCareConfig.yatingApiKey.isNotEmpty);
+    // 1. 檢查 LLM
+    final llmProvider = ReminiCareConfig.getValue('selectedLlmProvider') ?? 'nvidia';
+    bool llmOk = false;
+    if (llmProvider == 'nvidia') llmOk = ReminiCareConfig.nvidiaApiKey.isNotEmpty;
+    if (llmProvider == 'openai') llmOk = (ReminiCareConfig.getValue('openaiApiKey') ?? "").isNotEmpty;
+    if (llmProvider == 'gemini') llmOk = (ReminiCareConfig.getValue('geminiApiKey') ?? "").isNotEmpty;
+
+    // 2. 檢查 生圖
+    final imageProvider = ReminiCareConfig.getValue('selectedImageProvider') ?? 'siliconflow';
+    bool imageOk = false;
+    if (imageProvider == 'siliconflow') imageOk = ReminiCareConfig.siliconFlowApiKey.isNotEmpty;
+    if (imageProvider == 'openai') imageOk = (ReminiCareConfig.getValue('openaiApiKey') ?? "").isNotEmpty;
+
+    // 3. 檢查 語音
+    final speechProvider = ReminiCareConfig.getValue('selectedSpeechProvider') ?? 'yating';
+    bool speechOk = false;
+    if (speechProvider == 'yating') speechOk = ReminiCareConfig.yatingApiKey.isNotEmpty;
+    if (speechProvider == 'ncku') {
+      speechOk = ReminiCareConfig.nckuSttToken.isNotEmpty && ReminiCareConfig.nckuTtsToken.isNotEmpty;
+    }
+
+    return llmOk && imageOk && speechOk;
   }
 
   @override
@@ -52,8 +71,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               ElevatedButton(
                 onPressed: () {
-                  Navigator.pop(context); // 先關閉警告視窗
-                  _showSettingsDialog();  // 貼心設計：自動幫使用者打開設定視窗！
+                  Navigator.pop(context);
+                  _showSettingsDialog();
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blueGrey[800],
@@ -66,11 +85,11 @@ class _HomeScreenState extends State<HomeScreen> {
         }
     );
   }
+
   // =========================================================================
-  // 互動式自訂設定視窗 (完全由 ReminiCareConfig 宣告欄位動態渲染)
+  // 互動式自訂設定視窗 (支援下拉選單無縫切換 Provider)
   // =========================================================================
   void _showSettingsDialog() {
-    // 1. 根據 ReminiCareConfig 宣告的 fields 清單，動態建立與映射 TextEditingController
     final Map<String, TextEditingController> controllers = {};
     for (var field in ReminiCareConfig.fields) {
       controllers[field.apiKey] = TextEditingController(
@@ -78,17 +97,20 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    // 2. 根據 fields 清單，動態建立眼睛遮罩 obscureText 狀態 (預設皆為遮罩 true)
     final Map<String, bool> obscureStates = {};
     for (var field in ReminiCareConfig.fields) {
       obscureStates[field.apiKey] = true;
     }
 
+    // 💡 讀取目前的 Provider 設定 (若無則給預設值)
+    String selectedLlm = ReminiCareConfig.getValue('selectedLlmProvider') ?? 'nvidia';
+    String selectedSpeech = ReminiCareConfig.getValue('selectedSpeechProvider') ?? 'yating';
+    String selectedImage = ReminiCareConfig.getValue('selectedImageProvider') ?? 'siliconflow';
+
     showDialog(
       context: context,
-      barrierDismissible: false, // 必須手動點按鈕關閉
+      barrierDismissible: false,
       builder: (BuildContext context) {
-        // 使用 StatefulBuilder 提供 Dialog 的局部 setState 狀態更新
         return StatefulBuilder(
             builder: (context, setStateDialog) {
               return AlertDialog(
@@ -107,12 +129,48 @@ class _HomeScreenState extends State<HomeScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const Text(
-                          "金鑰與指令儲存於您手機的本機安全資料庫中，您的機密不會外洩。設定完成後立即套用生效！",
+                          "在此選擇您想使用的 AI 引擎並填寫對應金鑰。設定完成後立即套用生效！",
                           style: TextStyle(fontSize: 13, color: Colors.grey, height: 1.4),
                         ),
                         const SizedBox(height: 16),
 
-                        // 3. 完全動態生成欄位！不管有 5 個、8 個金鑰，此處 1 行程式碼全部自動動態建置
+                        // ==========================================
+                        // 🛠️ Provider 選擇區塊 (下拉選單)
+                        // ==========================================
+                        _buildDropdown(
+                          "大語言模型 (LLM)",
+                          selectedLlm,
+                          [
+                            {"value": "nvidia", "label": "NVIDIA (Qwen 80B)"},
+                            {"value": "openai", "label": "OpenAI (GPT-4o-mini)"},
+                            {"value": "gemini", "label": "Google Gemini (1.5 Flash)"},
+                          ],
+                              (val) => setStateDialog(() => selectedLlm = val!),
+                        ),
+                        _buildDropdown(
+                          "語音服務 (STT & TTS)",
+                          selectedSpeech,
+                          [
+                            {"value": "yating", "label": "雅婷 (Yating)"},
+                            {"value": "ncku", "label": "成大 (NCKU VITS)"},
+                          ],
+                              (val) => setStateDialog(() => selectedSpeech = val!),
+                        ),
+                        _buildDropdown(
+                          "生圖服務 (Image Gen)",
+                          selectedImage,
+                          [
+                            {"value": "siliconflow", "label": "SiliconFlow (Qwen)"},
+                            {"value": "openai", "label": "OpenAI (DALL-E 3)"},
+                          ],
+                              (val) => setStateDialog(() => selectedImage = val!),
+                        ),
+
+                        const Divider(height: 32, thickness: 1.5),
+
+                        // ==========================================
+                        // 🔑 API Keys 填寫區塊 (動態生成)
+                        // ==========================================
                         ...ReminiCareConfig.fields.map((field) {
                           final controller = controllers[field.apiKey]!;
                           final isObscured = obscureStates[field.apiKey] ?? true;
@@ -122,9 +180,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             controller,
                             field.hintText,
                             isObscured,
-                            field.isSecure, // 傳入是否需要安全眼睛遮蔽 (API key 要，喚醒詞不要)
+                            field.isSecure,
                                 () {
-                              // 點擊右側小眼睛，動態切換單個輸入框的遮罩顯隱
                               setStateDialog(() {
                                 obscureStates[field.apiKey] = !isObscured;
                               });
@@ -138,7 +195,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 actions: [
                   TextButton(
                     onPressed: () {
-                      // 安全釋放控制器內存，防範記憶體洩漏
                       for (var controller in controllers.values) {
                         controller.dispose();
                       }
@@ -148,24 +204,29 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   ElevatedButton(
                     onPressed: () async {
-                      // 4. 動態收集所有 Controllers 當下的最新輸入值並寫入 Map
+                      // 1. 收集 Controller 中的金鑰
                       final Map<String, String> updatedData = {};
                       controllers.forEach((key, controller) {
                         updatedData[key] = controller.text;
                       });
 
-                      // 5. 一鍵永久儲存至本機快取與熱更替
+                      // 2. 💡 收集下拉選單的 Provider 設定
+                      updatedData['selectedLlmProvider'] = selectedLlm;
+                      updatedData['selectedSpeechProvider'] = selectedSpeech;
+                      updatedData['selectedImageProvider'] = selectedImage;
+
+                      // 3. 儲存設定
                       await ReminiCareConfig.saveConfig(updatedData);
 
-                      // 釋放內存
+                      // 4. 💡 核心：清除 API 快取，讓系統下次使用時實例化新的 Provider！
+                      ApiServices().resetCache();
+
                       for (var controller in controllers.values) {
                         controller.dispose();
                       }
 
                       if (context.mounted) {
                         Navigator.of(context).pop();
-
-                        // 貼心提示
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text("🎉 配置更新成功！已立即套用至系統。"),
@@ -189,20 +250,45 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// 自定義設定框組件：支持動態控制安全欄位與明文欄位
+  /// 💡 自定義下拉選單組件
+  Widget _buildDropdown(String label, String currentValue, List<Map<String, String>> options, ValueChanged<String?> onChanged) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: DropdownButtonFormField<String>(
+        value: currentValue,
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          filled: true,
+          fillColor: Colors.grey[50],
+        ),
+        items: options.map((option) {
+          return DropdownMenuItem<String>(
+            value: option['value'],
+            child: Text(option['label']!, style: const TextStyle(fontSize: 14)),
+          );
+        }).toList(),
+        onChanged: onChanged,
+      ),
+    );
+  }
+
+  /// 自定義設定框組件
   Widget _buildSettingsField(
       String label,
       TextEditingController controller,
       String hint,
       bool obscureText,
-      bool isSecure, // 決定此輸入框是否提供遮罩與小眼睛
+      bool isSecure,
       VoidCallback onToggleVisibility,
       ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: TextField(
         controller: controller,
-        obscureText: isSecure ? obscureText : false, // 喚醒字明文輸入，方便查看與修改
+        obscureText: isSecure ? obscureText : false,
         style: const TextStyle(fontSize: 14),
         decoration: InputDecoration(
           labelText: label,
@@ -213,14 +299,13 @@ class _HomeScreenState extends State<HomeScreen> {
           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           suffixIcon: isSecure
               ? IconButton(
-            // 依據 obscureText 的值動態更新眼睛圖示（開眼與閉眼）
             icon: Icon(
               obscureText ? Icons.visibility_off_outlined : Icons.visibility_outlined,
               size: 18,
             ),
-            onPressed: onToggleVisibility, // 觸發外界狀態更新
+            onPressed: onToggleVisibility,
           )
-              : null, // 明文欄位不需要眼睛圖示
+              : null,
         ),
       ),
     );
@@ -238,9 +323,8 @@ class _HomeScreenState extends State<HomeScreen> {
         elevation: 0,
         title: const Text('首頁', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
         centerTitle: true,
-        // 頂部 AppBar 右側新增圖標管理區塊
         actions: [
-          // 新增：語音快取管理按鈕 (掃把圖標)
+          // 語音快取管理按鈕
           IconButton(
             icon: const Icon(Icons.cleaning_services_rounded, color: Colors.black87),
             onPressed: () {
@@ -248,7 +332,7 @@ class _HomeScreenState extends State<HomeScreen> {
             },
             tooltip: "語音快取管理",
           ),
-          // 回憶紀錄按鈕 (小歷史圖標)
+          // 回憶紀錄按鈕
           IconButton(
             icon: const Icon(Icons.history_rounded, color: Colors.black87),
             onPressed: () {
@@ -272,11 +356,9 @@ class _HomeScreenState extends State<HomeScreen> {
         child: SingleChildScrollView(
           child: Wrap(
             alignment: WrapAlignment.center,
-            spacing: 32.0, // 按鈕之間的水平間距
-            runSpacing: 40.0, // 螢幕太窄換行時的垂直間距
+            spacing: 32.0,
+            runSpacing: 40.0,
             children: [
-
-              // --- 1. 音樂功能按鈕 ---
               _buildHomeButton(
                 context: context,
                 imagePath: 'assets/images/music_home.png',
@@ -284,8 +366,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 label: '以前愛聽的歌',
                 routePath: '/music_screen',
               ),
-
-              // --- 2. 生活功能按鈕 ---
               _buildHomeButton(
                 context: context,
                 imagePath: 'assets/images/life_home.png',
@@ -308,27 +388,25 @@ class _HomeScreenState extends State<HomeScreen> {
     required String routePath,
   }) {
     return Column(
-      mainAxisSize: MainAxisSize.min, // 讓 Column 緊貼內容，不會無限延伸
+      mainAxisSize: MainAxisSize.min,
       children: [
         GestureDetector(
           onTap: () {
             if (!_isConfigComplete()) {
-              _showConfigWarning(); // 缺少金鑰 -> 跳出警告並擋下跳轉
+              _showConfigWarning();
             } else {
-              context.push(routePath); // 金鑰齊全 -> 正常跳轉
+              context.push(routePath);
             }
           },
           child: Container(
             width: width,
             decoration: BoxDecoration(
-              color: Colors.white, // 加上白底，避免透明圖片透出後方的陰影顏色
-              borderRadius: BorderRadius.circular(24), // 加大圓角，更像截圖中的質感
-              // ==========================================
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: Colors.grey.shade400, // 邊框顏色 (灰色)
-                width: 1.5, // 邊框粗細
+                color: Colors.grey.shade400,
+                width: 1.5,
               ),
-              // ==========================================
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.15),
@@ -341,7 +419,7 @@ class _HomeScreenState extends State<HomeScreen> {
               borderRadius: BorderRadius.circular(22.5),
               child: Image.asset(
                 imagePath,
-                fit: BoxFit.contain, // 確保圖片等比縮放
+                fit: BoxFit.contain,
                 errorBuilder: (context, error, stackTrace) {
                   return Container(
                     height: width * 0.8,
@@ -362,9 +440,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ),
-
         const SizedBox(height: 16),
-
         Text(
           label,
           style: const TextStyle(

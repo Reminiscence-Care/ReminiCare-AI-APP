@@ -2,7 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:remini_care_ai_app/screens/question_generator.dart';
 import 'package:youtube_player_iframe/youtube_player_iframe.dart';
-import 'package:remini_care_ai_app/services/voice_assistant_services.dart';
+import 'package:remini_care_ai_app/services/audio_services/voice_assistant_services.dart';
 
 class PlayMusic extends StatefulWidget {
   final String embedUrl;

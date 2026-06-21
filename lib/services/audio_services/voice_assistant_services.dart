@@ -5,6 +5,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:remini_care_ai_app/services/api_services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:remini_care_ai_app/services/remini_care_config.dart';
 
@@ -17,8 +18,8 @@ import 'speech_services.dart';
 class VoiceAssistantManager {
   final AudioRecorder _audioRecorder = AudioRecorder();
   final AudioPlayer _audioPlayer = AudioPlayer();
-  final ITTSService ttsService = YatingSpeechService();
-  final ISTTService sttService = YatingSpeechService();
+  final ITTSService ttsService = ApiServices().tts;
+  final ISTTService sttService = ApiServices().stt;
 
   bool _isRollingWakeWord = false;
   bool _isRollingChatRecord = false;

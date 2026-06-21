@@ -45,10 +45,10 @@ class ReminiCareConfig {
     const ConfigField(
       apiKey: 'VOICE_MAX_RECORD_LIMIT',
       displayName: 'Voice max recording limit',
-      hintText: 'e.x. 60 seconds',
+      hintText: 'e.x. 180 seconds',
       isSecure: false,
       hasDefaultValue: true,
-      defaultValue: '60'
+      defaultValue: '180'
     ),
     const ConfigField(
       apiKey: 'WAKE_WORDS_START',
@@ -124,6 +124,10 @@ class ReminiCareConfig {
 
         _configs[field.apiKey] = savedVal;
       }
+
+      _configs['selectedLlmProvider'] = prefs.getString('selectedLlmProvider') ?? 'nvidia';
+      _configs['selectedSpeechProvider'] = prefs.getString('selectedSpeechProvider') ?? 'yating';
+      _configs['selectedImageProvider'] = prefs.getString('selectedImageProvider') ?? 'siliconflow';
 
       debugPrint("[金鑰管理] 動態加載手機本地快取金鑰完成。");
 

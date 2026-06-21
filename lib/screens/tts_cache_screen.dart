@@ -2,11 +2,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:remini_care_ai_app/services/api_services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 
-import 'package:remini_care_ai_app/services/speech_services.dart';
+import 'package:remini_care_ai_app/services/audio_services/speech_services.dart';
 
 class TtsCacheScreen extends StatefulWidget {
   const TtsCacheScreen({super.key});
@@ -23,7 +24,7 @@ class _TtsCacheScreenState extends State<TtsCacheScreen> {
 
   // 💡 音訊播放器與服務
   final AudioPlayer _audioPlayer = AudioPlayer();
-  final ITTSService _ttsService = YatingSpeechService();
+  final ITTSService _ttsService = ApiServices().tts;
 
   // 💡 狀態追蹤
   String? _playingKey; // 記錄目前正在播放的快取 Key

@@ -1,3 +1,4 @@
+import 'package:remini_care_ai_app/services/api_services.dart';
 import 'package:remini_care_ai_app/services/music_services/music_api_service.dart';
 import 'package:remini_care_ai_app/services/llm_services/nvidia_llm_service.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
@@ -5,7 +6,7 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 class YoutubeApiServices implements MusicApiService {
   Future<List<String>?> getArtistAndTracks(String query) async {
     final yt = YoutubeExplode();
-    final llm = NvidiaLlmService();
+    final llm = ApiServices().llm;
     print('正在搜尋 YouTube 關鍵字「$query」...\n');
 
     try {
@@ -58,7 +59,7 @@ class YoutubeApiServices implements MusicApiService {
 
   Future<List<Map<String, String>>?> getTop5ArtistAndTracks(String query) async {
     final yt = YoutubeExplode();
-    final llm = NvidiaLlmService();
+    final llm = ApiServices().llm;
     print('正在搜尋 YouTube 關鍵字「$query」...\n');
 
     try {

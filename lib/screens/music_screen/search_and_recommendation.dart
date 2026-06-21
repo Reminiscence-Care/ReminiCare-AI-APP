@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:remini_care_ai_app/services/api_services.dart';
 import 'package:remini_care_ai_app/services/llm_services/nvidia_llm_service.dart';
 import 'package:remini_care_ai_app/services/music_services/youtube_api_service.dart';
 
@@ -13,7 +14,7 @@ class SearchAndRecommendation extends StatefulWidget {
 }
 
 class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
-  final NvidiaLlmService _llmService = NvidiaLlmService();
+  final ILLMService _llmService = ApiServices().llm;
   final ScrollController _scrollController = ScrollController();
   List<Map<String, String>> recommendationSongsName = [];
   List<Map<String, String>> songs = [];

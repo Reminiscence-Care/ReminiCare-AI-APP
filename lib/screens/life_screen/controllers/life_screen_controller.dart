@@ -4,12 +4,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:remini_care_ai_app/screens/question_generator.dart';
+import 'package:remini_care_ai_app/services/api_services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:remini_care_ai_app/services/voice_assistant_services.dart';
+import 'package:remini_care_ai_app/services/audio_services/voice_assistant_services.dart';
 import 'package:remini_care_ai_app/services/image_gen_api_service.dart';
-import 'package:remini_care_ai_app/services/llm_services/nvidia_llm_service.dart';
-import 'package:remini_care_ai_app/services/speech_services.dart';
+import 'package:remini_care_ai_app/services/audio_services/speech_services.dart';
 import 'package:remini_care_ai_app/services/remini_care_config.dart';
 
 enum ChatStatus {
@@ -21,16 +21,10 @@ enum ChatStatus {
 }
 
 class LifeScreenController extends ChangeNotifier {
-  final NvidiaLlmService llmService = NvidiaLlmService();
-  final ISTTService sttService = YatingSpeechService();
+  final ILLMService llmService = ApiServices().llm;
+  final ISTTService sttService = ApiServices().stt;
 
-  final IImageGenService imageService = SiliconFlowImageService(
-    rawBaseUrl: "https://api.siliconflow.com/v1",
-    apiKeyProvider: () => ReminiCareConfig.siliconFlowApiKey,
-    generationModel: "Qwen/Qwen-Image",
-    editModel: "Qwen/Qwen-Image-Edit",
-    defaultNegativePrompt: "Simplified Chinese, deformed strokes",
-  );
+  final IImageGenService imageService = ApiServices().image;
 
   final VoiceAssistantManager voiceManager = VoiceAssistantManager();
 

@@ -3,9 +3,10 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:remini_care_ai_app/services/voice_assistant_services.dart';
+import 'package:remini_care_ai_app/services/api_services.dart';
+import 'package:remini_care_ai_app/services/audio_services/voice_assistant_services.dart';
 import 'package:remini_care_ai_app/services/music_services/youtube_api_service.dart';
-import 'package:remini_care_ai_app/services/speech_services.dart';
+import 'package:remini_care_ai_app/services/audio_services/speech_services.dart';
 
 class SearchByTextsOrSpeech extends StatefulWidget {
   final String? texts_or_speech;
@@ -22,7 +23,7 @@ class _SearchByTextsOrSpeechState extends State<SearchByTextsOrSpeech> {
   List<Map<String, String>> top5Songs = [];
 
   String? languageLabel;
-  final ISTTService sttService = YatingSpeechService();
+  final ISTTService sttService = ApiServices().stt;
   final _voiceManager = VoiceAssistantManager();
 
   bool _isRecording = false;
