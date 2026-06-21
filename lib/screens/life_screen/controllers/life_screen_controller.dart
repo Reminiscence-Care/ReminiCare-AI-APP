@@ -504,6 +504,8 @@ class LifeScreenController extends ChangeNotifier {
     await stopAudioSequence();
     await voiceManager.stopActiveAudioOperations();
 
+    await Future.delayed(const Duration(milliseconds: 500));
+
     if (isManualTap) {
       await voiceManager.playLanguageSequence(
         texts: textsToPlay,

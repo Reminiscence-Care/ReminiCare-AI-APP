@@ -461,7 +461,7 @@ class VoiceAssistantManager {
     required List<String> texts,
     required List<String> languages,
     int repeatCount = 1,
-    int gapMs = 300,
+    int gapMs = 500,
     int partGapMs = 150, // 💡 新增：同語言內「長輩」與「問題」之間的微小停頓
   }) async {
     if (texts.isEmpty || kIsWeb || languages.isEmpty || repeatCount <= 0) return;

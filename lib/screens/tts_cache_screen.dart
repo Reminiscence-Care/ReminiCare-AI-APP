@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:remini_care_ai_app/services/remini_care_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
@@ -17,7 +16,7 @@ class TtsCacheScreen extends StatefulWidget {
 }
 
 class _TtsCacheScreenState extends State<TtsCacheScreen> {
-  static String _spKeyTtsCache = ReminiCareConfig.ttsCacheName;
+  static const String _spKeyTtsCache = "tts_audio_cache_index_v1";
 
   Map<String, dynamic> _cacheMetadata = {};
   bool _isLoading = true;
@@ -80,6 +79,10 @@ class _TtsCacheScreenState extends State<TtsCacheScreen> {
     } else {
       // 停止上一首，播放新的一首
       await _audioPlayer.stop();
+
+      // 💡 關鍵修復：給予底層音訊引擎一點緩衝時間來清空 Buffer，防止兩首切換時產生爆音或雜訊！
+      await Future.delayed(const Duration(milliseconds: 500));
+
       setState(() => _playingKey = key);
       try {
         await _audioPlayer.play(DeviceFileSource(path));
