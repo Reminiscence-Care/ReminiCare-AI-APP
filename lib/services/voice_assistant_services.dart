@@ -67,26 +67,22 @@ class VoiceAssistantManager {
   bool checkCompletedCommands = false;
   bool get isListening => _isRollingWakeWord || _isRollingChatRecord;
 
-  // 💡 建構子：初始化 iOS 音訊設定
-  VoiceAssistantManager() {
-    _initAudioSession();
-  }
+  bool _isAudioSessionConfigured = false;
 
   // ==========================================
-  // 🍎 解決 iPad/iOS 錄音閃退崩潰的核心設定
+  // 🍎 解決 iPad/iOS 播放與錄音衝突的「絕對霸道」設定
   // ==========================================
-  Future<void> _initAudioSession() async {
+  Future<void> _ensureAudioSessionConfigured() async {
+    if (_isAudioSessionConfigured) return;
     try {
       if (!kIsWeb && (Platform.isIOS || Platform.isAndroid)) {
-        // 強制設定全局 AudioContext 為「邊播邊錄」與「強制擴音模式」
         await AudioPlayer.global.setAudioContext(AudioContext(
           iOS: AudioContextIOS(
-            category: AVAudioSessionCategory.playAndRecord, // 💡 允許同時播放與錄音
-            // 💡 將 List [] 改為 Set {}，以符合新版 audioplayers 參數要求
+            category: AVAudioSessionCategory.playAndRecord,
             options: const {
-              AVAudioSessionOptions.defaultToSpeaker,     // 💡 強制從下方喇叭擴音 (不設會變成聽筒模式)
-              AVAudioSessionOptions.allowBluetooth,       // 允許藍牙
-              AVAudioSessionOptions.mixWithOthers,        // 允許混音，防止獨佔崩潰
+              AVAudioSessionOptions.defaultToSpeaker,
+              AVAudioSessionOptions.allowBluetooth,
+              AVAudioSessionOptions.mixWithOthers,
             },
           ),
           android: AudioContextAndroid(
@@ -97,10 +93,11 @@ class VoiceAssistantManager {
             audioFocus: AndroidAudioFocus.gainTransientExclusive,
           ),
         ));
-        debugPrint("🍎 [AudioSession] iOS/Android 邊播邊錄模式配置完成！");
+        _isAudioSessionConfigured = true;
+        debugPrint("🍎 [AudioSession] 邊播邊錄音軌已全局鎖定！");
       }
     } catch (e) {
-      debugPrint("❌ [AudioSession] 初始化配置失敗: $e");
+      debugPrint("❌ [AudioSession] 鎖定音軌失敗: $e");
     }
   }
 
@@ -216,13 +213,23 @@ class VoiceAssistantManager {
   Future<void> _runSmartWakeWordCycle(int sessionId) async {
     if (!_isRollingWakeWord || sessionId != _wakeWordSessionId) return;
 
+    // 💡 第一步：確保 iOS 音軌已經被我們配置為可以錄音的模式
+    await _ensureAudioSessionConfigured();
+
     _hasSpoken = false;
     _silenceMs = 0;
     _idleMs = 0;
     _consecutiveLoudTicks = 0;
 
     try {
+      // 💡 hasPermission 內部會自動處理 iOS 權限。如果沒彈窗，代表以前已經點過「允許」了！
       if (await _audioRecorder.hasPermission()) {
+
+        // 🍎 給予 iOS 音軌切換的喘息時間，防止 Session activation failed
+        if (Platform.isIOS || Platform.isMacOS) {
+          await Future.delayed(const Duration(milliseconds: 300));
+        }
+
         final directory = await getTemporaryDirectory();
         _currentRecordPath = '${directory.path}/reminicare_wake_${DateTime.now().millisecondsSinceEpoch}.wav';
 
@@ -286,6 +293,8 @@ class VoiceAssistantManager {
             }
           }
         });
+      } else {
+        debugPrint("❌ 麥克風權限已被拒絕！請前往 iOS 設定開啟。");
       }
     } catch (e) {
       debugPrint("[喚醒器] VAD 啟動異常: $e");
@@ -366,6 +375,9 @@ class VoiceAssistantManager {
     _isRollingChatRecord = true;
     _chatRecordSessionId++;
 
+    // 💡 同樣地，先確保通道解鎖
+    await _ensureAudioSessionConfigured();
+
     _hasSpoken = false;
     _silenceMs = 0;
     _idleMs = 0;
@@ -373,6 +385,11 @@ class VoiceAssistantManager {
 
     try {
       if (await _audioRecorder.hasPermission()) {
+
+        if (Platform.isIOS || Platform.isMacOS) {
+          await Future.delayed(const Duration(milliseconds: 300));
+        }
+
         final directory = await getTemporaryDirectory();
         _currentRecordPath = '${directory.path}/reminicare_chat_smart_${DateTime.now().millisecondsSinceEpoch}.wav';
 
@@ -432,6 +449,8 @@ class VoiceAssistantManager {
             }
           }
         });
+      } else {
+        debugPrint("❌ 麥克風權限已被拒絕！");
       }
     } catch (e) {
       debugPrint("[智慧對話錄音] 啟動異常: $e");
@@ -484,6 +503,7 @@ class VoiceAssistantManager {
     final currentSession = ++_playSessionId;
 
     try {
+      await _ensureAudioSessionConfigured();
       await _initCacheIfNeeded();
       final storageDir = await getApplicationDocumentsDirectory();
 
