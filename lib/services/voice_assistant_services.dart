@@ -67,26 +67,22 @@ class VoiceAssistantManager {
   bool checkCompletedCommands = false;
   bool get isListening => _isRollingWakeWord || _isRollingChatRecord;
 
-  // 💡 建構子：初始化 iOS 音訊設定
-  VoiceAssistantManager() {
-    _initAudioSession();
-  }
+  bool _isAudioSessionConfigured = false;
 
   // ==========================================
-  // 🍎 解決 iPad/iOS 錄音閃退崩潰的核心設定
+  // 🍎 解決 iPad/iOS 錄音閃退崩潰的核心設定 (改為同步強制等待)
   // ==========================================
-  Future<void> _initAudioSession() async {
+  Future<void> _ensureAudioSessionConfigured() async {
+    if (_isAudioSessionConfigured) return;
     try {
       if (!kIsWeb && (Platform.isIOS || Platform.isAndroid)) {
-        // 強制設定全局 AudioContext 為「邊播邊錄」與「強制擴音模式」
         await AudioPlayer.global.setAudioContext(AudioContext(
           iOS: AudioContextIOS(
-            category: AVAudioSessionCategory.playAndRecord, // 💡 允許同時播放與錄音
-            // 💡 將 List [] 改為 Set {}，以符合新版 audioplayers 參數要求
+            category: AVAudioSessionCategory.playAndRecord,
             options: const {
-              AVAudioSessionOptions.defaultToSpeaker,     // 💡 強制從下方喇叭擴音 (不設會變成聽筒模式)
-              AVAudioSessionOptions.allowBluetooth,       // 允許藍牙
-              AVAudioSessionOptions.mixWithOthers,        // 允許混音，防止獨佔崩潰
+              AVAudioSessionOptions.defaultToSpeaker,
+              AVAudioSessionOptions.allowBluetooth,
+              AVAudioSessionOptions.mixWithOthers,
             },
           ),
           android: AudioContextAndroid(
@@ -97,6 +93,7 @@ class VoiceAssistantManager {
             audioFocus: AndroidAudioFocus.gainTransientExclusive,
           ),
         ));
+        _isAudioSessionConfigured = true;
         debugPrint("🍎 [AudioSession] iOS/Android 邊播邊錄模式配置完成！");
       }
     } catch (e) {
@@ -215,6 +212,9 @@ class VoiceAssistantManager {
 
   Future<void> _runSmartWakeWordCycle(int sessionId) async {
     if (!_isRollingWakeWord || sessionId != _wakeWordSessionId) return;
+
+    // 💡 確保 AudioSession 已經完全配置好，才允許啟動麥克風
+    await _ensureAudioSessionConfigured();
 
     _hasSpoken = false;
     _silenceMs = 0;
@@ -366,6 +366,9 @@ class VoiceAssistantManager {
     _isRollingChatRecord = true;
     _chatRecordSessionId++;
 
+    // 💡 確保 AudioSession 已經完全配置好，才允許啟動麥克風
+    await _ensureAudioSessionConfigured();
+
     _hasSpoken = false;
     _silenceMs = 0;
     _idleMs = 0;
@@ -484,6 +487,8 @@ class VoiceAssistantManager {
     final currentSession = ++_playSessionId;
 
     try {
+      // 💡 播放前也確保 AudioSession 已配置
+      await _ensureAudioSessionConfigured();
       await _initCacheIfNeeded();
       final storageDir = await getApplicationDocumentsDirectory();
 
