@@ -250,7 +250,11 @@ class LifeScreenController extends ChangeNotifier {
       currentChatPhase = ChatStatus.likePrepare;
     } else if (chatStatus == ChatStatus.nextElderPrompt) {
       isResumingNextElder = true;
+      int commaIndex = currentMainQuestion.indexOf("，");
+      currentMainQuestion = currentMainQuestion.substring(commaIndex + 2);
+      currentMainQuestion = currentPromptElder.isNotEmpty ? "$currentPromptElder， $currentMainQuestion" : currentMainQuestion;
       chatStatus = currentChatPhase;
+      playCurrentContextVoice();
     } else {
       chatStatus = ChatStatus.chatting;
     }
@@ -468,6 +472,8 @@ class LifeScreenController extends ChangeNotifier {
 
     List<String> textsToPlay = [];
 
+    int partGapMs = 150;
+
     if (chatStatus == ChatStatus.evaluation ||
         chatStatus == ChatStatus.dislikeEvaluation) {
       textsToPlay = ["這張圖符合您的回憶嗎？"];
@@ -475,6 +481,8 @@ class LifeScreenController extends ChangeNotifier {
       textsToPlay = ["哪裡不對？"];
     } else if (chatStatus == ChatStatus.nextElderPrompt) {
       textsToPlay = ["$currentPromptElder呢？"];
+    } else if (chatStatus == ChatStatus.roundSummary) {
+      textsToPlay = [currentMainQuestion];
     } else {
       if (currentPromptElder.isNotEmpty) {
         textsToPlay.add(currentPromptElder);
@@ -501,12 +509,14 @@ class LifeScreenController extends ChangeNotifier {
         texts: textsToPlay,
         languages: [selectedLanguage],
         repeatCount: 1,
+        partGapMs: partGapMs
       );
     } else {
       await voiceManager.playLanguageSequence(
         texts: textsToPlay,
         languages: ["台語", "中文"],
         repeatCount: 2,
+        partGapMs: partGapMs
       );
     }
 

@@ -476,10 +476,10 @@ class _LifeScreenState extends State<LifeScreen> {
     switch (_controller.chatStatus) {
       case ChatStatus.prepare: case ChatStatus.nextElderPrompt: return "準備聊天";
       case ChatStatus.chatting: return "點開始聊";
-      case ChatStatus.generating: case ChatStatus.dislikeGenerating: case ChatStatus.likeGenerating: return "Ai 生圖中";
+      case ChatStatus.generating: case ChatStatus.dislikeGenerating: case ChatStatus.likeGenerating: return "AI 生圖中";
       case ChatStatus.evaluation: case ChatStatus.dislikeEvaluation: return "問像不像";
       case ChatStatus.dislikePrepare: case ChatStatus.dislikeChatting: return "不像，繼續聊天";
-      case ChatStatus.likePrepare: case ChatStatus.likeChatting: return "如果像，就 AI延伸話題";
+      case ChatStatus.likePrepare: case ChatStatus.likeChatting: return "如果像，就 AI 延伸話題";
       case ChatStatus.generatingNextTopic: case ChatStatus.roundSummary: return "延伸新話題";
       default: return "";
     }
