@@ -32,7 +32,7 @@ class VoiceAssistantManager {
   // ==========================================
   // 💾 TTS 持久化快取與容量管理
   // ==========================================
-  static const String _spKeyTtsCache = "tts_audio_cache_index_v1";
+  static String _spKeyTtsCache = ReminiCareConfig.ttsCacheName;
   static const int _maxCacheSizeBytes = 100 * 1024 * 1024; // 預設 100MB
 
   bool _cacheInitialized = false;

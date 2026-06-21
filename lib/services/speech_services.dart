@@ -282,22 +282,18 @@ class YatingSttService implements ISTTService {
         return null;
       }
 
-      // 💡 流量控制優化分塊傳送
       final int chunkSize = 2000;
       for (int i = 0; i < pcmBytes.length; i += chunkSize) {
         if (ws.readyState != WebSocket.open) break;
         int end = (i + chunkSize < pcmBytes.length) ? i + chunkSize : pcmBytes.length;
         ws.add(pcmBytes.sublist(i, end));
-
-        // 模擬大約 3 倍語速的平穩推流
         await Future.delayed(const Duration(milliseconds: 20));
       }
 
       if (ws.readyState == WebSocket.open) {
-        ws.add(Uint8List(0)); // 發送 EOF
+        ws.add(Uint8List(0));
       }
 
-      // 給予伺服器充裕但有限的結算時間
       Timer eofFallbackTimer = Timer(const Duration(seconds: 3), () {
         if (!completer.isCompleted) {
           debugPrint("[Yating STT Debug] ⏱️ 伺服器已讀取完畢但未回傳 asr_eof (靜音裝死)，強制結算！");
@@ -309,7 +305,6 @@ class YatingSttService implements ISTTService {
       final String? finalTranscription = await completer.future;
       eofFallbackTimer.cancel();
 
-      // 淨化字串：把頭、尾多餘的逗號或空白徹底濾除
       String cleanedTranscription = finalTranscription?.replaceAll(RegExp(r'^[，\s]+|[，\s]+$'), '') ?? "";
       debugPrint("[Yating STT Debug] ✅ 最終辨識結果: ${cleanedTranscription.isEmpty ? '(空)' : cleanedTranscription}");
       debugPrint("========== [Yating STT Debug 結束] ==========\n");
@@ -328,6 +323,41 @@ class YatingSttService implements ISTTService {
 class YatingTtsService implements ITTSService {
   final String _ttsUrl = 'https://tts.api.yating.tw/v2/speeches/short';
 
+  // 💡 關鍵修復：手動補上標準的 44 bytes WAV 檔頭 (16kHz, 單聲道, 16-bit)
+  Uint8List _addWavHeader(Uint8List pcmData) {
+    final int channels = 1;
+    final int sampleRate = 16000; // Yating TTS 回傳的是 16K
+    final int byteRate = sampleRate * channels * 2; // 16-bit = 2 bytes
+
+    final ByteData header = ByteData(44);
+
+    // 'RIFF' chunk
+    header.setUint8(0, 82); header.setUint8(1, 73); header.setUint8(2, 70); header.setUint8(3, 70);
+    header.setUint32(4, 36 + pcmData.length, Endian.little);
+
+    // 'WAVE' format
+    header.setUint8(8, 87); header.setUint8(9, 65); header.setUint8(10, 86); header.setUint8(11, 69);
+
+    // 'fmt ' subchunk
+    header.setUint8(12, 102); header.setUint8(13, 109); header.setUint8(14, 116); header.setUint8(15, 32);
+    header.setUint32(16, 16, Endian.little); // PCM size
+    header.setUint16(20, 1, Endian.little); // AudioFormat (1 = PCM)
+    header.setUint16(22, channels, Endian.little);
+    header.setUint32(24, sampleRate, Endian.little);
+    header.setUint32(28, byteRate, Endian.little);
+    header.setUint16(32, channels * 2, Endian.little); // BlockAlign
+    header.setUint16(34, 16, Endian.little); // BitsPerSample
+
+    // 'data' subchunk
+    header.setUint8(36, 100); header.setUint8(37, 97); header.setUint8(38, 116); header.setUint8(39, 97);
+    header.setUint32(40, pcmData.length, Endian.little);
+
+    final BytesBuilder builder = BytesBuilder();
+    builder.add(header.buffer.asUint8List());
+    builder.add(pcmData);
+    return builder.toBytes();
+  }
+
   @override
   Future<Uint8List?> generateSpeech(String text, String language) async {
     if (text.isEmpty) return null;
@@ -337,6 +367,7 @@ class YatingTtsService implements ITTSService {
       final Map<String, dynamic> requestBody = {
         "input": { "text": text, "type": "text" },
         "voice": { "model": model, "speed": 1.0, "pitch": 1.0, "energy": 1.0 },
+        // 我們要求 16K 的 Raw PCM 數據
         "audioConfig": { "encoding": "LINEAR16", "sampleRate": "16K" }
       };
 
@@ -349,7 +380,12 @@ class YatingTtsService implements ITTSService {
       if (response.statusCode == 200 || response.statusCode == 201) {
         final responseData = jsonDecode(response.body);
         final base64Audio = responseData['audioContent'];
-        return (base64Audio != null && base64Audio.isNotEmpty) ? base64Decode(base64Audio) : null;
+
+        if (base64Audio != null && base64Audio.isNotEmpty) {
+          final Uint8List rawPcm = base64Decode(base64Audio);
+          // 💡 回傳前，套上 WAV 檔頭，這樣儲存下來的檔案才會有乾淨、沒有雜音的聲音！
+          return _addWavHeader(rawPcm);
+        }
       }
       return null;
     } catch (e) {

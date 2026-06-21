@@ -95,6 +95,8 @@ class ReminiCareConfig {
   static List<String> get endWakeWords => _getWordsList('WAKE_WORDS_END', ["結束錄音", "結束聊天", "結束錄影", "結束錄像", "結束", "完成"]);
   static List<String> get restartWakeWords => _getWordsList('WAKE_WORDS_RESTART', ["重新錄音", "重新聊天", "重新", "重來", "重錄", "再來"]);
 
+  static String get ttsCacheName => "tts_audio_cache_index_v1";
+
   static List<String> _getWordsList(String key, List<String> defaults) {
     final val = getValue(key);
     if (val.isEmpty) return defaults;

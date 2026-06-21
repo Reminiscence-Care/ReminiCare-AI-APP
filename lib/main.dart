@@ -9,6 +9,7 @@ import 'package:remini_care_ai_app/screens/music_screen/search_and_recommendatio
 import 'package:remini_care_ai_app/screens/music_screen/search_by_texts_or_speech.dart';
 import 'package:remini_care_ai_app/screens/music_screen/search_options.dart';
 import 'package:remini_care_ai_app/screens/music_screen/search_results.dart';
+import 'package:remini_care_ai_app/screens/tts_cache_screen.dart';
 
 
 void main() async {
@@ -33,6 +34,10 @@ final GoRouter _router = GoRouter(
     GoRoute(
       path: '/history_screen',
       builder: (context, state) => const HistoryScreen(),
+    ),
+    GoRoute(
+      path: '/tts_cache_screen',
+      builder: (context, state) => const TtsCacheScreen(),
     ),
     GoRoute(
       path: '/search_and_recommendation/:languageLabel',

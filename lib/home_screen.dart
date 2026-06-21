@@ -238,16 +238,24 @@ class _HomeScreenState extends State<HomeScreen> {
         elevation: 0,
         title: const Text('首頁', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
         centerTitle: true,
-        // 頂部 AppBar 右側新增一個齒輪按鈕，方便使用者先在此設定好 API 金鑰，防範未然！
+        // 頂部 AppBar 右側新增圖標管理區塊
         actions: [
-          // 新增：回憶紀錄按鈕 (小歷史圖標)
+          // 新增：語音快取管理按鈕 (掃把圖標)
+          IconButton(
+            icon: const Icon(Icons.cleaning_services_rounded, color: Colors.black87),
+            onPressed: () {
+              context.push('/tts_cache_screen');
+            },
+            tooltip: "語音快取管理",
+          ),
+          // 回憶紀錄按鈕 (小歷史圖標)
           IconButton(
             icon: const Icon(Icons.history_rounded, color: Colors.black87),
             onPressed: () {
               if (!_isConfigComplete()) {
-                _showConfigWarning(); // 缺少金鑰 -> 跳出警告並擋下跳轉
+                _showConfigWarning();
               } else {
-                context.push('/history_screen'); // 金鑰齊全 -> 正常跳轉
+                context.push('/history_screen');
               }
             },
             tooltip: "查看回憶紀錄",
@@ -285,8 +293,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 label: '以前的生活',
                 routePath: '/life_screen',
               ),
-
-              // --- 3. 回憶紀錄按鈕 (已移至右上角 AppBar) ---
             ],
           ),
         ),
