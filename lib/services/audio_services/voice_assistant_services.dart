@@ -94,8 +94,12 @@ class VoiceAssistantManager {
             audioFocus: AndroidAudioFocus.gainTransientExclusive,
           ),
         ));
+
+        // 💡 聽從建議：設定 ReleaseMode 為 stop，防止連續播放時底層資源被頻繁釋放重建，導致爆音
+        await _audioPlayer.setReleaseMode(ReleaseMode.stop);
+
         _isAudioSessionConfigured = true;
-        debugPrint("🍎 [AudioSession] 邊播邊錄音軌已全局鎖定！");
+        debugPrint("🍎 [AudioSession] 邊播邊錄音軌與播放器模式已全局鎖定！");
       }
     } catch (e) {
       debugPrint("❌ [AudioSession] 鎖定音軌失敗: $e");
@@ -199,6 +203,7 @@ class VoiceAssistantManager {
   void dispose() {
     stopActiveAudioOperations();
     _audioRecorder.dispose();
+    _audioPlayer.dispose();
   }
 
   // ==========================================
@@ -247,7 +252,6 @@ class VoiceAssistantManager {
             return;
           }
 
-          // 💡 關鍵修復：加入 try-catch 防止計時器觸發時 recorder 已被 dispose 的崩潰問題
           Amplitude amplitude;
           try {
             amplitude = await _audioRecorder.getAmplitude();
@@ -405,12 +409,11 @@ class VoiceAssistantManager {
         _isRecordingOnHardware = true;
 
         _vadTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) async {
-          if (!_isRecordingOnHardware || !_isRollingChatRecord) {
+          if (!_isRecordingOnHardware || !_isRollingChatRecord || timer.tick == 0) {
             timer.cancel();
             return;
           }
 
-          // 💡 關鍵修復：加入 try-catch 防止計時器觸發時 recorder 已被 dispose 的崩潰問題
           Amplitude amplitude;
           try {
             amplitude = await _audioRecorder.getAmplitude();
