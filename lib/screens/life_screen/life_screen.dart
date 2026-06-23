@@ -37,6 +37,65 @@ class _LifeScreenState extends State<LifeScreen> {
     return calculatedSize.clamp(24.0, 40.0);
   }
 
+  // 💡 新增：顯示除錯日誌視窗的方法
+  void _showDebugDialog(BuildContext context, double fontSize) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.monitor_heart_outlined, color: Colors.blueGrey, size: fontSize * 0.8),
+              const SizedBox(width: 8),
+              Text("系統日誌 (STT & LLM)", style: TextStyle(fontSize: fontSize * 0.7, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: MediaQuery.of(context).size.height * 0.6,
+            child: ListenableBuilder(
+              listenable: _controller,
+              builder: (context, child) {
+                if (_controller.debugLogs.isEmpty) {
+                  return Center(
+                    child: Text("目前沒有日誌紀錄", style: TextStyle(color: Colors.grey, fontSize: fontSize * 0.6)),
+                  );
+                }
+                return ListView.separated(
+                  itemCount: _controller.debugLogs.length,
+                  separatorBuilder: (_, __) => const Divider(height: 16),
+                  itemBuilder: (context, index) {
+                    return Text(
+                      _controller.debugLogs[index],
+                      style: TextStyle(fontSize: fontSize * 0.55, fontFamily: 'monospace', color: Colors.black87, height: 1.4),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                _controller.debugLogs.clear();
+                // 這裡我們直接通知畫面更新清空
+                // 為了避免呼叫 protected 方法，我們觸發一次無效的語言更新來刷新
+                _controller.selectedLanguage = _controller.selectedLanguage;
+                _controller.notifyListeners(); // 我們在 Controller 已設 public 但也可以直接呼叫
+              },
+              child: Text("清空日誌", style: TextStyle(fontSize: fontSize * 0.6, color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey),
+              child: Text("關閉", style: TextStyle(fontSize: fontSize * 0.6, color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -84,6 +143,15 @@ class _LifeScreenState extends State<LifeScreen> {
               onPressed: () => Navigator.maybePop(context),
             ),
             title: Text(appBarTitle, style: TextStyle(color: Colors.black, fontSize: fontSize * 0.8, fontWeight: FontWeight.bold)),
+            // 💡 新增：右上角的 Debug 日誌按鈕
+            actions: [
+              IconButton(
+                icon: Icon(Icons.monitor_heart_outlined, color: Colors.blueGrey, size: fontSize * 0.9),
+                onPressed: () => _showDebugDialog(context, fontSize),
+                tooltip: '除錯日誌',
+              ),
+              const SizedBox(width: 8),
+            ],
           ),
           body: SafeArea(
             child: LayoutBuilder(builder: (context, constraints) {
@@ -210,11 +278,19 @@ class _LifeScreenState extends State<LifeScreen> {
         backgroundColor: Colors.grey[100],
         elevation: 0,
         leading: IconButton(icon: Icon(Icons.arrow_back, color: Colors.black, size: fontSize), onPressed: () => Navigator.maybePop(context)),
+        // 💡 總結頁面也加入 Debug 按鈕
+        actions: [
+          IconButton(
+            icon: Icon(Icons.monitor_heart_outlined, color: Colors.blueGrey, size: fontSize * 0.9),
+            onPressed: () => _showDebugDialog(context, fontSize),
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: Center(
         child: SingleChildScrollView(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 900), // 💡 適度放寬最大限制
+            constraints: const BoxConstraints(maxWidth: 900),
             child: Container(
               width: double.infinity,
               margin: EdgeInsets.all(fontSize),
@@ -260,23 +336,20 @@ class _LifeScreenState extends State<LifeScreen> {
     );
   }
 
-  // 💡 表格化對齊列 (重新調整了標籤與內容的黃金比例)
   Widget _buildSummaryRow(String label, String value, double fontSize) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: fontSize * 0.4), // 略微收緊行距
+      padding: EdgeInsets.symmetric(vertical: fontSize * 0.4),
       child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 左側圓潤小膠囊標籤
             Container(
-              width: fontSize * 4.2, // 💡 縮小標籤不必要的寬度，把空間還給右邊的文字
+              width: fontSize * 4.2,
               padding: EdgeInsets.symmetric(vertical: fontSize * 0.3),
               decoration: BoxDecoration(color: const Color(0xFFFFF9E6), borderRadius: BorderRadius.circular(fontSize)),
               alignment: Alignment.center,
               child: Text(label, style: TextStyle(fontSize: fontSize * 0.8, fontWeight: FontWeight.bold, color: Colors.black87)),
             ),
-            SizedBox(width: fontSize * 0.8), // 💡 縮小左邊標籤與右邊文字的距離
-            // 右側內容文字
+            SizedBox(width: fontSize * 0.8),
             Expanded(
               child: Padding(
                 padding: EdgeInsets.only(top: fontSize * 0.15),
@@ -289,13 +362,12 @@ class _LifeScreenState extends State<LifeScreen> {
   }
 
   // ==========================================
-  // 🌟 今天聊天的回憶卡片 (完美還原並解決擠壓問題)
+  // 🌟 今天聊天的回憶卡片
   // ==========================================
   Widget _buildChatMemoriesView() {
     double fontSize = _getResponsiveFontSize(context);
     double screenWidth = MediaQuery.sizeOf(context).width;
 
-    // 💡 提高觸發並排的門檻：只有在螢幕真的很大(>850)時才左右並排，不然就維持漂亮的上下圖二版型！
     bool isWideScreen = screenWidth >= 850;
 
     return Scaffold(
@@ -308,7 +380,7 @@ class _LifeScreenState extends State<LifeScreen> {
       body: Center(
         child: SingleChildScrollView(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1200), // 💡 放寬大螢幕卡片極限，保護文字不被擠壓
+            constraints: const BoxConstraints(maxWidth: 1200),
             child: Container(
               width: double.infinity,
               margin: EdgeInsets.all(fontSize),
@@ -331,18 +403,17 @@ class _LifeScreenState extends State<LifeScreen> {
                   ),
                   SizedBox(height: fontSize * 2.5),
 
-                  // 💡 響應式排版：依照寬度決定呈現模式
                   if (isWideScreen)
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          flex: 3, // 💡 給予文字 60% 的空間，絕對不會再被擠成直行字！
+                          flex: 3,
                           child: _buildMemoryTextInfo(fontSize),
                         ),
                         SizedBox(width: fontSize * 1.5),
                         Expanded(
-                          flex: 2, // 💡 圖片佔 40% 的空間即可
+                          flex: 2,
                           child: _buildMemoryImage(fontSize),
                         ),
                       ],
@@ -391,7 +462,7 @@ class _LifeScreenState extends State<LifeScreen> {
 
   Widget _buildMemoryImage(double fontSize) {
     return AspectRatio(
-      aspectRatio: 4 / 3, // 維持懷舊照片的復古比例
+      aspectRatio: 4 / 3,
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
@@ -420,7 +491,20 @@ class _LifeScreenState extends State<LifeScreen> {
       return Scaffold(backgroundColor: Colors.white, appBar: AppBar(backgroundColor: Colors.white, elevation: 0, leading: BackButton(color: Colors.black, onPressed: () => Navigator.maybePop(context))), body: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [CircularProgressIndicator(color: Colors.orange), SizedBox(height: fontSize), Text("正在聆聽長輩的名字...", style: TextStyle(fontSize: fontSize * 0.8, color: Colors.grey, fontWeight: FontWeight.w500))])));
     }
     return Scaffold(
-      backgroundColor: Colors.white, appBar: AppBar(backgroundColor: Colors.white, elevation: 0, leading: BackButton(color: Colors.black, onPressed: () => Navigator.maybePop(context))),
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: BackButton(color: Colors.black, onPressed: () => Navigator.maybePop(context)),
+        // 💡 自我介紹頁面也加入 Debug 按鈕
+        actions: [
+          IconButton(
+            icon: Icon(Icons.monitor_heart_outlined, color: Colors.blueGrey, size: fontSize * 0.9),
+            onPressed: () => _showDebugDialog(context, fontSize),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: Center(
         child: SingleChildScrollView(
           child: Column(
