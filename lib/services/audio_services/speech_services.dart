@@ -175,25 +175,45 @@ class YatingSttService implements ISTTService {
   final String _tokenUrl = 'https://asr.api.yating.tw/v1/token';
   final String _wsBaseUrl = 'wss://asr.api.yating.tw/ws/v1/';
 
-  Uint8List _extractPcmFromWav(Uint8List bytes) {
-    if (bytes.length < 12) return bytes;
+  // 💡 升級：不只提取 PCM，還同時解析 fmt chunk 以驗證 WAV 格式！
+  Uint8List? _extractAndValidatePcmFromWav(Uint8List bytes) {
+    if (bytes.length < 44) return null;
     final riff = String.fromCharCodes(bytes.sublist(0, 4));
     final wave = String.fromCharCodes(bytes.sublist(8, 12));
     if (riff != 'RIFF' || wave != 'WAVE') return bytes.length > 44 ? bytes.sublist(44) : bytes;
 
     int offset = 12;
+    Uint8List? pcmData;
+
     while (offset + 8 <= bytes.length) {
       final chunkId = String.fromCharCodes(bytes.sublist(offset, offset + 4));
       final chunkSize = ByteData.sublistView(bytes, offset + 4, offset + 8).getUint32(0, Endian.little);
-      if (chunkId == 'data') {
+
+      if (chunkId == 'fmt ') {
+        if (chunkSize >= 16) {
+          final formatData = ByteData.sublistView(bytes, offset + 8, offset + 8 + chunkSize);
+          final channels = formatData.getUint16(2, Endian.little);
+          final sampleRate = formatData.getUint32(4, Endian.little);
+          final bitsPerSample = formatData.getUint16(14, Endian.little);
+
+          // 💡 嚴格驗證是否符合 Yating 官方規範
+          if (sampleRate != 16000 || channels != 1 || bitsPerSample != 16) {
+            debugPrint("[Yating STT Debug] ❌ 驗證失敗: 需為 16kHz Mono 16-bit。實際為: ${sampleRate}Hz, $channels Channels, $bitsPerSample-bit");
+            return null;
+          } else {
+            debugPrint("[Yating STT Debug] ✅ WAV 格式驗證通過: 16000Hz, Mono, 16-bit");
+          }
+        }
+      } else if (chunkId == 'data') {
         int end = offset + 8 + chunkSize;
         if (end > bytes.length) end = bytes.length;
-        return bytes.sublist(offset + 8, end);
+        pcmData = bytes.sublist(offset + 8, end);
       }
+
       offset += 8 + chunkSize;
       if (chunkSize % 2 != 0) offset += 1;
     }
-    return bytes.length > 44 ? bytes.sublist(44) : bytes;
+    return pcmData ?? (bytes.length > 44 ? bytes.sublist(44) : bytes);
   }
 
   @override
@@ -213,8 +233,12 @@ class YatingSttService implements ISTTService {
         return null;
       }
 
-      final pcmBytes = _extractPcmFromWav(bytes);
-      if (pcmBytes.isEmpty) return null;
+      // 💡 使用新的驗證方法
+      final pcmBytes = _extractAndValidatePcmFromWav(bytes);
+      if (pcmBytes == null || pcmBytes.isEmpty) {
+        debugPrint("[Yating STT Debug] ❌ 提取 PCM 或格式驗證失敗，終止辨識。");
+        return null;
+      }
 
       final tokenResponse = await http.post(
         Uri.parse(_tokenUrl),
@@ -287,7 +311,9 @@ class YatingSttService implements ISTTService {
         if (ws.readyState != WebSocket.open) break;
         int end = (i + chunkSize < pcmBytes.length) ? i + chunkSize : pcmBytes.length;
         ws.add(pcmBytes.sublist(i, end));
-        await Future.delayed(const Duration(milliseconds: 20));
+
+        // 💡 升級修復：依照官方建議 Streaming 速率，精準控速為 62500 微秒 (62.5ms)
+        await Future.delayed(const Duration(microseconds: 62500));
       }
 
       if (ws.readyState == WebSocket.open) {

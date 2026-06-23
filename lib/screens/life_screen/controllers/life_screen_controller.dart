@@ -31,7 +31,6 @@ class LifeScreenController extends ChangeNotifier {
   ChatStatus chatStatus = ChatStatus.introPrepare;
   bool _isDisposed = false;
 
-  // 💡 新增：用來記錄是否已經播放過「請大家介紹自己」的歡迎詞
   bool _hasPlayedIntroGreeting = false;
 
   List<String> elderNames = [];
@@ -67,6 +66,13 @@ class LifeScreenController extends ChangeNotifier {
   String dynamicEra = "1980s";
   String dynamicLocation = "Taiwan";
 
+  // 💡 安全的狀態更新：防止畫面被銷毀後仍嘗試更新 UI 導致崩潰
+  void _safeNotifyListeners() {
+    if (!_isDisposed) {
+      notifyListeners();
+    }
+  }
+
   bool isVoiceActiveStatus(ChatStatus status) {
     return status == ChatStatus.prepare || status == ChatStatus.chatting ||
         status == ChatStatus.dislikePrepare || status == ChatStatus.dislikeChatting ||
@@ -101,33 +107,29 @@ class LifeScreenController extends ChangeNotifier {
 
     voiceManager.onPlayingLanguageChanged = (lang) {
       selectedLanguage = lang;
-      notifyListeners();
+      _safeNotifyListeners();
     };
 
-    // 💡 初始化時：如果一開始就是介紹階段，就觸發第一次的歡迎詞廣播
     if (chatStatus == ChatStatus.introPrepare && !_hasPlayedIntroGreeting) {
       _playIntroGreeting();
     } else {
       voiceManager.startBackgroundWakeWordCycle();
     }
 
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
-  // 💡 新增：專門播放介紹階段歡迎詞的方法
   Future<void> _playIntroGreeting() async {
     _hasPlayedIntroGreeting = true;
     await stopAudioSequence();
     await voiceManager.stopActiveAudioOperations();
 
-    // 播報歡迎詞 (兩次，台語與中文)
     await voiceManager.playLanguageSequence(
       texts: ["請大家介紹自己"],
       languages: ["台語", "中文"],
       repeatCount: 1,
     );
 
-    // 播報完畢後，開啟背景喚醒詞監聽 (等待「開始介紹」)
     if (!_isDisposed && chatStatus == ChatStatus.introPrepare) {
       voiceManager.startBackgroundWakeWordCycle();
     }
@@ -138,35 +140,47 @@ class LifeScreenController extends ChangeNotifier {
           chatStatus == ChatStatus.introProcessing || chatStatus == ChatStatus.introNameExtracted ||
           chatStatus == ChatStatus.introTransition;
 
-  // 💡 核心修復：只處理「特定階段專屬」的口令，全域通用口令交還給 voiceManager
   void _handleBackgroundCommands(String text) {
     if (_isIntroStatus()) {
-      // 專屬：自我介紹階段
       if (chatStatus == ChatStatus.introPrepare && text.contains("開始介紹")) startIntroRecording();
       else if (chatStatus == ChatStatus.introNameExtracted) {
         if (text.contains("下一位")) nextPersonIntro();
         else if (text.contains("結束介紹")) finishIntro();
       }
     } else if (chatStatus == ChatStatus.roundSummary) {
-      // 專屬：總結階段
       if (text.contains("繼續")) continueChatFromSummary();
       else if (text.contains("完成") || text.contains("結束")) finishTodayChat();
     }
-    // ⚠️ 已經移除了 nextElderPrompt 判斷「開始」的邏輯，
-    // 因為 voiceManager 聽到「開始」會自動觸發 onStartChatFlow，避免重複執行！
   }
 
-  void startIntroRecording() async { await stopAudioSequence(); chatStatus = ChatStatus.introRecording; notifyListeners(); voiceManager.startChatFlow(); }
+  void startIntroRecording() async {
+    await stopAudioSequence();
+    // 💡 關鍵修復：如果是在播放音訊中途打斷並開始錄音，必須給予硬體 600 毫秒切換時間
+    // 否則麥克風會被鎖死錄製成「靜音空軌」，導致 STT 辨識回傳 (空)
+    if (!kIsWeb) await Future.delayed(const Duration(milliseconds: 600));
+    chatStatus = ChatStatus.introRecording;
+    _safeNotifyListeners();
+    voiceManager.startChatFlow();
+  }
+
   void stopIntroRecordingManually() async => await voiceManager.forceEndChat();
+
   Future<void> _handleIntroSpeechCompleted(List<String> paths) async {
-    if (paths.isEmpty) { chatStatus = ChatStatus.introPrepare; notifyListeners(); return; }
-    chatStatus = ChatStatus.introProcessing; notifyListeners();
+    if (paths.isEmpty) {
+      chatStatus = ChatStatus.introPrepare;
+      _safeNotifyListeners();
+      return;
+    }
+    chatStatus = ChatStatus.introProcessing;
+    _safeNotifyListeners();
+
     String chunkText = "";
     for (String path in paths) {
       String? t = await sttService.transcribe(path);
       try { File(path).deleteSync(); } catch (_) {}
       if (t != null && t.trim().isNotEmpty) chunkText += t;
     }
+
     if (chunkText.isNotEmpty) {
       try {
         currentElderName = await llmService.extractElderName(chunkText);
@@ -175,23 +189,25 @@ class LifeScreenController extends ChangeNotifier {
       currentElderName = "無名氏";
     }
 
-    chatStatus = ChatStatus.introNameExtracted; voiceManager.startBackgroundWakeWordCycle(); notifyListeners();
+    chatStatus = ChatStatus.introNameExtracted;
+    voiceManager.startBackgroundWakeWordCycle();
+    _safeNotifyListeners();
   }
+
   void nextPersonIntro() {
     if (currentElderName.isNotEmpty && currentElderName != "無名氏" && currentElderName != "長輩") elderNames.add(currentElderName);
     currentElderName = "";
     chatStatus = ChatStatus.introPrepare;
-    // 這裡按下下一位時，不會觸發 _playIntroGreeting，只會重啟監聽
     voiceManager.startBackgroundWakeWordCycle();
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   Future<void> finishIntro() async {
     if (currentElderName.isNotEmpty && currentElderName != "無名氏" && currentElderName != "長輩") elderNames.add(currentElderName);
     await voiceManager.stopActiveAudioOperations();
-    chatStatus = ChatStatus.introTransition; notifyListeners();
+    chatStatus = ChatStatus.introTransition;
+    _safeNotifyListeners();
 
-    // 💡 重置標記，這樣如果未來有機會重新回到自我介紹階段，就能再次播放
     _hasPlayedIntroGreeting = false;
 
     await Future.delayed(const Duration(seconds: 3));
@@ -201,7 +217,8 @@ class LifeScreenController extends ChangeNotifier {
     await fetchInitialQuestion();
 
     voiceManager.checkCompletedCommands = false;
-    voiceManager.startBackgroundWakeWordCycle(); notifyListeners();
+    voiceManager.startBackgroundWakeWordCycle();
+    _safeNotifyListeners();
   }
 
   void _resetUnspokenElders() {
@@ -218,7 +235,7 @@ class LifeScreenController extends ChangeNotifier {
     recordTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_isDisposed) { timer.cancel(); return; }
       recordSeconds++;
-      notifyListeners();
+      _safeNotifyListeners();
       if (recordSeconds >= int.parse(ReminiCareConfig.maxRecordLimit)) handleEndChat();
     });
   }
@@ -261,7 +278,7 @@ class LifeScreenController extends ChangeNotifier {
     _activeSttTasks = 0;
 
     startTimer();
-    notifyListeners();
+    _safeNotifyListeners();
     voiceManager.startChatFlow();
   }
 
@@ -325,9 +342,8 @@ class LifeScreenController extends ChangeNotifier {
   }
 
   void _checkAndTriggerEndProcess() {
-    // 必須符合：1. 已經標記結束 2. 所有翻譯都回來了 3. 還沒觸發過 AI
     if (isProcessingEnd && _activeSttTasks == 0 && !_hasTriggeredEndProcess) {
-      _hasTriggeredEndProcess = true; // 鎖上，避免重複觸發
+      _hasTriggeredEndProcess = true;
       String cleanTextForLLM = accumulatedChatText;
       for (String cmd in ReminiCareConfig.endWakeWords) {
         cleanTextForLLM = cleanTextForLLM.replaceAll(cmd, "");
@@ -339,27 +355,30 @@ class LifeScreenController extends ChangeNotifier {
   Future<void> _processEndOfSpeechChunk(String cleanTextForLLM) async {
     if (chatStatus == ChatStatus.chatting) {
       chatStatus = ChatStatus.generating;
-      notifyListeners();
+      _safeNotifyListeners();
       _processAudioAndExtractKeywords(manualText: cleanTextForLLM);
     }
     else if (chatStatus == ChatStatus.dislikeChatting) {
-      chatStatus = ChatStatus.dislikeGenerating; notifyListeners();
+      chatStatus = ChatStatus.dislikeGenerating;
+      _safeNotifyListeners();
       _processAudioAndExtractKeywords(manualText: cleanTextForLLM);
     }
     else if (chatStatus == ChatStatus.likeChatting) {
       if (unspokenElders.isNotEmpty) {
         currentPromptElder = unspokenElders.removeAt(0);
-        chatStatus = ChatStatus.nextElderPrompt; notifyListeners();
+        chatStatus = ChatStatus.nextElderPrompt;
+        _safeNotifyListeners();
         playCurrentContextVoice();
       } else {
-        chatStatus = ChatStatus.generatingNextTopic; notifyListeners();
+        chatStatus = ChatStatus.generatingNextTopic;
+        _safeNotifyListeners();
         _generateNextTopicAndSummary(manualText: cleanTextForLLM);
       }
     }
   }
 
   Future<void> fetchInitialQuestion() async {
-    if (_isDisposed) return; isLoading = true; notifyListeners();
+    if (_isDisposed) return; isLoading = true; _safeNotifyListeners();
 
     final List<String> q = TopicQuestionGenerator.generateLifeQuestion();
     final String rawMain = q[0];
@@ -370,20 +389,19 @@ class LifeScreenController extends ChangeNotifier {
 
     if (!_isDisposed) {
       isLoading = false;
-      notifyListeners();
+      _safeNotifyListeners();
       playCurrentContextVoice();
     }
   }
 
   Future<void> handleLikeAndGenerateExtension() async {
-    if (_isDisposed) return; isLoading = true; chatStatus = ChatStatus.likePrepare; notifyListeners();
+    if (_isDisposed) return; isLoading = true; chatStatus = ChatStatus.likePrepare; _safeNotifyListeners();
     try {
       String previousQuestion = fullQuestionText;
       String lastUserMessage = "";
       for (var msg in chatHistory.reversed) { if (msg['role'] == 'user') { lastUserMessage = msg['content'] ?? ""; break; } }
       if (lastUserMessage.isEmpty) lastUserMessage = accumulatedChatText;
       final String rawQuestion = await llmService.generateExtendedQuestion(previousQuestion, lastUserMessage);
-
 
       currentMainQuestion = currentPromptElder.isNotEmpty ? "$currentPromptElder， $rawQuestion" : rawQuestion;
       currentSubQuestion = "";
@@ -392,7 +410,7 @@ class LifeScreenController extends ChangeNotifier {
       currentMainQuestion = currentPromptElder.isNotEmpty ? "$currentPromptElder，這張照片有讓您想起更多小時候的趣味往事嗎？" : "這張照片有讓您想起更多小時候的趣味往事嗎？";
       currentSubQuestion = "";
     }
-    finally { if (!_isDisposed) { isLoading = false; notifyListeners(); playCurrentContextVoice(); } }
+    finally { if (!_isDisposed) { isLoading = false; _safeNotifyListeners(); playCurrentContextVoice(); } }
   }
 
   Future<void> _generateNextTopicAndSummary({required String manualText}) async {
@@ -410,7 +428,7 @@ class LifeScreenController extends ChangeNotifier {
     }
     finally {
       if (!_isDisposed) {
-        chatStatus = ChatStatus.roundSummary; notifyListeners();
+        chatStatus = ChatStatus.roundSummary; _safeNotifyListeners();
         playCurrentContextVoice();
         voiceManager.checkCompletedCommands = false; voiceManager.startBackgroundWakeWordCycle();
       }
@@ -428,7 +446,7 @@ class LifeScreenController extends ChangeNotifier {
 
   void finishTodayChat() {
     chatStatus = ChatStatus.chatSummary;
-    notifyListeners();
+    _safeNotifyListeners();
     voiceManager.stopActiveAudioOperations();
   }
 
@@ -452,7 +470,7 @@ class LifeScreenController extends ChangeNotifier {
 
       if (!_isDisposed) {
         chatStatus = ChatStatus.chatMemories;
-        notifyListeners();
+        _safeNotifyListeners();
       }
     } catch (e) {
       debugPrint("❌ 儲存回憶失敗: $e");
@@ -502,17 +520,17 @@ class LifeScreenController extends ChangeNotifier {
 
     if (isManualTap) {
       await voiceManager.playLanguageSequence(
-        texts: textsToPlay,
-        languages: [selectedLanguage],
-        repeatCount: 1,
-        partGapMs: partGapMs
+          texts: textsToPlay,
+          languages: [selectedLanguage],
+          repeatCount: 1,
+          partGapMs: partGapMs
       );
     } else {
       await voiceManager.playLanguageSequence(
-        texts: textsToPlay,
-        languages: ["台語", "中文"],
-        repeatCount: 2,
-        partGapMs: partGapMs
+          texts: textsToPlay,
+          languages: ["台語", "中文"],
+          repeatCount: 2,
+          partGapMs: partGapMs
       );
     }
 
@@ -554,7 +572,7 @@ class LifeScreenController extends ChangeNotifier {
       currentMainQuestion = "阿公阿嬤拍謝，我剛才不小心恍神了，可以再跟我說一次嗎？";
       currentSubQuestion = "";
       chatStatus = chatStatus == ChatStatus.dislikeGenerating ? ChatStatus.dislikePrepare : ChatStatus.prepare;
-      notifyListeners();
+      _safeNotifyListeners();
       await voiceManager.playLanguageSequence(
         texts: [currentMainQuestion],
         languages: ["台語", "中文"],
@@ -569,9 +587,9 @@ class LifeScreenController extends ChangeNotifier {
       String prompt = originalKeywords.join("、"); if (prompt.isEmpty) prompt = "懷舊元素";
       final String? imageUrl = await imageService.generateNostalgicImage(scene: "$dynamicScene, 包含關鍵元素: $prompt", era: dynamicEra, location: dynamicLocation);
       if (_isDisposed) return;
-      if (imageUrl != null) { currentImageUrl = imageUrl; chatStatus = ChatStatus.evaluation; notifyListeners(); playCurrentContextVoice(); }
+      if (imageUrl != null) { currentImageUrl = imageUrl; chatStatus = ChatStatus.evaluation; _safeNotifyListeners(); playCurrentContextVoice(); }
       else throw Exception("生圖出錯");
-    } catch (e) { if (_isDisposed) return; chatStatus = ChatStatus.prepare; notifyListeners(); }
+    } catch (e) { if (_isDisposed) return; chatStatus = ChatStatus.prepare; _safeNotifyListeners(); }
   }
 
   Future<void> triggerModifiedImageGeneration(String userFeedback) async {
@@ -580,9 +598,9 @@ class LifeScreenController extends ChangeNotifier {
       String editInstruction = "在 $dynamicScene 的大場景氛圍下, 根據長輩的反饋修改細節：$userFeedback";
       final String? imageUrl = await imageService.editImage(imagePath: currentImageUrl, editInstruction: editInstruction);
       if (_isDisposed) return;
-      if (imageUrl != null) { currentImageUrl = imageUrl; chatStatus = ChatStatus.evaluation; notifyListeners(); playCurrentContextVoice(); }
+      if (imageUrl != null) { currentImageUrl = imageUrl; chatStatus = ChatStatus.evaluation; _safeNotifyListeners(); playCurrentContextVoice(); }
       else throw Exception("改圖出錯");
-    } catch (e) { if (_isDisposed) return; chatStatus = ChatStatus.dislikePrepare; notifyListeners(); }
+    } catch (e) { if (_isDisposed) return; chatStatus = ChatStatus.dislikePrepare; _safeNotifyListeners(); }
   }
 
   Future<void> triggerLikeExtendedImageGeneration() async {
@@ -591,9 +609,9 @@ class LifeScreenController extends ChangeNotifier {
       String combinedPrompt = [...originalKeywords, ...newKeywords].join("、");
       final String? imageUrl = await imageService.generateNostalgicImage(scene: "$dynamicScene, 包含關鍵元素: $combinedPrompt", era: dynamicEra, location: dynamicLocation);
       if (_isDisposed) return;
-      if (imageUrl != null) { currentImageUrl = imageUrl; chatStatus = ChatStatus.evaluation; notifyListeners(); playCurrentContextVoice(); }
+      if (imageUrl != null) { currentImageUrl = imageUrl; chatStatus = ChatStatus.evaluation; _safeNotifyListeners(); playCurrentContextVoice(); }
       else throw Exception("延伸話題生圖出錯");
-    } catch (e) { if (_isDisposed) return; chatStatus = ChatStatus.likePrepare; notifyListeners(); }
+    } catch (e) { if (_isDisposed) return; chatStatus = ChatStatus.likePrepare; _safeNotifyListeners(); }
   }
 
   @override

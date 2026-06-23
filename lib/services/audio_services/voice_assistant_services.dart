@@ -32,7 +32,7 @@ class VoiceAssistantManager {
   // ==========================================
   // 💾 TTS 持久化快取與容量管理
   // ==========================================
-  static const String _spKeyTtsCache = "tts_audio_cache_index_v1";
+  static String _spKeyTtsCache = ReminiCareConfig.ttsCacheName;
   static const int _maxCacheSizeBytes = 100 * 1024 * 1024; // 預設 100MB
 
   bool _cacheInitialized = false;
@@ -214,7 +214,6 @@ class VoiceAssistantManager {
   Future<void> _runSmartWakeWordCycle(int sessionId) async {
     if (!_isRollingWakeWord || sessionId != _wakeWordSessionId) return;
 
-    // 💡 第一步：確保 iOS 音軌已經被我們配置為可以錄音的模式
     await _ensureAudioSessionConfigured();
 
     _hasSpoken = false;
@@ -223,10 +222,8 @@ class VoiceAssistantManager {
     _consecutiveLoudTicks = 0;
 
     try {
-      // 💡 hasPermission 內部會自動處理 iOS 權限。如果沒彈窗，代表以前已經點過「允許」了！
       if (await _audioRecorder.hasPermission()) {
 
-        // 🍎 給予 iOS 音軌切換的喘息時間，防止 Session activation failed
         if (Platform.isIOS || Platform.isMacOS) {
           await Future.delayed(const Duration(milliseconds: 300));
         }
@@ -250,7 +247,15 @@ class VoiceAssistantManager {
             return;
           }
 
-          final amplitude = await _audioRecorder.getAmplitude();
+          // 💡 關鍵修復：加入 try-catch 防止計時器觸發時 recorder 已被 dispose 的崩潰問題
+          Amplitude amplitude;
+          try {
+            amplitude = await _audioRecorder.getAmplitude();
+          } catch (e) {
+            timer.cancel();
+            return;
+          }
+
           final currentDb = amplitude.current;
 
           if (!_isCalibrated) {
@@ -376,7 +381,6 @@ class VoiceAssistantManager {
     _isRollingChatRecord = true;
     _chatRecordSessionId++;
 
-    // 💡 同樣地，先確保通道解鎖
     await _ensureAudioSessionConfigured();
 
     _hasSpoken = false;
@@ -401,12 +405,20 @@ class VoiceAssistantManager {
         _isRecordingOnHardware = true;
 
         _vadTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) async {
-          if (!_isRecordingOnHardware || !_isRollingChatRecord || timer.tick == 0) {
+          if (!_isRecordingOnHardware || !_isRollingChatRecord) {
             timer.cancel();
             return;
           }
 
-          final amplitude = await _audioRecorder.getAmplitude();
+          // 💡 關鍵修復：加入 try-catch 防止計時器觸發時 recorder 已被 dispose 的崩潰問題
+          Amplitude amplitude;
+          try {
+            amplitude = await _audioRecorder.getAmplitude();
+          } catch (e) {
+            timer.cancel();
+            return;
+          }
+
           final currentDb = amplitude.current;
 
           if (!_isCalibrated) {
@@ -508,7 +520,6 @@ class VoiceAssistantManager {
       await _initCacheIfNeeded();
       final storageDir = await getApplicationDocumentsDirectory();
 
-      // 1. 批次建立所有片段的快取
       for (final text in texts) {
         if (text.isEmpty) continue;
         for (final lang in languages.toSet()) {
@@ -547,7 +558,6 @@ class VoiceAssistantManager {
         }
       }
 
-      // 2. 依照切段順序播放，達成無縫連播
       for (int repeat = 0; repeat < repeatCount; repeat++) {
         for (final lang in languages) {
           if (currentSession != _playSessionId) return;

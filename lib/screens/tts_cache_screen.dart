@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:remini_care_ai_app/services/api_services.dart';
+import 'package:remini_care_ai_app/services/remini_care_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
@@ -17,7 +18,7 @@ class TtsCacheScreen extends StatefulWidget {
 }
 
 class _TtsCacheScreenState extends State<TtsCacheScreen> {
-  static const String _spKeyTtsCache = "tts_audio_cache_index_v1";
+  static String _spKeyTtsCache = ReminiCareConfig.ttsCacheName;
 
   Map<String, dynamic> _cacheMetadata = {};
   bool _isLoading = true;
