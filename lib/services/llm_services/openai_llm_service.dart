@@ -6,6 +6,6 @@ class OpenAILlmService extends LlmService {
       : super(
     baseUrl: "https://api.openai.com/v1",
     model: "gpt-4o-mini",
-    apiKey: ReminiCareConfig.getValue('openaiApiKey') ?? "",
+    apiKey: ReminiCareConfig.openaiApiKey,
   );
 }

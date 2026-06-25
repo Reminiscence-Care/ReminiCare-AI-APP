@@ -41,7 +41,7 @@ class _SearchAndRecommendationState extends State<SearchAndRecommendation> {
 
   Future<void> _getEmbedUrls(String singer, String song) async {
     final api = YoutubeApiServices();
-    final List<String>? searchResults = await api.getArtistAndTracks("$singer $song");
+    final List<String>? searchResults = await api.getArtistAndTracks(singer, song);
 
     if (searchResults != null && searchResults.length >= 4) {
       String artistName = searchResults[0];

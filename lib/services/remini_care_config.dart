@@ -18,6 +18,11 @@ class ReminiCareConfig {
       hintText: 'nvapi-...'
     ),
     const ConfigField(
+      apiKey: 'GEMINI_API_KEY',
+      displayName: "GEMINI API KEY (語言模型)",
+      hintText: 'AQ...'
+    ),
+    const ConfigField(
       apiKey: 'SILICONFLOW_API_KEY',
       displayName: 'SILICONFLOW KEY (影像生成)',
       hintText: 'sk-...'
@@ -77,6 +82,7 @@ class ReminiCareConfig {
   ];
 
   static String get nvidiaApiKey => _configs['NVIDIA_API_KEY'] ?? "";
+  static String get geminiApiKey => _configs['GEMINI_API_KEY'] ?? "";
   static String get siliconFlowApiKey => _configs['SILICONFLOW_API_KEY'] ?? "";
   static String get openaiApiKey => _configs['OPENAI_API_KEY'] ?? "";
   static String get nckuTtsToken => _configs['NCKU_TTS_TOKEN'] ?? "";

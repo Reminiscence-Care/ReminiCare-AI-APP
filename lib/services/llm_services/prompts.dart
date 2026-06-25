@@ -64,12 +64,17 @@ const String SONG_RECOMMENDATION_PROMPT = """
 # Restrictions
 - 只輸出歌名與歌手名稱，絕對不輸出其他任何東西。
 - 請確認這些歌是真實存在的，絕不能捏造。
+- 回傳的歌手名要是全名，且確保是真實存在且正確的。
 - 嚴格遵守 JSON 格式。
 
 # 輸出範例
+你必須直接以 `[` 開頭，並以 `]` 結尾。
+絕不回答「好的」、「以下是」等任何廢話。
 必須嚴格輸出為 JSON 陣列格式，例如：
 [{"singer":"歌手甲", "song":"歌曲甲"}, {"singer": "歌手乙", "song": "歌曲乙"}]
 絕對不要包含任何 Markdown 標記（如 ```json）、解釋說明或其他多餘文字。
+
+[開始輸出]
 """;
 
 const String SONG_INFO_EXTRACTOR_PROMPT = """

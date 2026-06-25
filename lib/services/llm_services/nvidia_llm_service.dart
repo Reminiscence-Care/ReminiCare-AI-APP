@@ -5,7 +5,7 @@ class NvidiaLlmService extends LlmService {
   NvidiaLlmService()
       : super(
     baseUrl: "https://integrate.api.nvidia.com/v1",
-    model: "qwen/qwen3-next-80b-a3b-instruct",
+    model: "deepseek-ai/deepseek-v4-flash",
     apiKey: ReminiCareConfig.nvidiaApiKey,
   );
 }

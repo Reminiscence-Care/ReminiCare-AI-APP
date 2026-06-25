@@ -169,12 +169,15 @@ class LlmService implements ILLMService {
   @override
   Future<List<Map<String, String>>> recommendationSongsName(String? language) async {
     final response = await request(
-      SONG_RECOMMENDATION_PROMPT.replaceAll("\$language", language ?? "國語"),
-      "請挑選十首老歌的歌名及歌手名給我。(隨機碼:${DateTime.now().millisecondsSinceEpoch})",
+      SONG_RECOMMENDATION_PROMPT.replaceAll("\$language", language ?? "國語") +
+      "\n\n🚨 注意：請直接輸出 JSON 陣列，絕對不要包含任何前言、後記、或英文格式說明！",
+      "Random ID: ${DateTime.now().millisecondsSinceEpoch}",
       [],
       temperature: 0.9,
-      maxTokens: 1000,
+      maxTokens: 1500,
     );
+
+    print("[LLM TOKEN USAGE]: ${response.length}");
 
     if (response == "[ERROR]" || response.isEmpty) return [];
 

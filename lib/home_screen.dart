@@ -18,8 +18,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final llmProvider = ReminiCareConfig.getValue('selectedLlmProvider') ?? 'nvidia';
     bool llmOk = false;
     if (llmProvider == 'nvidia') llmOk = ReminiCareConfig.nvidiaApiKey.isNotEmpty;
-    if (llmProvider == 'openai') llmOk = (ReminiCareConfig.getValue('openaiApiKey') ?? "").isNotEmpty;
-    if (llmProvider == 'gemini') llmOk = (ReminiCareConfig.getValue('geminiApiKey') ?? "").isNotEmpty;
+    if (llmProvider == 'openai') llmOk = ReminiCareConfig.openaiApiKey.isNotEmpty;
+    if (llmProvider == 'gemini') llmOk = ReminiCareConfig.geminiApiKey.isNotEmpty;
 
     // 2. 檢查 生圖
     final imageProvider = ReminiCareConfig.getValue('selectedImageProvider') ?? 'siliconflow';
