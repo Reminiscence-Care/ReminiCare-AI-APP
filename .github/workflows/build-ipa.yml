@@ -45,10 +45,11 @@ jobs:
           retention-days: 7
 
       # 新增步驟：自動建立 GitHub Release 並掛載 .ipa 檔案
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: build/ios/iphoneos/FlutterApp-${{ github.ref_name }}.ipa
-          name: "App 發布版本 ${{ github.ref_name }}"
-          tag_name: ${{ github.ref_name }}
-          generate_release_notes: true # 自動把這次跟上次 Tag 之間的 Commit 記錄當作更新日誌
+      - name: Create GitHub Release via GH CLI
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # 使用內建的 Token 權限
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            build/ios/iphoneos/FlutterApp-${{ github.ref_name }}.ipa \
+            --title "App 發布版本 ${{ github.ref_name }}" \
+            --generate-notes
