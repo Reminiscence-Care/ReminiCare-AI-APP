@@ -25,7 +25,7 @@ class LlmService implements ILLMService {
       config: OpenAIConfig(
         authProvider: ApiKeyProvider(apiKey),
         baseUrl: finalBaseUrl,
-        timeout: const Duration(seconds: 600),
+        timeout: const Duration(seconds: 60),
       ),
     );
   }
@@ -174,7 +174,7 @@ class LlmService implements ILLMService {
       "Random ID: ${DateTime.now().millisecondsSinceEpoch}",
       [],
       temperature: 0.9,
-      maxTokens: 1500,
+      maxTokens: 1000,
     );
 
     print("[LLM TOKEN USAGE]: ${response.length}");
