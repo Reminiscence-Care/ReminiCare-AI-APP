@@ -25,7 +25,7 @@ class LlmService implements ILLMService {
       config: OpenAIConfig(
         authProvider: ApiKeyProvider(apiKey),
         baseUrl: finalBaseUrl,
-        timeout: const Duration(seconds: 10),
+        timeout: const Duration(seconds: 60),
       ),
     );
   }
