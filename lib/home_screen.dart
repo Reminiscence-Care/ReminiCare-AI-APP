@@ -361,13 +361,6 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               _buildHomeButton(
                 context: context,
-                imagePath: 'assets/images/music_home.png',
-                width: buttonWidth,
-                label: '以前愛聽的歌',
-                routePath: '/music_screen',
-              ),
-              _buildHomeButton(
-                context: context,
                 imagePath: 'assets/images/life_home.png',
                 width: buttonWidth,
                 label: '以前的生活',
