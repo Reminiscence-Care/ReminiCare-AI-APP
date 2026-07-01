@@ -9,7 +9,7 @@ import 'package:remini_care_ai_app/services/api_services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:remini_care_ai_app/services/remini_care_config.dart';
 
-import 'speech_services.dart';
+import 'package:remini_care_ai_app/services/audio_services/speech_services.dart';
 
 // =========================================================================
 // 🎙️ 💡 獨立語音助手核心控制器 (VoiceAssistantManager)
@@ -29,10 +29,13 @@ class VoiceAssistantManager {
   int _chatRecordSessionId = 0;
   int _playSessionId = 0;
 
+  // 💡 核心修復：加入死亡標記，防止返回上一頁後觸發崩潰或無窮重試
+  bool _isManagerDisposed = false;
+
   // ==========================================
   // 💾 TTS 持久化快取與容量管理
   // ==========================================
-  static String _spKeyTtsCache = ReminiCareConfig.ttsCacheName;
+  static const String _spKeyTtsCache = "tts_audio_cache_index_v1";
   static const int _maxCacheSizeBytes = 100 * 1024 * 1024; // 預設 100MB
 
   bool _cacheInitialized = false;
@@ -74,7 +77,7 @@ class VoiceAssistantManager {
   // 🍎 解決 iPad/iOS 播放與錄音衝突的「絕對霸道」設定
   // ==========================================
   Future<void> _ensureAudioSessionConfigured() async {
-    if (_isAudioSessionConfigured) return;
+    if (_isAudioSessionConfigured || _isManagerDisposed) return;
     try {
       if (!kIsWeb && (Platform.isIOS || Platform.isAndroid)) {
         await AudioPlayer.global.setAudioContext(AudioContext(
@@ -95,11 +98,11 @@ class VoiceAssistantManager {
           ),
         ));
 
-        // 💡 聽從建議：設定 ReleaseMode 為 stop，防止連續播放時底層資源被頻繁釋放重建，導致爆音
+        if (_isManagerDisposed) return;
         await _audioPlayer.setReleaseMode(ReleaseMode.stop);
 
         _isAudioSessionConfigured = true;
-        debugPrint("🍎 [AudioSession] 邊播邊錄音軌與播放器模式已全局鎖定！");
+        debugPrint("🍎 [AudioSession] 邊播邊錄音軌已全局鎖定！");
       }
     } catch (e) {
       debugPrint("❌ [AudioSession] 鎖定音軌失敗: $e");
@@ -110,7 +113,7 @@ class VoiceAssistantManager {
   // 🛠️ 初始化與快取管理邏輯
   // ==========================================
   Future<void> _initCacheIfNeeded() async {
-    if (_cacheInitialized) return;
+    if (_cacheInitialized || _isManagerDisposed) return;
     try {
       final sp = await SharedPreferences.getInstance();
       final String? jsonStr = sp.getString(_spKeyTtsCache);
@@ -142,6 +145,7 @@ class VoiceAssistantManager {
   }
 
   Future<void> _checkAndCleanupCache(int newFileSize) async {
+    if (_isManagerDisposed) return;
     int currentTotalSize = 0;
     _cacheMetadata.values.forEach((data) {
       currentTotalSize += (data['size'] as int? ?? 0);
@@ -181,6 +185,7 @@ class VoiceAssistantManager {
   }
 
   Future<void> stopActiveAudioOperations() async {
+    if (_isManagerDisposed) return;
     _isRollingWakeWord = false;
     _isRollingChatRecord = false;
     _wakeWordSessionId++;
@@ -200,16 +205,42 @@ class VoiceAssistantManager {
     }
   }
 
+  // 💡 核心修復：安全的非同步卸載硬體
   void dispose() {
-    stopActiveAudioOperations();
-    _audioRecorder.dispose();
-    _audioPlayer.dispose();
+    _isManagerDisposed = true; // 1. 宣告死亡，截斷所有計時器與重試迴圈
+    _isRollingWakeWord = false;
+    _isRollingChatRecord = false;
+    _wakeWordSessionId++;
+    _chatRecordSessionId++;
+
+    _vadTimer?.cancel(); // 2. 同步取消 VAD 避免背景讀取
+    _vadTimer = null;
+
+    // 3. 把安全清理的任務丟進背景 (Fire and forget)，不會阻塞畫面切換
+    _safeHardwareCleanup();
+  }
+
+  Future<void> _safeHardwareCleanup() async {
+    try {
+      // 確保在摧毀物件前，先優雅地停止錄音
+      if (_isRecordingOnHardware) {
+        await _audioRecorder.stop();
+        _isRecordingOnHardware = false;
+      }
+    } catch (e) {
+      debugPrint("[硬體清理] 停止錄音失敗: $e");
+    } finally {
+      // 徹底停止並確保無音軌存留後，再安全銷毀驅動物件，杜絕 RPC failed!
+      try { await _audioPlayer.dispose(); } catch (_) {}
+      try { await _audioRecorder.dispose(); } catch (_) {}
+    }
   }
 
   // ==========================================
   // 🎙️ 引擎 A：背景喚醒詞檢測 (VAD 智慧過濾)
   // ==========================================
   Future<void> startBackgroundWakeWordCycle() async {
+    if (_isManagerDisposed) return;
     await stopActiveAudioOperations();
     _isRollingWakeWord = true;
     _wakeWordSessionId++;
@@ -217,9 +248,10 @@ class VoiceAssistantManager {
   }
 
   Future<void> _runSmartWakeWordCycle(int sessionId) async {
-    if (!_isRollingWakeWord || sessionId != _wakeWordSessionId) return;
+    if (_isManagerDisposed || !_isRollingWakeWord || sessionId != _wakeWordSessionId) return;
 
     await _ensureAudioSessionConfigured();
+    if (_isManagerDisposed) return;
 
     _hasSpoken = false;
     _silenceMs = 0;
@@ -228,10 +260,10 @@ class VoiceAssistantManager {
 
     try {
       if (await _audioRecorder.hasPermission()) {
-
         if (Platform.isIOS || Platform.isMacOS) {
           await Future.delayed(const Duration(milliseconds: 300));
         }
+        if (_isManagerDisposed) return;
 
         final directory = await getTemporaryDirectory();
         _currentRecordPath = '${directory.path}/reminicare_wake_${DateTime.now().millisecondsSinceEpoch}.wav';
@@ -242,12 +274,11 @@ class VoiceAssistantManager {
         );
         _isRecordingOnHardware = true;
 
-        if (!_isCalibrated) {
-          debugPrint("🎛️ [背景 VAD] 啟動環境雜音採樣校正...");
-        }
+        if (!_isCalibrated) debugPrint("🎛️ [背景 VAD] 啟動環境雜音採樣校正...");
 
         _vadTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) async {
-          if (!_isRecordingOnHardware || !_isRollingWakeWord || sessionId != _wakeWordSessionId) {
+          // 💡 防護：確認未被銷毀
+          if (_isManagerDisposed || !_isRecordingOnHardware || !_isRollingWakeWord || sessionId != _wakeWordSessionId) {
             timer.cancel();
             return;
           }
@@ -256,7 +287,7 @@ class VoiceAssistantManager {
           try {
             amplitude = await _audioRecorder.getAmplitude();
           } catch (e) {
-            timer.cancel();
+            timer.cancel(); // 捕捉到已釋放的例外就安靜退出
             return;
           }
 
@@ -278,16 +309,10 @@ class VoiceAssistantManager {
 
           if (currentDb >= _vadThresholdDb) {
             _consecutiveLoudTicks++;
-            if (_consecutiveLoudTicks >= 2 && !_hasSpoken) {
-              _hasSpoken = true;
-            }
-            if (_hasSpoken) {
-              _silenceMs = 0;
-              _idleMs = 0;
-            }
+            if (_consecutiveLoudTicks >= 2 && !_hasSpoken) _hasSpoken = true;
+            if (_hasSpoken) { _silenceMs = 0; _idleMs = 0; }
           } else {
             _consecutiveLoudTicks = 0;
-
             if (_hasSpoken) {
               _silenceMs += 200;
               if (_silenceMs >= _silenceThresholdMs) {
@@ -304,20 +329,22 @@ class VoiceAssistantManager {
           }
         });
       } else {
-        debugPrint("❌ 麥克風權限已被拒絕！請前往 iOS 設定開啟。");
+        debugPrint("❌ 麥克風權限已被拒絕！");
       }
     } catch (e) {
       debugPrint("[喚醒器] VAD 啟動異常: $e");
       _isRecordingOnHardware = false;
-      if (_isRollingWakeWord && sessionId == _wakeWordSessionId) {
+      // 💡 關鍵：只有在 "沒有被銷毀" 時才進行重試！終結無窮迴圈！
+      if (!_isManagerDisposed && _isRollingWakeWord && sessionId == _wakeWordSessionId) {
         Future.delayed(const Duration(seconds: 2), () => _runSmartWakeWordCycle(sessionId));
       }
     }
   }
 
   Future<void> _restartWakeWordSilently(int sessionId) async {
+    if (_isManagerDisposed) return;
     if (_isRecordingOnHardware) {
-      await _audioRecorder.stop();
+      try { await _audioRecorder.stop(); } catch(_) {}
       _isRecordingOnHardware = false;
     }
     if (_currentRecordPath != null) {
@@ -328,8 +355,9 @@ class VoiceAssistantManager {
   }
 
   Future<void> _processWakeWordChunk(String audioPath, int sessionId) async {
+    if (_isManagerDisposed) return;
     if (_isRecordingOnHardware) {
-      await _audioRecorder.stop();
+      try { await _audioRecorder.stop(); } catch(_) {}
       _isRecordingOnHardware = false;
     }
     if (!kIsWeb) await Future.delayed(const Duration(milliseconds: 150));
@@ -338,7 +366,7 @@ class VoiceAssistantManager {
       final String? transcript = await sttService.transcribe(audioPath);
       try { File(audioPath).deleteSync(); } catch (_) {}
 
-      if (!_isRollingWakeWord || sessionId != _wakeWordSessionId) return;
+      if (_isManagerDisposed || !_isRollingWakeWord || sessionId != _wakeWordSessionId) return;
 
       if (transcript != null) {
         final String cleanText = transcript.replaceAll(" ", "");
@@ -364,7 +392,7 @@ class VoiceAssistantManager {
       debugPrint("[喚醒器] 翻譯出錯: $e");
     }
 
-    if (_isRollingWakeWord && sessionId == _wakeWordSessionId) {
+    if (!_isManagerDisposed && _isRollingWakeWord && sessionId == _wakeWordSessionId) {
       _runSmartWakeWordCycle(sessionId);
     }
   }
@@ -381,11 +409,13 @@ class VoiceAssistantManager {
   // 🎙️ 引擎 B：智慧語音對話流 (聊天室模式 VAD)
   // ==========================================
   Future<void> startChatFlow() async {
+    if (_isManagerDisposed) return;
     await stopActiveAudioOperations();
     _isRollingChatRecord = true;
     _chatRecordSessionId++;
 
     await _ensureAudioSessionConfigured();
+    if (_isManagerDisposed) return;
 
     _hasSpoken = false;
     _silenceMs = 0;
@@ -398,6 +428,7 @@ class VoiceAssistantManager {
         if (Platform.isIOS || Platform.isMacOS) {
           await Future.delayed(const Duration(milliseconds: 300));
         }
+        if (_isManagerDisposed) return;
 
         final directory = await getTemporaryDirectory();
         _currentRecordPath = '${directory.path}/reminicare_chat_smart_${DateTime.now().millisecondsSinceEpoch}.wav';
@@ -409,7 +440,7 @@ class VoiceAssistantManager {
         _isRecordingOnHardware = true;
 
         _vadTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) async {
-          if (!_isRecordingOnHardware || !_isRollingChatRecord || timer.tick == 0) {
+          if (_isManagerDisposed || !_isRecordingOnHardware || !_isRollingChatRecord) {
             timer.cancel();
             return;
           }
@@ -439,17 +470,11 @@ class VoiceAssistantManager {
 
           if (currentDb >= _vadThresholdDb) {
             _consecutiveLoudTicks++;
-            if (_consecutiveLoudTicks >= 2 && !_hasSpoken) {
-              _hasSpoken = true;
-            }
-            if (_hasSpoken) {
-              _silenceMs = 0;
-              _idleMs = 0;
-            }
+            if (_consecutiveLoudTicks >= 2 && !_hasSpoken) _hasSpoken = true;
+            if (_hasSpoken) { _silenceMs = 0; _idleMs = 0; }
           }
           else {
             _consecutiveLoudTicks = 0;
-
             if (_hasSpoken) {
               _silenceMs += 200;
               if (_silenceMs >= _silenceThresholdMs) {
@@ -481,12 +506,16 @@ class VoiceAssistantManager {
     _vadTimer?.cancel();
     _vadTimer = null;
 
+    if (_isManagerDisposed) return; // 已被銷毀不再送出回調
+
     try {
       if (_isRecordingOnHardware) {
         await _audioRecorder.stop();
         _isRecordingOnHardware = false;
         if (!kIsWeb) await Future.delayed(const Duration(milliseconds: 300));
       }
+
+      if (_isManagerDisposed) return;
 
       if (_currentRecordPath != null && File(_currentRecordPath!).existsSync()) {
         onSpeechCompleted?.call([_currentRecordPath!]);
@@ -495,7 +524,7 @@ class VoiceAssistantManager {
       }
     } catch (e) {
       debugPrint("[助理] 結束錄音失敗: $e");
-      onSpeechCompleted?.call([]);
+      if (!_isManagerDisposed) onSpeechCompleted?.call([]);
     }
   }
 
@@ -503,6 +532,7 @@ class VoiceAssistantManager {
   // 🔊 TTS 快取與無縫連續播放邏輯
   // ==========================================
   Future<void> stopCurrentPlayback() async {
+    if (_isManagerDisposed) return;
     _playSessionId++;
     try { await _audioPlayer.stop(); } catch (_) {}
   }
@@ -514,17 +544,19 @@ class VoiceAssistantManager {
     int gapMs = 300,
     int partGapMs = 150,
   }) async {
-    if (texts.isEmpty || kIsWeb || languages.isEmpty || repeatCount <= 0) return;
+    if (texts.isEmpty || kIsWeb || languages.isEmpty || repeatCount <= 0 || _isManagerDisposed) return;
 
     final currentSession = ++_playSessionId;
 
     try {
       await _ensureAudioSessionConfigured();
+      if (_isManagerDisposed) return;
+
       await _initCacheIfNeeded();
       final storageDir = await getApplicationDocumentsDirectory();
 
       for (final text in texts) {
-        if (text.isEmpty) continue;
+        if (text.isEmpty || _isManagerDisposed) continue;
         for (final lang in languages.toSet()) {
           final cacheKey = '$lang::$text';
 
@@ -534,7 +566,7 @@ class VoiceAssistantManager {
           }
 
           final audioBytes = await ttsService.generateSpeech(text, lang);
-          if (audioBytes == null) continue;
+          if (audioBytes == null || _isManagerDisposed) continue;
 
           final safeLang = switch (lang) {
             "台語" => "tw",
@@ -561,15 +593,17 @@ class VoiceAssistantManager {
         }
       }
 
+      if (_isManagerDisposed) return;
+
       for (int repeat = 0; repeat < repeatCount; repeat++) {
         for (final lang in languages) {
-          if (currentSession != _playSessionId) return;
+          if (currentSession != _playSessionId || _isManagerDisposed) return;
           onPlayingLanguageChanged?.call(lang);
 
           for (int i = 0; i < texts.length; i++) {
             final text = texts[i];
             if (text.isEmpty) continue;
-            if (currentSession != _playSessionId) return;
+            if (currentSession != _playSessionId || _isManagerDisposed) return;
 
             final cacheKey = '$lang::$text';
             final file = _ttsCache[cacheKey];
@@ -584,14 +618,14 @@ class VoiceAssistantManager {
             await completer.future;
             await subscription.cancel();
 
-            if (currentSession != _playSessionId) return;
+            if (currentSession != _playSessionId || _isManagerDisposed) return;
 
             if (i < texts.length - 1 && partGapMs > 0) {
               await Future.delayed(Duration(milliseconds: partGapMs));
             }
           }
 
-          if (currentSession != _playSessionId) return;
+          if (currentSession != _playSessionId || _isManagerDisposed) return;
 
           if (gapMs > 0) {
             await Future.delayed(Duration(milliseconds: gapMs));
