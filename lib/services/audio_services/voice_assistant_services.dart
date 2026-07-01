@@ -9,6 +9,9 @@ import 'package:remini_care_ai_app/services/api_services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:remini_care_ai_app/services/remini_care_config.dart';
 
+// 💡 1. 引入 audio_session 並加上前綴以避免與 audioplayers 產生命名衝突
+import 'package:audio_session/audio_session.dart' as a_session;
+
 import 'package:remini_care_ai_app/services/audio_services/speech_services.dart';
 
 // =========================================================================
@@ -74,12 +77,34 @@ class VoiceAssistantManager {
   bool _isAudioSessionConfigured = false;
 
   // ==========================================
-  // 🍎 解決 iPad/iOS 播放與錄音衝突的「絕對霸道」設定
+  // 🍎 解決 iPad/iOS 播放與錄音衝突 + 硬體級別降噪 (AEC / NS)
   // ==========================================
   Future<void> _ensureAudioSessionConfigured() async {
     if (_isAudioSessionConfigured || _isManagerDisposed) return;
     try {
       if (!kIsWeb && (Platform.isIOS || Platform.isAndroid)) {
+
+        // 💡 1. 啟用硬體級降噪 (Acoustic Echo Cancellation & Noise Suppression)
+        final session = await a_session.AudioSession.instance;
+        await session.configure(a_session.AudioSessionConfiguration(
+          avAudioSessionCategory: a_session.AVAudioSessionCategory.playAndRecord,
+          // 保留 mixWithOthers 以避免與 Meet/LINE 衝突時直接閃退
+          avAudioSessionCategoryOptions: a_session.AVAudioSessionCategoryOptions.defaultToSpeaker |
+          a_session.AVAudioSessionCategoryOptions.allowBluetooth |
+          a_session.AVAudioSessionCategoryOptions.mixWithOthers,
+          avAudioSessionMode: a_session.AVAudioSessionMode.voiceChat, // 觸發 iOS 硬體降噪
+
+          androidAudioAttributes: a_session.AndroidAudioAttributes(
+            contentType: a_session.AndroidAudioContentType.speech,
+            usage: a_session.AndroidAudioUsage.voiceCommunication,
+          ),
+          androidAudioFocusGainType: a_session.AndroidAudioFocusGainType.gain,
+        ));
+
+        await session.setActive(true);
+        debugPrint("🍎 [AudioSession] 硬體降噪與語音通訊模式 (AEC/NS) 已成功啟動！");
+
+        // 💡 2. 對齊 AudioPlayer 的配置 (雙重保險)
         await AudioPlayer.global.setAudioContext(AudioContext(
           iOS: AudioContextIOS(
             category: AVAudioSessionCategory.playAndRecord,
@@ -93,19 +118,21 @@ class VoiceAssistantManager {
             isSpeakerphoneOn: true,
             stayAwake: true,
             contentType: AndroidContentType.speech,
-            usageType: AndroidUsageType.media,
-            audioFocus: AndroidAudioFocus.gainTransientExclusive,
+            // 讓 AudioPlayer 也知道現在是語音通訊模式
+            usageType: AndroidUsageType.voiceCommunication,
+            audioFocus: AndroidAudioFocus.gain,
           ),
         ));
 
         if (_isManagerDisposed) return;
+
+        // 💡 3. 設定播放器釋放模式，防止爆音
         await _audioPlayer.setReleaseMode(ReleaseMode.stop);
 
         _isAudioSessionConfigured = true;
-        debugPrint("🍎 [AudioSession] 邊播邊錄音軌已全局鎖定！");
       }
     } catch (e) {
-      debugPrint("❌ [AudioSession] 鎖定音軌失敗: $e");
+      debugPrint("❌ [AudioSession] 配置音軌與降噪失敗: $e");
     }
   }
 
@@ -230,7 +257,7 @@ class VoiceAssistantManager {
     } catch (e) {
       debugPrint("[硬體清理] 停止錄音失敗: $e");
     } finally {
-      // 徹底停止並確保無音軌存留後，再安全銷毀驅動物件，杜絕 RPC failed!
+      // 徹底停止並確保無音軌存留後，再安全銷毀驅動物件
       try { await _audioPlayer.dispose(); } catch (_) {}
       try { await _audioRecorder.dispose(); } catch (_) {}
     }
@@ -334,7 +361,6 @@ class VoiceAssistantManager {
     } catch (e) {
       debugPrint("[喚醒器] VAD 啟動異常: $e");
       _isRecordingOnHardware = false;
-      // 💡 關鍵：只有在 "沒有被銷毀" 時才進行重試！終結無窮迴圈！
       if (!_isManagerDisposed && _isRollingWakeWord && sessionId == _wakeWordSessionId) {
         Future.delayed(const Duration(seconds: 2), () => _runSmartWakeWordCycle(sessionId));
       }
@@ -506,7 +532,7 @@ class VoiceAssistantManager {
     _vadTimer?.cancel();
     _vadTimer = null;
 
-    if (_isManagerDisposed) return; // 已被銷毀不再送出回調
+    if (_isManagerDisposed) return;
 
     try {
       if (_isRecordingOnHardware) {

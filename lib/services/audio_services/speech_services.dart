@@ -262,6 +262,7 @@ class YatingSttService implements ISTTService {
           if (message is String) {
             final data = jsonDecode(message);
             if (data['status'] == 'error') {
+              print("[ASR LISTEN ERROR]");
               if (!completer.isCompleted) completer.complete(fullTranscript + currentSentence);
               ws.close();
               return;
@@ -270,6 +271,9 @@ class YatingSttService implements ISTTService {
             if (data['status'] == 'ok') isReadyToSend = true;
 
             if (data['pipe'] != null) {
+              print("\n============================= [ASR DATA] =============================");
+              print(data.toString());
+              print("============================= [ASR DATA] =============================\n");
               final pipe = data['pipe'];
               if (pipe['asr_sentence'] != null) currentSentence = pipe['asr_sentence'];
 
