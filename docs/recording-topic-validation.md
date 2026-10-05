@@ -13,3 +13,28 @@ Pending real-device acceptance:
 The Windows audioplayers native-thread warning from the supplied log is separate from STT upload-size failures and remains outside this change.
 
 Checks completed: `flutter analyze` (no issues), `flutter test` (50 passed), Windows debug build and Android debug APK. Test HTTP requests use MockClient; real-service speech recognition and the iPad one-second rendering target remain pending.
+
+## Windows WAV header regression
+
+A retained failing Windows recording was inspected locally (191,380 bytes,
+16 kHz mono PCM16). Its declared 191,298-byte payload actually starts at byte
+82, not byte 46: record_windows 1.0.7 rewrites the Media Foundation header
+but leaves a duplicate 18-byte fmt chunk and data header ahead of the PCM.
+The old parser consumed this 36-byte header residue as sound and interpreted
+the last 36 bytes of actual sound as a corrupt chunk.
+
+The parser now recognizes only that exact duplicate-header layout, with matching
+format fields, data lengths, RIFF size and total file length. It preserves all
+191,298 PCM bytes and re-encodes a standard header before STT. Truncated and
+mismatched layouts still fail validation. No pub-cache/plugin files were edited.
+
+Regression tests cover recovery, complete sample coverage, and malformed layouts.
+Set REMINICARE_WAV_SAMPLE to the retained file path to additionally test the real
+recording through MockClient without uploading it. Its form-encoded data needs
+additional splitting to stay below 240 KiB; the test checks total PCM coverage
+and each request budget rather than assuming the duration alone fixes the count.
+Real NCKU recognition accuracy remains pending.
+
+Follow-up checks: 53 tests passed including the retained-device-file test;
+Windows debug build passed. The retained recording was read only, kept on this
+device, and never committed or uploaded.

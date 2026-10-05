@@ -89,6 +89,71 @@ void main() {
     expect(WavAudio.parse(combined).seconds, 1);
   });
 
+  Uint8List windowsRecording(Uint8List pcm) {
+    final standard = WavAudio(pcm).encode();
+    final bytes = Uint8List(82 + pcm.length);
+    bytes.setRange(0, 36, standard);
+    final header = ByteData.sublistView(bytes);
+    header.setUint32(4, pcm.length + 40, Endian.little);
+    header.setUint32(16, 18, Endian.little);
+    bytes.setRange(38, 42, 'data'.codeUnits);
+    header.setUint32(42, pcm.length, Endian.little);
+    bytes.setRange(48, 74, bytes.sublist(12, 38));
+    bytes.setRange(74, 82, bytes.sublist(38, 46));
+    bytes.setRange(82, bytes.length, pcm);
+    return bytes;
+  }
+
+  test('Windows rewritten header recovers all PCM without header debris', () {
+    final pcm = Uint8List.fromList(List.generate(191298, (i) => i % 251));
+    final parsed = WavAudio.parse(windowsRecording(pcm));
+    expect(parsed.pcm, pcm);
+    expect(WavAudio.parse(parsed.encode()).pcm, pcm);
+    expect(parsed.split().expand((s) => s.pcm).toList(), pcm);
+  });
+
+  test('Windows recovery rejects truncated or mismatched header layouts', () {
+    final bytes = windowsRecording(Uint8List(32000));
+    expect(
+      () => WavAudio.parse(Uint8List.sublistView(bytes, 0, bytes.length - 2)),
+      throwsFormatException,
+    );
+    bytes[60] = 2; // Duplicated format no longer matches the outer format.
+    expect(() => WavAudio.parse(bytes), throwsFormatException);
+  });
+
+  final retainedSample = Platform.environment['REMINICARE_WAV_SAMPLE'];
+  if (retainedSample != null) {
+    test(
+      'retained device recording parses and reaches segmented STT',
+      () async {
+        final bytes = await File(retainedSample).readAsBytes();
+        final audio = WavAudio.parse(bytes);
+        expect(audio.pcm, bytes.sublist(82));
+        var requests = 0;
+        var sentPcmBytes = 0;
+        final service = NckuSegmentedStt(
+          token: () => 'test-token',
+          client: MockClient((request) async {
+            requests++;
+            expect(
+              request.bodyBytes.length,
+              lessThanOrEqualTo(NckuSegmentedStt.maximumBodyBytes),
+            );
+            final form = Uri.splitQueryString(request.body);
+            sentPcmBytes += WavAudio.parse(
+              base64Decode(form['audio']!),
+            ).pcm.length;
+            return http.Response('{"sentence":"sample"}', 200);
+          }),
+        );
+        await service.transcribe(retainedSample);
+        expect(requests, greaterThanOrEqualTo(audio.split().length));
+        expect(sentPcmBytes, audio.pcm.length);
+      },
+    );
+  }
+
   test(
     'long audio stays below encoded budget with <=2 concurrent requests',
     () async {

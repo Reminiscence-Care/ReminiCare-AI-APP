@@ -21,7 +21,7 @@ class WavAudio {
       final size = ByteData.sublistView(
         bytes,
       ).getUint32(offset + 4, Endian.little);
-      final start = offset + 8;
+      var start = offset + 8;
       if (start + size > bytes.length) throw const FormatException('WAV 音訊不完整');
       if (id == 'fmt ') {
         if (size < 16) throw const FormatException('WAV 格式不完整');
@@ -32,9 +32,37 @@ class WavAudio {
             data.getUint32(4, Endian.little) == 16000 &&
             data.getUint16(14, Endian.little) == 16;
       } else if (id == 'data') {
+        // record_windows 1.0.7 rewrites the Media Foundation WAV header
+        // with a shorter WAVEFORMATEX header. Its original fmt/data headers
+        // remain before the PCM, outside the declared data length. Recover
+        // only this exact layout, never treat arbitrary trailing bytes as PCM.
+        if (validFormat && offset == 38 && bytes.length == start + size + 36) {
+          final remaining = ByteData.sublistView(bytes);
+          final originalFmt = start + 2;
+          final originalData = start + 28;
+          bool tagAt(int position, String tag) =>
+              String.fromCharCodes(bytes.sublist(position, position + 4)) ==
+              tag;
+          if (remaining.getUint16(start, Endian.little) == 0 &&
+              tagAt(originalFmt, 'fmt ') &&
+              remaining.getUint32(originalFmt + 4, Endian.little) == 18 &&
+              remaining.getUint16(36, Endian.little) == 0 &&
+              List.generate(
+                18,
+                (i) => i,
+              ).every((i) => bytes[20 + i] == bytes[originalFmt + 8 + i]) &&
+              tagAt(originalData, 'data') &&
+              remaining.getUint32(originalData + 4, Endian.little) == size &&
+              remaining.getUint32(4, Endian.little) == size + 40) {
+            start += 36;
+          }
+        }
         chunks.add(bytes.sublist(start, start + size));
       }
       offset = start + size + (size.isOdd ? 1 : 0);
+    }
+    if (offset != bytes.length) {
+      throw const FormatException('WAV 尾端區塊不完整');
     }
     final pcm = chunks.takeBytes();
     if (!validFormat || pcm.isEmpty || pcm.length.isOdd) {

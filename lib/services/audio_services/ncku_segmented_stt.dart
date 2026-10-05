@@ -84,7 +84,8 @@ class NckuSegmentedStt implements ProgressSttService {
       return text.isEmpty ? null : text;
     } on SttException {
       rethrow;
-    } on FormatException {
+    } on FormatException catch (error) {
+      debugPrint('[NCKU STT] 音檔驗證失敗：${error.message}');
       throw const SttException(SttErrorKind.invalidAudio, '錄音格式不正確或音檔不完整。');
     } catch (_) {
       throw const SttException(SttErrorKind.network, '無法讀取或傳送錄音，請重試。');
