@@ -4,19 +4,17 @@ import 'package:remini_care_ai_app/home_screen.dart';
 import 'package:remini_care_ai_app/screens/history_screen.dart';
 import 'package:remini_care_ai_app/screens/life_screen/life_screen.dart';
 import 'package:remini_care_ai_app/screens/tts_cache_screen.dart';
-
+import 'package:remini_care_ai_app/theme/remini_care_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
 }
+
 final GoRouter _router = GoRouter(
   initialLocation: '/',
   routes: [
-    GoRoute(
-      path: '/',
-      builder: (context, state) => const HomeScreen(),
-    ),
+    GoRoute(path: '/', builder: (context, state) => const HomeScreen()),
     GoRoute(
       path: '/life_screen',
       builder: (context, state) => const LifeScreen(),
@@ -29,7 +27,7 @@ final GoRouter _router = GoRouter(
       path: '/tts_cache_screen',
       builder: (context, state) => const TtsCacheScreen(),
     ),
-  ]
+  ],
 );
 
 class MyApp extends StatelessWidget {
@@ -39,6 +37,9 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp.router(
       routerConfig: _router,
+      debugShowCheckedModeBanner: false,
+      title: 'ReminiCare AI',
+      theme: ReminiCareTheme.light,
     );
   }
 }

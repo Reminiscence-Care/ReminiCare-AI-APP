@@ -466,6 +466,7 @@
 			baseConfigurationReference = 9F3EF56295A733813F48A773 /* Pods-Runner.profile.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				CLANG_ENABLE_MODULES = YES;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				DEVELOPMENT_TEAM = SK5K4DW8WG;
@@ -651,6 +652,7 @@
 			baseConfigurationReference = B89907DBB4C848C2DFC7B9F0 /* Pods-Runner.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				CLANG_ENABLE_MODULES = YES;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				DEVELOPMENT_TEAM = SK5K4DW8WG;
@@ -674,6 +676,7 @@
 			baseConfigurationReference = 8D9D75BF2AD8B858E854B564 /* Pods-Runner.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				CLANG_ENABLE_MODULES = YES;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				DEVELOPMENT_TEAM = SK5K4DW8WG;

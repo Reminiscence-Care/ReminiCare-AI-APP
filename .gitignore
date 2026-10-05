@@ -50,3 +50,6 @@ app.*.map.json
 # Env File
 .env
 .env.*
+
+# Local Codex diagnostics and screenshots
+.codex-diagnostics/

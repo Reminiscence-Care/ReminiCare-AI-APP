@@ -18,7 +18,7 @@ class TtsCacheScreen extends StatefulWidget {
 }
 
 class _TtsCacheScreenState extends State<TtsCacheScreen> {
-  static String _spKeyTtsCache = ReminiCareConfig.ttsCacheName;
+  static final String _spKeyTtsCache = ReminiCareConfig.ttsCacheName;
 
   Map<String, dynamic> _cacheMetadata = {};
   bool _isLoading = true;
@@ -49,7 +49,9 @@ class _TtsCacheScreenState extends State<TtsCacheScreen> {
 
   /// 讀取 SharedPreferences 裡的快取目錄
   Future<void> _loadCache() async {
-    setState(() { _isLoading = true; });
+    setState(() {
+      _isLoading = true;
+    });
     try {
       final sp = await SharedPreferences.getInstance();
       final String? jsonStr = sp.getString(_spKeyTtsCache);
@@ -68,7 +70,11 @@ class _TtsCacheScreenState extends State<TtsCacheScreen> {
     } catch (e) {
       debugPrint("讀取快取失敗: $e");
     } finally {
-      if (mounted) setState(() { _isLoading = false; });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -90,10 +96,11 @@ class _TtsCacheScreenState extends State<TtsCacheScreen> {
         await _audioPlayer.play(DeviceFileSource(path));
       } catch (e) {
         debugPrint("播放失敗: $e");
-        if (mounted) setState(() => _playingKey = null);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("播放失敗，檔案可能已損毀")),
-        );
+        if (!mounted) return;
+        setState(() => _playingKey = null);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("播放失敗，檔案可能已損毀")));
       }
     }
   }
@@ -126,7 +133,8 @@ class _TtsCacheScreenState extends State<TtsCacheScreen> {
         // 儲存新檔案
         final safeLang = lang == "台語" ? "tw" : "zh";
         final storageDir = await getApplicationDocumentsDirectory();
-        final fileName = 'tts_${safeLang}_${DateTime.now().millisecondsSinceEpoch}.wav';
+        final fileName =
+            'tts_${safeLang}_${DateTime.now().millisecondsSinceEpoch}.wav';
         final newFile = File('${storageDir.path}/$fileName');
         await newFile.writeAsBytes(audioBytes, flush: true);
 
@@ -143,7 +151,10 @@ class _TtsCacheScreenState extends State<TtsCacheScreen> {
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("✅ 重新生成成功！"), backgroundColor: Colors.green),
+            const SnackBar(
+              content: Text("✅ 重新生成成功！"),
+              backgroundColor: Colors.green,
+            ),
           );
         }
       } else {
@@ -153,7 +164,10 @@ class _TtsCacheScreenState extends State<TtsCacheScreen> {
       debugPrint("重新生成失敗: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("❌ 重新生成失敗，請檢查網路"), backgroundColor: Colors.redAccent),
+          const SnackBar(
+            content: Text("❌ 重新生成失敗，請檢查網路"),
+            backgroundColor: Colors.redAccent,
+          ),
         );
       }
     } finally {
@@ -185,7 +199,10 @@ class _TtsCacheScreenState extends State<TtsCacheScreen> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("🗑️ 已刪除該筆語音快取"), duration: Duration(seconds: 1)),
+        const SnackBar(
+          content: Text("🗑️ 已刪除該筆語音快取"),
+          duration: Duration(seconds: 1),
+        ),
       );
     }
   }
@@ -194,34 +211,46 @@ class _TtsCacheScreenState extends State<TtsCacheScreen> {
   Future<void> _clearAll() async {
     if (_cacheMetadata.isEmpty) return;
 
-    bool confirm = await showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Row(
-            children: const [
-              Icon(Icons.warning_rounded, color: Colors.redAccent),
-              SizedBox(width: 8),
-              Text("全部清除", style: TextStyle(fontWeight: FontWeight.bold)),
+    bool confirm =
+        await showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              children: const [
+                Icon(Icons.warning_rounded, color: Colors.redAccent),
+                SizedBox(width: 8),
+                Text("全部清除", style: TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: const Text("確定要清除所有已下載的語音檔嗎？\n清除後若需再次播放將重新消耗網路流量。"),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text(
+                  "取消",
+                  style: TextStyle(color: Colors.grey, fontSize: 16),
+                ),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.redAccent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text(
+                  "確定清除",
+                  style: TextStyle(color: Colors.white, fontSize: 16),
+                ),
+              ),
             ],
           ),
-          content: const Text("確定要清除所有已下載的語音檔嗎？\n清除後若需再次播放將重新消耗網路流量。"),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text("取消", style: TextStyle(color: Colors.grey, fontSize: 16))
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.redAccent,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text("確定清除", style: TextStyle(color: Colors.white, fontSize: 16)),
-            ),
-          ],
-        )
-    ) ?? false;
+        ) ??
+        false;
 
     if (!confirm) return;
 
@@ -244,9 +273,14 @@ class _TtsCacheScreenState extends State<TtsCacheScreen> {
     await sp.remove(_spKeyTtsCache);
 
     if (mounted) {
-      setState(() { _isLoading = false; });
+      setState(() {
+        _isLoading = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("🧹 所有語音快取已清除完畢！"), backgroundColor: Colors.green),
+        const SnackBar(
+          content: Text("🧹 所有語音快取已清除完畢！"),
+          backgroundColor: Colors.green,
+        ),
       );
     }
   }
@@ -279,13 +313,25 @@ class _TtsCacheScreenState extends State<TtsCacheScreen> {
           icon: const Icon(Icons.arrow_back, color: Colors.black87),
           onPressed: () => Navigator.maybePop(context),
         ),
-        title: const Text('語音快取管理', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
+        title: const Text(
+          '語音快取管理',
+          style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold),
+        ),
         actions: [
           if (_cacheMetadata.isNotEmpty)
             TextButton.icon(
               onPressed: _clearAll,
-              icon: const Icon(Icons.delete_sweep_rounded, color: Colors.redAccent),
-              label: const Text("全部清除", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+              icon: const Icon(
+                Icons.delete_sweep_rounded,
+                color: Colors.redAccent,
+              ),
+              label: const Text(
+                "全部清除",
+                style: TextStyle(
+                  color: Colors.redAccent,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
         ],
       ),
@@ -293,160 +339,252 @@ class _TtsCacheScreenState extends State<TtsCacheScreen> {
           ? const Center(child: CircularProgressIndicator(color: Colors.orange))
           : _cacheMetadata.isEmpty
           ? Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.sd_card_alert_rounded, size: 80, color: Colors.grey[300]),
-            const SizedBox(height: 16),
-            Text("目前沒有任何語音快取", style: TextStyle(fontSize: 18, color: Colors.grey[500])),
-          ],
-        ),
-      )
-          : Column(
-        children: [
-          // 頂部統計面板
-          Container(
-            width: double.infinity,
-            color: const Color(0xFFFFF9E6),
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text("共 ${_cacheMetadata.length} 筆語音", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.black87)),
-                Text("總佔用: ${_getTotalSize()}", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange)),
-              ],
-            ),
-          ),
-
-          // 快取列表
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _cacheMetadata.length,
-              itemBuilder: (context, index) {
-                final key = _cacheMetadata.keys.elementAt(index);
-                final data = _cacheMetadata[key];
-
-                // Key 的格式為 "語言::文本"，拆解出來顯示
-                final parts = key.split('::');
-                final lang = parts.isNotEmpty ? parts[0] : "未知";
-                final text = parts.length > 1 ? parts.sublist(1).join("::") : "無內容";
-
-                final filePath = data['path'] as String;
-                final sizeStr = _formatSize(data['size'] ?? 0);
-
-                final lastUsedMs = data['lastUsed'] as int? ?? 0;
-                final date = DateTime.fromMillisecondsSinceEpoch(lastUsedMs);
-                final dateStr = "${date.year}/${date.month.toString().padLeft(2,'0')}/${date.day.toString().padLeft(2,'0')} ${date.hour.toString().padLeft(2,'0')}:${date.minute.toString().padLeft(2,'0')}";
-
-                final bool isPlaying = _playingKey == key;
-                final bool isRegenerating = _regeneratingKeys.contains(key);
-
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    // 正在播放時，給予卡片高亮邊框
-                    side: BorderSide(color: isPlaying ? Colors.orange : Colors.transparent, width: 2),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.sd_card_alert_rounded,
+                    size: 80,
+                    color: Colors.grey[300],
                   ),
-                  elevation: isPlaying ? 4 : 0,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center, // 改為置中對齊
-                      children: [
-                        // 左側：語言標籤
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: lang == "台語" ? Colors.green[50] : Colors.blue[50],
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: lang == "台語" ? Colors.green[200]! : Colors.blue[200]!),
-                          ),
-                          child: Text(
-                            lang,
-                            style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: lang == "台語" ? Colors.green[700] : Colors.blue[700]
-                            ),
+                  const SizedBox(height: 16),
+                  Text(
+                    "目前沒有任何語音快取",
+                    style: TextStyle(fontSize: 18, color: Colors.grey[500]),
+                  ),
+                ],
+              ),
+            )
+          : Column(
+              children: [
+                // 頂部統計面板
+                Container(
+                  width: double.infinity,
+                  color: const Color(0xFFFFF9E6),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 12,
+                    horizontal: 24,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "共 ${_cacheMetadata.length} 筆語音",
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      Text(
+                        "總佔用: ${_getTotalSize()}",
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // 快取列表
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _cacheMetadata.length,
+                    itemBuilder: (context, index) {
+                      final key = _cacheMetadata.keys.elementAt(index);
+                      final data = _cacheMetadata[key];
+
+                      // Key 的格式為 "語言::文本"，拆解出來顯示
+                      final parts = key.split('::');
+                      final lang = parts.isNotEmpty ? parts[0] : "未知";
+                      final text = parts.length > 1
+                          ? parts.sublist(1).join("::")
+                          : "無內容";
+
+                      final filePath = data['path'] as String;
+                      final sizeStr = _formatSize(data['size'] ?? 0);
+
+                      final lastUsedMs = data['lastUsed'] as int? ?? 0;
+                      final date = DateTime.fromMillisecondsSinceEpoch(
+                        lastUsedMs,
+                      );
+                      final dateStr =
+                          "${date.year}/${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}";
+
+                      final bool isPlaying = _playingKey == key;
+                      final bool isRegenerating = _regeneratingKeys.contains(
+                        key,
+                      );
+
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          // 正在播放時，給予卡片高亮邊框
+                          side: BorderSide(
+                            color: isPlaying
+                                ? Colors.orange
+                                : Colors.transparent,
+                            width: 2,
                           ),
                         ),
-                        const SizedBox(width: 16),
-
-                        // 中間：語音文字內容與詳細資訊
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                        elevation: isPlaying ? 4 : 0,
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Row(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.center, // 改為置中對齊
                             children: [
-                              Text(
-                                text,
-                                style: const TextStyle(fontSize: 18, color: Colors.black87, height: 1.4),
+                              // 左側：語言標籤
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: lang == "台語"
+                                      ? Colors.green[50]
+                                      : Colors.blue[50],
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: lang == "台語"
+                                        ? Colors.green[200]!
+                                        : Colors.blue[200]!,
+                                  ),
+                                ),
+                                child: Text(
+                                  lang,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: lang == "台語"
+                                        ? Colors.green[700]
+                                        : Colors.blue[700],
+                                  ),
+                                ),
                               ),
-                              const SizedBox(height: 12),
+                              const SizedBox(width: 16),
+
+                              // 中間：語音文字內容與詳細資訊
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      text,
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        color: Colors.black87,
+                                        height: 1.4,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.sd_storage_rounded,
+                                          size: 14,
+                                          color: Colors.grey[500],
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          sizeStr,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: Colors.grey[600],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 16),
+                                        Icon(
+                                          Icons.access_time_rounded,
+                                          size: 14,
+                                          color: Colors.grey[500],
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          dateStr,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: Colors.grey[600],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // 右側：操作按鈕區 (試聽、重新生成、刪除)
                               Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(Icons.sd_storage_rounded, size: 14, color: Colors.grey[500]),
-                                  const SizedBox(width: 4),
-                                  Text(sizeStr, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
-                                  const SizedBox(width: 16),
-                                  Icon(Icons.access_time_rounded, size: 14, color: Colors.grey[500]),
-                                  const SizedBox(width: 4),
-                                  Text(dateStr, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+                                  // 試聽 / 停止 按鈕
+                                  IconButton(
+                                    icon: Icon(
+                                      isPlaying
+                                          ? Icons.stop_circle_rounded
+                                          : Icons.play_circle_fill_rounded,
+                                      color: isPlaying
+                                          ? Colors.redAccent
+                                          : Colors.orange,
+                                      size: 32,
+                                    ),
+                                    onPressed: isRegenerating
+                                        ? null
+                                        : () => _togglePlay(key, filePath),
+                                    tooltip: isPlaying ? "停止播放" : "試聽",
+                                  ),
+
+                                  // 重新生成 按鈕 / Loading 圈圈
+                                  if (isRegenerating)
+                                    const Padding(
+                                      padding: EdgeInsets.all(12.0),
+                                      child: SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.5,
+                                          color: Colors.orange,
+                                        ),
+                                      ),
+                                    )
+                                  else
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.refresh_rounded,
+                                        color: Colors.blueGrey,
+                                        size: 28,
+                                      ),
+                                      onPressed: () => _regenerateItem(key),
+                                      tooltip: "重新生成並覆蓋",
+                                    ),
+
+                                  // 刪除 按鈕
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.delete_outline_rounded,
+                                      color: Colors.redAccent,
+                                      size: 28,
+                                    ),
+                                    onPressed: isRegenerating
+                                        ? null
+                                        : () => _deleteItem(key),
+                                    tooltip: "刪除此快取",
+                                  ),
                                 ],
                               ),
                             ],
                           ),
                         ),
-
-                        // 右側：操作按鈕區 (試聽、重新生成、刪除)
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // 試聽 / 停止 按鈕
-                            IconButton(
-                              icon: Icon(
-                                  isPlaying ? Icons.stop_circle_rounded : Icons.play_circle_fill_rounded,
-                                  color: isPlaying ? Colors.redAccent : Colors.orange,
-                                  size: 32
-                              ),
-                              onPressed: isRegenerating ? null : () => _togglePlay(key, filePath),
-                              tooltip: isPlaying ? "停止播放" : "試聽",
-                            ),
-
-                            // 重新生成 按鈕 / Loading 圈圈
-                            if (isRegenerating)
-                              const Padding(
-                                padding: EdgeInsets.all(12.0),
-                                child: SizedBox(
-                                    width: 20, height: 20,
-                                    child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.orange)
-                                ),
-                              )
-                            else
-                              IconButton(
-                                icon: const Icon(Icons.refresh_rounded, color: Colors.blueGrey, size: 28),
-                                onPressed: () => _regenerateItem(key),
-                                tooltip: "重新生成並覆蓋",
-                              ),
-
-                            // 刪除 按鈕
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 28),
-                              onPressed: isRegenerating ? null : () => _deleteItem(key),
-                              tooltip: "刪除此快取",
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
-                );
-              },
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 }

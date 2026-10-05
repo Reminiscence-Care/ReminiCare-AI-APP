@@ -1,183 +1,357 @@
 import 'dart:io';
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
-import 'package:remini_care_ai_app/services/config_field.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// =========================================================================
-// 🔑 ReminiCare AI 全域金鑰與動態配置清單 (完全宣告式動態配置引擎)
-// =========================================================================
-class ReminiCareConfig {
-  static final Map<String, String> _configs = {};
+import 'config_field.dart';
 
-  static final List<ConfigField> fields = [
-    const ConfigField(
+abstract final class ReminiCareConfig {
+  static const _secureStorage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
+  static const _migrationMarker = 'secure_storage_migration_v1';
+  static final Map<String, String> _configs = {};
+  static int _revision = 0;
+
+  static const Set<String> secretKeys = {
+    'NVIDIA_API_KEY',
+    'GEMINI_API_KEY',
+    'OPENAI_API_KEY',
+    'SILICONFLOW_API_KEY',
+    'CUSTOM_LLM_API_KEY',
+    'CUSTOM_IMAGE_API_KEY',
+    'CUSTOM_VISION_API_KEY',
+    'NCKU_TTS_TOKEN',
+    'NCKU_STT_TOKEN',
+    'YATING_API_KEY',
+  };
+
+  static const fields = <ConfigField>[
+    ConfigField(
       apiKey: 'NVIDIA_API_KEY',
-      displayName: 'NVIDIA API KEY (語言模型)',
-      hintText: 'nvapi-...'
+      displayName: 'NVIDIA API Key',
+      hintText: 'nvapi-...',
     ),
-    const ConfigField(
+    ConfigField(
       apiKey: 'GEMINI_API_KEY',
-      displayName: "GEMINI API KEY (語言模型)",
-      hintText: 'AQ...'
+      displayName: 'Gemini API Key',
+      hintText: 'AIza...',
     ),
-    const ConfigField(
-      apiKey: 'SILICONFLOW_API_KEY',
-      displayName: 'SILICONFLOW KEY (影像生成)',
-      hintText: 'sk-...'
-    ),
-    const ConfigField(
+    ConfigField(
       apiKey: 'OPENAI_API_KEY',
-      displayName: 'OPENAI API KEY (影像生成)',
-      hintText: 'sk-...'
+      displayName: 'OpenAI API Key',
+      hintText: 'sk-...',
     ),
-    const ConfigField(
+    ConfigField(
+      apiKey: 'SILICONFLOW_API_KEY',
+      displayName: 'SiliconFlow API Key',
+      hintText: 'sk-...',
+    ),
+    ConfigField(
+      apiKey: 'CUSTOM_LLM_API_KEY',
+      displayName: 'Custom LLM API Key',
+      hintText: 'sk-...',
+    ),
+    ConfigField(
+      apiKey: 'CUSTOM_IMAGE_API_KEY',
+      displayName: 'Custom Image API Key',
+      hintText: 'sk-...',
+    ),
+    ConfigField(
+      apiKey: 'CUSTOM_VISION_API_KEY',
+      displayName: 'Custom Vision API Key',
+      hintText: 'sk-...',
+    ),
+    ConfigField(
       apiKey: 'NCKU_TTS_TOKEN',
-      displayName: 'NCKU TTS TOKEN (語音合成)',
-      hintText: 'Token...'
+      displayName: 'NCKU TTS Token',
+      hintText: 'Token...',
     ),
-    const ConfigField(
+    ConfigField(
       apiKey: 'NCKU_STT_TOKEN',
-      displayName: 'NCKU STT TOKEN (成大 ASR)',
-      hintText: 'Token...'
+      displayName: 'NCKU STT Token',
+      hintText: 'Token...',
     ),
-    const ConfigField(
+    ConfigField(
       apiKey: 'YATING_API_KEY',
-      displayName: 'Yating TTS/STT TOKEN',
-      hintText: 'Token...'
+      displayName: 'Yating TTS/STT Token',
+      hintText: 'Token...',
     ),
-    const ConfigField(
-      apiKey: 'VOICE_MAX_RECORD_LIMIT',
-      displayName: 'Voice max recording limit',
-      hintText: 'e.x. 180 seconds',
+    ConfigField(
+      apiKey: 'CUSTOM_LLM_BASE_URL',
+      displayName: 'Custom LLM Base URL',
+      hintText: 'https://example.com/v1',
+      isSecure: false,
+    ),
+    ConfigField(
+      apiKey: 'CUSTOM_LLM_MODEL',
+      displayName: 'Custom LLM 模型',
+      hintText: 'model-name',
+      isSecure: false,
+    ),
+    ConfigField(
+      apiKey: 'CUSTOM_IMAGE_BASE_URL',
+      displayName: 'Custom Image Base URL',
+      hintText: 'https://example.com/v1',
+      isSecure: false,
+    ),
+    ConfigField(
+      apiKey: 'CUSTOM_IMAGE_MODEL',
+      displayName: 'Custom 生圖模型',
+      hintText: 'model-name',
+      isSecure: false,
+    ),
+    ConfigField(
+      apiKey: 'CUSTOM_VISION_BASE_URL',
+      displayName: 'Custom Vision Base URL',
+      hintText: 'https://example.com/v1',
+      isSecure: false,
+    ),
+    ConfigField(
+      apiKey: 'CUSTOM_VISION_MODEL',
+      displayName: 'Custom Vision 模型',
+      hintText: 'vision-model-name',
+      isSecure: false,
+    ),
+    ConfigField(
+      apiKey: 'NVIDIA_LLM_MODEL',
+      displayName: 'NVIDIA LLM 模型',
+      hintText: 'deepseek-ai/deepseek-v4.1-flash',
       isSecure: false,
       hasDefaultValue: true,
-      defaultValue: '180'
+      defaultValue: 'deepseek-ai/deepseek-v4.1-flash',
     ),
-    const ConfigField(
+    ConfigField(
+      apiKey: 'OPENAI_LLM_MODEL',
+      displayName: 'OpenAI LLM 模型',
+      hintText: 'gpt-4o-mini',
+      isSecure: false,
+      hasDefaultValue: true,
+      defaultValue: 'gpt-4o-mini',
+    ),
+    ConfigField(
+      apiKey: 'GEMINI_LLM_MODEL',
+      displayName: 'Gemini LLM 模型',
+      hintText: 'gemini-2.5-flash',
+      isSecure: false,
+      hasDefaultValue: true,
+      defaultValue: 'gemini-2.5-flash',
+    ),
+    ConfigField(
+      apiKey: 'NVIDIA_VISION_MODEL',
+      displayName: 'NVIDIA Vision 模型',
+      hintText: 'meta/llama-3.2-11b-vision-instruct',
+      isSecure: false,
+      hasDefaultValue: true,
+      defaultValue: 'meta/llama-3.2-11b-vision-instruct',
+    ),
+    ConfigField(
+      apiKey: 'OPENAI_VISION_MODEL',
+      displayName: 'OpenAI Vision 模型',
+      hintText: 'gpt-4o-mini',
+      isSecure: false,
+      hasDefaultValue: true,
+      defaultValue: 'gpt-4o-mini',
+    ),
+    ConfigField(
+      apiKey: 'GEMINI_VISION_MODEL',
+      displayName: 'Gemini Vision 模型',
+      hintText: 'gemini-2.5-flash',
+      isSecure: false,
+      hasDefaultValue: true,
+      defaultValue: 'gemini-2.5-flash',
+    ),
+    ConfigField(
+      apiKey: 'VOICE_MAX_RECORD_LIMIT',
+      displayName: '最長錄音秒數',
+      hintText: '180',
+      isSecure: false,
+      hasDefaultValue: true,
+      defaultValue: '180',
+    ),
+    ConfigField(
       apiKey: 'WAKE_WORDS_START',
-      displayName: '語音指令：開始對話 (以逗號隔開)',
-      hintText: '開始錄音,開始聊天,開始,來聊,錄音',
+      displayName: '開始對話喚醒詞',
+      hintText: '開始錄音,開始聊天',
       isSecure: false,
       hasDefaultValue: true,
       defaultValue: '開始錄音,開始聊天,開始,來聊,錄音',
     ),
-    const ConfigField(
+    ConfigField(
       apiKey: 'WAKE_WORDS_END',
-      displayName: '語音指令：結束對話 (以逗號隔開)',
-      hintText: '結束錄音,結束聊天,結束錄影,結束錄像,結束,完成',
+      displayName: '結束對話喚醒詞',
+      hintText: '結束錄音,完成',
       isSecure: false,
       hasDefaultValue: true,
-      defaultValue: '結束錄音,結束聊天,結束錄影,結束錄像,結束,完成',
+      defaultValue: '結束錄音,結束聊天,結束,完成',
     ),
-    const ConfigField(
+    ConfigField(
       apiKey: 'WAKE_WORDS_RESTART',
-      displayName: '語音指令：重新錄音 (以逗號隔開)',
-      hintText: '重新錄音,重新聊天,重新,重來,重錄,再來',
+      displayName: '重新錄音喚醒詞',
+      hintText: '重新錄音,重來',
       isSecure: false,
       hasDefaultValue: true,
       defaultValue: '重新錄音,重新聊天,重新,重來,重錄,再來',
     ),
   ];
 
-  static String get nvidiaApiKey => _configs['NVIDIA_API_KEY'] ?? "";
-  static String get geminiApiKey => _configs['GEMINI_API_KEY'] ?? "";
-  static String get siliconFlowApiKey => _configs['SILICONFLOW_API_KEY'] ?? "";
-  static String get openaiApiKey => _configs['OPENAI_API_KEY'] ?? "";
-  static String get nckuTtsToken => _configs['NCKU_TTS_TOKEN'] ?? "";
-  static String get nckuSttToken => _configs['NCKU_STT_TOKEN'] ?? "";
-  static String get yatingApiKey => _configs['YATING_API_KEY'] ?? "";
-  static String get spotifyClientId => _configs['SPOTIFY_CLIENT_ID'] ?? "";
-  static String get spotifyClientSecret => _configs['SPOTIFY_CLIENT_SECRET'] ?? "";
-  static String get maxRecordLimit => _configs['VOICE_MAX_RECORD_LIMIT'] ?? "";
-  static int get maxRecordLimitM =>
-      int.parse(maxRecordLimit) ~/ 60;
-
-  static int get maxRecordLimitS =>
-      int.parse(maxRecordLimit) % 60;
-  // 💡 4. 關鍵字動態解析 Getter (相容半形逗號與全形逗號，貼心處理空白)
-  static List<String> get startWakeWords => _getWordsList('WAKE_WORDS_START', ["開始錄音", "開始聊天", "開始", "來聊", "錄音"]);
-  static List<String> get endWakeWords => _getWordsList('WAKE_WORDS_END', ["結束錄音", "結束聊天", "結束錄影", "結束錄像", "結束", "完成"]);
-  static List<String> get restartWakeWords => _getWordsList('WAKE_WORDS_RESTART', ["重新錄音", "重新聊天", "重新", "重來", "重錄", "再來"]);
-
-  static String get ttsCacheName => "tts_audio_cache_index_v1";
-
-  static List<String> _getWordsList(String key, List<String> defaults) {
-    final val = getValue(key);
-    if (val.isEmpty) return defaults;
-    return val
-        .replaceAll("，", ",")
-        .split(',')
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toList();
-  }
-
-  static String getValue(String apiKey) => _configs[apiKey] ?? "";
+  static int get revision => _revision;
+  static String get nvidiaApiKey => getValue('NVIDIA_API_KEY');
+  static String get geminiApiKey => getValue('GEMINI_API_KEY');
+  static String get openaiApiKey => getValue('OPENAI_API_KEY');
+  static String get siliconFlowApiKey => getValue('SILICONFLOW_API_KEY');
+  static String get nckuTtsToken => getValue('NCKU_TTS_TOKEN');
+  static String get nckuSttToken => getValue('NCKU_STT_TOKEN');
+  static String get yatingApiKey => getValue('YATING_API_KEY');
+  static String get maxRecordLimit => getValue('VOICE_MAX_RECORD_LIMIT');
+  static int get maxRecordLimitM => (int.tryParse(maxRecordLimit) ?? 180) ~/ 60;
+  static int get maxRecordLimitS => (int.tryParse(maxRecordLimit) ?? 180) % 60;
+  static String get ttsCacheName => 'tts_audio_cache_index_v1';
+  static List<String> get startWakeWords => _wordList('WAKE_WORDS_START');
+  static List<String> get endWakeWords => _wordList('WAKE_WORDS_END');
+  static List<String> get restartWakeWords => _wordList('WAKE_WORDS_RESTART');
+  static String getValue(String key) => _configs[key] ?? '';
 
   static Future<void> loadConfig() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-
-      for (var field in fields) {
-        String savedVal = prefs.getString(field.apiKey) ?? "";
-
-        if (savedVal.isEmpty && field.hasDefaultValue) {
-          savedVal = field.defaultValue;
-          await prefs.setString(field.apiKey, savedVal);
-        }
-
-        _configs[field.apiKey] = savedVal;
+    final prefs = await SharedPreferences.getInstance();
+    await _migrateSecrets(prefs);
+    for (final field in fields) {
+      var value = secretKeys.contains(field.apiKey)
+          ? await _secureStorage.read(key: field.apiKey) ?? ''
+          : prefs.getString(field.apiKey) ?? '';
+      if (value.isEmpty && field.hasDefaultValue) {
+        value = field.defaultValue;
+        await prefs.setString(field.apiKey, value);
       }
+      _configs[field.apiKey] = value;
+    }
+    _configs['selectedLlmProvider'] =
+        prefs.getString('selectedLlmProvider') ?? 'nvidia';
+    _configs['selectedSpeechProvider'] =
+        prefs.getString('selectedSpeechProvider') ?? 'yating';
+    _configs['selectedImageProvider'] =
+        prefs.getString('selectedImageProvider') ?? 'siliconflow';
+    _configs['selectedVisionProvider'] =
+        prefs.getString('selectedVisionProvider') ?? 'nvidia';
+    if (kDebugMode && !kIsWeb) await _readDebugEnv();
+    _revision++;
+  }
 
-      _configs['selectedLlmProvider'] = prefs.getString('selectedLlmProvider') ?? 'nvidia';
-      _configs['selectedSpeechProvider'] = prefs.getString('selectedSpeechProvider') ?? 'yating';
-      _configs['selectedImageProvider'] = prefs.getString('selectedImageProvider') ?? 'siliconflow';
-
-      debugPrint("[金鑰管理] 動態加載手機本地快取金鑰完成。");
-
-      bool hasEmptyConfig = _configs.values.any((val) => val.isEmpty);
-      if (hasEmptyConfig && !kIsWeb) {
-        final envFile = File('.env');
-        if (await envFile.exists()) {
-          debugPrint("[金鑰管理] 偵測到本地 .env 檔案，正在自動補齊未設定之金鑰...");
-          final lines = await envFile.readAsLines();
-          for (var line in lines) {
-            line = line.trim();
-            if (line.isEmpty || line.startsWith('#')) continue;
-            final parts = line.split('=');
-            if (parts.length >= 2) {
-              final key = parts[0].trim();
-              final value = parts.sublist(1).join('=').trim();
-
-              if (_configs.containsKey(key) && (_configs[key]?.isEmpty ?? true)) {
-                _configs[key] = value;
-              }
-            }
-          }
+  static Future<void> saveConfig(Map<String, String> values) async {
+    final prefs = await SharedPreferences.getInstance();
+    for (final entry in values.entries) {
+      final value = entry.value.trim();
+      _configs[entry.key] = value;
+      if (secretKeys.contains(entry.key)) {
+        if (value.isEmpty) {
+          await _secureStorage.delete(key: entry.key);
+        } else {
+          await _secureStorage.write(key: entry.key, value: value);
         }
+        await prefs.remove(entry.key);
+      } else {
+        await prefs.setString(entry.key, value);
       }
-    } catch (e) {
-      debugPrint("[金鑰管理] 加載金鑰時發生異常: $e");
+    }
+    _revision++;
+  }
+
+  static String? validateProviderSettings(Map<String, String> values) {
+    String read(String key) => (values[key] ?? getValue(key)).trim();
+    final llm = read('selectedLlmProvider').isEmpty
+        ? 'nvidia'
+        : read('selectedLlmProvider');
+    final image = read('selectedImageProvider').isEmpty
+        ? 'siliconflow'
+        : read('selectedImageProvider');
+    final speech = read('selectedSpeechProvider').isEmpty
+        ? 'yating'
+        : read('selectedSpeechProvider');
+    final llmKey = switch (llm) {
+      'openai' => 'OPENAI_API_KEY',
+      'gemini' => 'GEMINI_API_KEY',
+      'custom' => 'CUSTOM_LLM_API_KEY',
+      _ => 'NVIDIA_API_KEY',
+    };
+    final imageKey = switch (image) {
+      'openai' => 'OPENAI_API_KEY',
+      'custom' => 'CUSTOM_IMAGE_API_KEY',
+      _ => 'SILICONFLOW_API_KEY',
+    };
+    final llmModelKey = switch (llm) {
+      'openai' => 'OPENAI_LLM_MODEL',
+      'gemini' => 'GEMINI_LLM_MODEL',
+      'custom' => 'CUSTOM_LLM_MODEL',
+      _ => 'NVIDIA_LLM_MODEL',
+    };
+    if (read(llmKey).isEmpty) return '目前語言模型的 API Key 不可空白';
+    if (read(imageKey).isEmpty) return '目前生圖服務的 API Key 不可空白';
+    if (read(llmModelKey).isEmpty) return '目前語言模型名稱不可空白';
+    if (speech == 'ncku' &&
+        (read('NCKU_TTS_TOKEN').isEmpty || read('NCKU_STT_TOKEN').isEmpty)) {
+      return 'NCKU 語音服務需要 TTS 與 STT Token';
+    }
+    if (speech != 'ncku' && read('YATING_API_KEY').isEmpty) {
+      return '雅婷語音服務 Token 不可空白';
+    }
+    if (llm == 'custom') {
+      final error = _validateCustom(
+        read('CUSTOM_LLM_BASE_URL'),
+        read('CUSTOM_LLM_MODEL'),
+      );
+      if (error != null) return '自訂 LLM：$error';
+    }
+    if (image == 'custom') {
+      final error = _validateCustom(
+        read('CUSTOM_IMAGE_BASE_URL'),
+        read('CUSTOM_IMAGE_MODEL'),
+      );
+      if (error != null) return '自訂生圖：$error';
+    }
+    return null;
+  }
+
+  static String? _validateCustom(String? rawUrl, String? model) {
+    final uri = Uri.tryParse((rawUrl ?? '').trim());
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
+      return 'Base URL 必須是有效的 HTTPS 網址';
+    }
+    if ((model ?? '').trim().isEmpty) return '模型名稱不可空白';
+    return null;
+  }
+
+  static Future<void> _migrateSecrets(SharedPreferences prefs) async {
+    if (prefs.getBool(_migrationMarker) == true) return;
+    for (final key in secretKeys) {
+      final legacy = prefs.getString(key);
+      if (legacy != null && legacy.trim().isNotEmpty) {
+        await _secureStorage.write(key: key, value: legacy.trim());
+      }
+      await prefs.remove(key);
+    }
+    await prefs.setBool(_migrationMarker, true);
+  }
+
+  static Future<void> _readDebugEnv() async {
+    final file = File('.env');
+    if (!await file.exists()) return;
+    for (var line in await file.readAsLines()) {
+      line = line.trim();
+      if (line.isEmpty || line.startsWith('#') || !line.contains('=')) continue;
+      final index = line.indexOf('=');
+      final key = line.substring(0, index).trim();
+      final value = line.substring(index + 1).trim();
+      if (_configs.containsKey(key) && getValue(key).isEmpty) {
+        _configs[key] = value;
+      }
     }
   }
 
-  static Future<void> saveConfig(Map<String, String> newConfigs) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-
-      for (var entry in newConfigs.entries) {
-        final String key = entry.key;
-        final String val = entry.value.trim();
-
-        _configs[key] = val;
-        await prefs.setString(key, val);
-      }
-
-      debugPrint("[金鑰管理] 新金鑰已成功永久儲存至 SharedPreferences 本地資料庫！");
-    } catch (e) {
-      debugPrint("[金鑰管理] 儲存金鑰至 SharedPreferences 失敗: $e");
-    }
-  }
+  static List<String> _wordList(String key) => getValue(key)
+      .replaceAll('，', ',')
+      .split(',')
+      .map((e) => e.trim())
+      .where((e) => e.isNotEmpty)
+      .toList();
 }

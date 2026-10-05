@@ -28,7 +28,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     setState(() {
       // 反轉陣列讓最新的紀錄排在最上面
-      _records = savedList.map((e) => jsonDecode(e) as Map<String, dynamic>).toList().reversed.toList();
+      _records = savedList
+          .map((e) => jsonDecode(e) as Map<String, dynamic>)
+          .toList()
+          .reversed
+          .toList();
       _isLoading = false;
     });
   }
@@ -51,7 +55,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已刪除該筆回憶紀錄'), backgroundColor: Colors.grey),
+          const SnackBar(
+            content: Text('已刪除該筆回憶紀錄'),
+            backgroundColor: Colors.grey,
+          ),
         );
       }
     }
@@ -70,11 +77,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
             Text("刪除回憶", style: TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
-        content: const Text("確定要刪除這筆回憶紀錄嗎？\n刪除後將無法復原喔！", style: TextStyle(fontSize: 16, height: 1.5)),
+        content: const Text(
+          "確定要刪除這筆回憶紀錄嗎？\n刪除後將無法復原喔！",
+          style: TextStyle(fontSize: 16, height: 1.5),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text("取消", style: TextStyle(color: Colors.grey, fontSize: 16)),
+            child: const Text(
+              "取消",
+              style: TextStyle(color: Colors.grey, fontSize: 16),
+            ),
           ),
           ElevatedButton(
             onPressed: () {
@@ -83,9 +96,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.redAccent,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
-            child: const Text("確定刪除", style: TextStyle(color: Colors.white, fontSize: 16)),
+            child: const Text(
+              "確定刪除",
+              style: TextStyle(color: Colors.white, fontSize: 16),
+            ),
           ),
         ],
       ),
@@ -113,20 +131,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ? const Center(child: CircularProgressIndicator(color: Colors.orange))
           : _records.isEmpty
           ? const Center(
-        child: Text(
-          "目前還沒有回憶紀錄喔！\n快去跟長輩們聊聊天吧～",
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 18, color: Colors.grey, height: 1.5),
-        ),
-      )
+              child: Text(
+                "目前還沒有回憶紀錄喔！\n快去跟長輩們聊聊天吧～",
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 18, color: Colors.grey, height: 1.5),
+              ),
+            )
           : ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _records.length,
-        itemBuilder: (context, index) {
-          final record = _records[index];
-          return _buildRecordCard(record, index);
-        },
-      ),
+              padding: const EdgeInsets.all(16),
+              itemCount: _records.length,
+              itemBuilder: (context, index) {
+                final record = _records[index];
+                return _buildRecordCard(record, index);
+              },
+            ),
     );
   }
 
@@ -167,10 +185,23 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: imagePath.isNotEmpty
-                    ? (imagePath.startsWith('http') || imagePath.startsWith('https')
-                    ? Image.network(imagePath, fit: BoxFit.cover)
-                    : (kIsWeb ? const Center(child: Icon(Icons.image, color: Colors.grey)) : Image.file(File(imagePath), fit: BoxFit.cover)))
-                    : const Center(child: Icon(Icons.image, size: 32, color: Colors.grey)),
+                    ? (imagePath.startsWith('http') ||
+                              imagePath.startsWith('https')
+                          ? Image.network(imagePath, fit: BoxFit.cover)
+                          : (kIsWeb
+                                ? const Center(
+                                    child: Icon(
+                                      Icons.image,
+                                      color: Colors.grey,
+                                    ),
+                                  )
+                                : Image.file(
+                                    File(imagePath),
+                                    fit: BoxFit.cover,
+                                  )))
+                    : const Center(
+                        child: Icon(Icons.image, size: 32, color: Colors.grey),
+                      ),
               ),
               const SizedBox(width: 16),
 
@@ -186,7 +217,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         Expanded(
                           child: Text(
                             topic,
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -195,17 +230,31 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            Text(date, style: TextStyle(fontSize: 14, color: Colors.grey[500], fontWeight: FontWeight.w500)),
+                            Text(
+                              date,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[500],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                             const SizedBox(height: 4),
                             InkWell(
                               onTap: () => _confirmDelete(index),
                               borderRadius: BorderRadius.circular(20),
                               child: Container(
                                 padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(color: Colors.red[50], shape: BoxShape.circle),
-                                child: const Icon(Icons.delete_outline, size: 20, color: Colors.redAccent),
+                                decoration: BoxDecoration(
+                                  color: Colors.red[50],
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.delete_outline,
+                                  size: 20,
+                                  color: Colors.redAccent,
+                                ),
                               ),
-                            )
+                            ),
                           ],
                         ),
                       ],
@@ -213,14 +262,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     const SizedBox(height: 4),
                     Text(
                       "參與者：$elders",
-                      style: TextStyle(fontSize: 14, color: Colors.blueGrey[700], fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.blueGrey[700],
+                        fontWeight: FontWeight.w600,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 8),
                     Text(
                       content,
-                      style: const TextStyle(fontSize: 14, color: Colors.black87, height: 1.4),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.black87,
+                        height: 1.4,
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -234,7 +291,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 }
-
 
 // ==========================================
 // 🌟 點擊後的詳細展示頁面 (完美繼承 LifeScreen 的排版邏輯)
@@ -275,15 +331,26 @@ class MemoryDetailScreen extends StatelessWidget {
       body: Center(
         child: SingleChildScrollView(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1200), // 💡 放寬最大寬度極限，徹底利用螢幕閒置空間
+            constraints: const BoxConstraints(
+              maxWidth: 1200,
+            ), // 💡 放寬最大寬度極限，徹底利用螢幕閒置空間
             child: Container(
               width: double.infinity,
               margin: EdgeInsets.all(fontSize),
-              padding: EdgeInsets.symmetric(vertical: fontSize * 2.0, horizontal: fontSize * 2.5), // 💡 加大左右內距，讓排版更飽滿
+              padding: EdgeInsets.symmetric(
+                vertical: fontSize * 2.0,
+                horizontal: fontSize * 2.5,
+              ), // 💡 加大左右內距，讓排版更飽滿
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(24),
-                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))],
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black12,
+                    blurRadius: 10,
+                    offset: Offset(0, 4),
+                  ),
+                ],
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -293,13 +360,30 @@ class MemoryDetailScreen extends StatelessWidget {
                     width: double.infinity,
                     constraints: const BoxConstraints(maxWidth: 600),
                     padding: EdgeInsets.symmetric(vertical: fontSize * 0.8),
-                    decoration: BoxDecoration(color: const Color(0xFFFFF9E6), borderRadius: BorderRadius.circular(fontSize * 2)),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF9E6),
+                      borderRadius: BorderRadius.circular(fontSize * 2),
+                    ),
                     alignment: Alignment.center,
                     child: Column(
                       children: [
-                        Text("回憶詳細資料", style: TextStyle(fontSize: fontSize * 1.1, fontWeight: FontWeight.bold, color: Colors.black87)),
+                        Text(
+                          "回憶詳細資料",
+                          style: TextStyle(
+                            fontSize: fontSize * 1.1,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
                         SizedBox(height: fontSize * 0.2),
-                        Text(date, style: TextStyle(fontSize: fontSize * 0.7, color: Colors.grey[600], fontWeight: FontWeight.w500)),
+                        Text(
+                          date,
+                          style: TextStyle(
+                            fontSize: fontSize * 0.7,
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -312,7 +396,12 @@ class MemoryDetailScreen extends StatelessWidget {
                       children: [
                         Expanded(
                           flex: 3, // 💡 把比例改為 3:2，給予文字高達 60% 的充裕空間
-                          child: _buildMemoryTextInfo(topic, content, elders, fontSize),
+                          child: _buildMemoryTextInfo(
+                            topic,
+                            content,
+                            elders,
+                            fontSize,
+                          ),
                         ),
                         SizedBox(width: fontSize * 2),
                         Expanded(
@@ -340,7 +429,12 @@ class MemoryDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildMemoryTextInfo(String topic, String content, String elders, double fontSize) {
+  Widget _buildMemoryTextInfo(
+    String topic,
+    String content,
+    String elders,
+    double fontSize,
+  ) {
     return Column(
       children: [
         _buildSummaryRow("主題：", topic, fontSize),
@@ -361,9 +455,25 @@ class MemoryDetailScreen extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: imagePath.isNotEmpty
             ? (imagePath.startsWith('http') || imagePath.startsWith('https')
-            ? Image.network(imagePath, fit: BoxFit.cover)
-            : (kIsWeb ? Center(child: Text('Web 無法預覽', style: TextStyle(color: Colors.grey, fontSize: fontSize*0.6))) : Image.file(File(imagePath), fit: BoxFit.cover)))
-            : Center(child: Icon(Icons.image, size: fontSize * 2, color: Colors.grey)),
+                  ? Image.network(imagePath, fit: BoxFit.cover)
+                  : (kIsWeb
+                        ? Center(
+                            child: Text(
+                              'Web 無法預覽',
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: fontSize * 0.6,
+                              ),
+                            ),
+                          )
+                        : Image.file(File(imagePath), fit: BoxFit.cover)))
+            : Center(
+                child: Icon(
+                  Icons.image,
+                  size: fontSize * 2,
+                  color: Colors.grey,
+                ),
+              ),
       ),
     );
   }
@@ -372,23 +482,43 @@ class MemoryDetailScreen extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.symmetric(vertical: fontSize * 0.6), // 💡 增加行距
       child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: fontSize * 4.2, // 💡 縮小標籤的固定寬度，把空間還給內文
-              padding: EdgeInsets.symmetric(vertical: fontSize * 0.4),
-              decoration: BoxDecoration(color: const Color(0xFFFFF9E6), borderRadius: BorderRadius.circular(fontSize)),
-              alignment: Alignment.center,
-              child: Text(label, style: TextStyle(fontSize: fontSize * 0.85, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: fontSize * 4.2, // 💡 縮小標籤的固定寬度，把空間還給內文
+            padding: EdgeInsets.symmetric(vertical: fontSize * 0.4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF9E6),
+              borderRadius: BorderRadius.circular(fontSize),
             ),
-            SizedBox(width: fontSize * 1.2),
-            Expanded(
-              child: Padding(
-                padding: EdgeInsets.only(top: fontSize * 0.25), // 💡 頂部稍微向下推以對齊標籤中心
-                child: Text(value, style: TextStyle(fontSize: fontSize * 0.95, color: Colors.black87, height: 1.4), textAlign: TextAlign.left),
+            alignment: Alignment.center,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: fontSize * 0.85,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          SizedBox(width: fontSize * 1.2),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(
+                top: fontSize * 0.25,
+              ), // 💡 頂部稍微向下推以對齊標籤中心
+              child: Text(
+                value,
+                style: TextStyle(
+                  fontSize: fontSize * 0.95,
+                  color: Colors.black87,
+                  height: 1.4,
+                ),
+                textAlign: TextAlign.left,
               ),
             ),
-          ]
+          ),
+        ],
       ),
     );
   }

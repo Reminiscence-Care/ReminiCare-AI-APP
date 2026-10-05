@@ -4,12 +4,9 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   audioplayers_windows
-  fullscreen_window
-  just_audio_windows
+  flutter_secure_storage_windows
   record_windows
-  speech_to_text_windows
   url_launcher_windows
-  webview_win_floating
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

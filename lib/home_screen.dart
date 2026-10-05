@@ -1,448 +1,357 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:remini_care_ai_app/services/remini_care_config.dart';
-import 'package:remini_care_ai_app/services/api_services.dart'; // 💡 引入統一服務中心
+
+import 'services/api_services.dart';
+import 'services/remini_care_config.dart';
+import 'theme/remini_care_theme.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
-
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-
-  /// 💡 智慧檢查：只檢查「當前選定」的模型是否有填寫金鑰
-  bool _isConfigComplete() {
-    // 1. 檢查 LLM
-    final llmProvider = ReminiCareConfig.getValue('selectedLlmProvider') ?? 'nvidia';
-    bool llmOk = false;
-    if (llmProvider == 'nvidia') llmOk = ReminiCareConfig.nvidiaApiKey.isNotEmpty;
-    if (llmProvider == 'openai') llmOk = ReminiCareConfig.openaiApiKey.isNotEmpty;
-    if (llmProvider == 'gemini') llmOk = ReminiCareConfig.geminiApiKey.isNotEmpty;
-
-    // 2. 檢查 生圖
-    final imageProvider = ReminiCareConfig.getValue('selectedImageProvider') ?? 'siliconflow';
-    bool imageOk = false;
-    if (imageProvider == 'siliconflow') imageOk = ReminiCareConfig.siliconFlowApiKey.isNotEmpty;
-    if (imageProvider == 'openai') imageOk = (ReminiCareConfig.getValue('openaiApiKey') ?? "").isNotEmpty;
-
-    // 3. 檢查 語音
-    final speechProvider = ReminiCareConfig.getValue('selectedSpeechProvider') ?? 'yating';
-    bool speechOk = false;
-    if (speechProvider == 'yating') speechOk = ReminiCareConfig.yatingApiKey.isNotEmpty;
-    if (speechProvider == 'ncku') {
-      speechOk = ReminiCareConfig.nckuSttToken.isNotEmpty && ReminiCareConfig.nckuTtsToken.isNotEmpty;
-    }
-
-    return llmOk && imageOk && speechOk;
-  }
+  bool _ready = false;
 
   @override
   void initState() {
     super.initState();
-    ReminiCareConfig.loadConfig();
+    _load();
   }
 
-  // =========================================================================
-  // 攔截提醒視窗：引導使用者前往設定
-  // =========================================================================
-  void _showConfigWarning() {
-    showDialog(
-        context: context,
-        builder: (context) {
+  Future<void> _load() async {
+    await ReminiCareConfig.loadConfig();
+    if (mounted) setState(() => _ready = true);
+  }
+
+  String? _missingConfiguration() {
+    final llm = ReminiCareConfig.getValue('selectedLlmProvider');
+    final image = ReminiCareConfig.getValue('selectedImageProvider');
+    final speech = ReminiCareConfig.getValue('selectedSpeechProvider');
+    final llmKey = switch (llm) {
+      'openai' => ReminiCareConfig.openaiApiKey,
+      'gemini' => ReminiCareConfig.geminiApiKey,
+      'custom' => ReminiCareConfig.getValue('CUSTOM_LLM_API_KEY'),
+      _ => ReminiCareConfig.nvidiaApiKey,
+    };
+    final imageKey = switch (image) {
+      'openai' => ReminiCareConfig.openaiApiKey,
+      'custom' => ReminiCareConfig.getValue('CUSTOM_IMAGE_API_KEY'),
+      _ => ReminiCareConfig.siliconFlowApiKey,
+    };
+    final speechOk = speech == 'ncku'
+        ? ReminiCareConfig.nckuSttToken.isNotEmpty &&
+              ReminiCareConfig.nckuTtsToken.isNotEmpty
+        : ReminiCareConfig.yatingApiKey.isNotEmpty;
+    if (llmKey.isEmpty) return '請設定目前 LLM Provider 的 API Key。';
+    if (imageKey.isEmpty) return '請設定目前生圖 Provider 的 API Key。';
+    if (!speechOk) return '請設定目前語音服務需要的 Token。';
+    return ReminiCareConfig.validateProviderSettings({});
+  }
+
+  void _start() {
+    final message = _missingConfiguration();
+    if (message == null) {
+      context.push('/life_screen');
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          action: SnackBarAction(label: '設定', onPressed: _showSettingsDialog),
+        ),
+      );
+    }
+  }
+
+  Future<void> _showSettingsDialog() async {
+    final controllers = {
+      for (final field in ReminiCareConfig.fields)
+        field.apiKey: TextEditingController(
+          text: ReminiCareConfig.getValue(field.apiKey),
+        ),
+    };
+    var llm = ReminiCareConfig.getValue('selectedLlmProvider');
+    var image = ReminiCareConfig.getValue('selectedImageProvider');
+    var speech = ReminiCareConfig.getValue('selectedSpeechProvider');
+    var saving = false;
+    String? validationError;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final visibleKeys = <String>{
+            switch (llm) {
+              'openai' => 'OPENAI_API_KEY',
+              'gemini' => 'GEMINI_API_KEY',
+              'custom' => 'CUSTOM_LLM_API_KEY',
+              _ => 'NVIDIA_API_KEY',
+            },
+            switch (llm) {
+              'openai' => 'OPENAI_LLM_MODEL',
+              'gemini' => 'GEMINI_LLM_MODEL',
+              'custom' => 'CUSTOM_LLM_MODEL',
+              _ => 'NVIDIA_LLM_MODEL',
+            },
+            switch (image) {
+              'openai' => 'OPENAI_API_KEY',
+              'custom' => 'CUSTOM_IMAGE_API_KEY',
+              _ => 'SILICONFLOW_API_KEY',
+            },
+            if (speech == 'ncku') ...{
+              'NCKU_TTS_TOKEN',
+              'NCKU_STT_TOKEN',
+            } else
+              'YATING_API_KEY',
+            'VOICE_MAX_RECORD_LIMIT',
+            'WAKE_WORDS_START',
+            'WAKE_WORDS_END',
+            'WAKE_WORDS_RESTART',
+            if (llm == 'custom') 'CUSTOM_LLM_BASE_URL',
+            if (image == 'custom') ...{
+              'CUSTOM_IMAGE_BASE_URL',
+              'CUSTOM_IMAGE_MODEL',
+            },
+          };
+          final llmPreset = switch (llm) {
+            'nvidia' => 'https://integrate.api.nvidia.com/v1',
+            'openai' => 'https://api.openai.com/v1',
+            'gemini' =>
+              'https://generativelanguage.googleapis.com/v1beta/openai',
+            _ => '自訂 OpenAI-compatible 端點與模型',
+          };
+          final imagePreset = switch (image) {
+            'siliconflow' =>
+              'https://api.siliconflow.com/v1  •  Qwen/Qwen-Image（支援改圖）',
+            'openai' => 'https://api.openai.com/v1  •  gpt-image-2',
+            _ => '自訂 OpenAI-compatible 端點（僅標準生成）',
+          };
           return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Row(
-              children: const [
-                Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
-                SizedBox(width: 8),
-                Text("需要設定 API 金鑰", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-              ],
-            ),
-            content: const Text(
-              "您必須先點擊右上角的「齒輪」完成所有的系統配置（填寫 API 金鑰），才能開始使用這些陪伴功能喔！",
-              style: TextStyle(fontSize: 15, height: 1.4),
+            title: const Text('ReminiCare AI 設定'),
+            content: SizedBox(
+              width: 620,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _ProviderDropdown(
+                      label: '語言模型',
+                      value: llm,
+                      options: const {
+                        'nvidia': 'NVIDIA',
+                        'openai': 'OpenAI',
+                        'gemini': 'Google Gemini',
+                        'custom': 'Custom OpenAI-compatible',
+                      },
+                      onChanged: (value) => setDialogState(() => llm = value),
+                    ),
+                    _ProviderInfo(label: 'LLM', value: llmPreset),
+                    _ProviderDropdown(
+                      label: '生圖服務',
+                      value: image,
+                      options: const {
+                        'siliconflow': 'SiliconFlow（支援改圖）',
+                        'openai': 'OpenAI',
+                        'custom': 'Custom OpenAI-compatible（僅生成）',
+                      },
+                      onChanged: (value) => setDialogState(() => image = value),
+                    ),
+                    _ProviderInfo(label: '生圖', value: imagePreset),
+                    _ProviderDropdown(
+                      label: '語音服務',
+                      value: speech,
+                      options: const {'yating': '雅婷', 'ncku': '成大 NCKU'},
+                      onChanged: (value) =>
+                          setDialogState(() => speech = value),
+                    ),
+                    const Divider(height: 34),
+                    for (final field in ReminiCareConfig.fields.where(
+                      (f) => visibleKeys.contains(f.apiKey),
+                    ))
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 14),
+                        child: TextField(
+                          controller: controllers[field.apiKey],
+                          obscureText: field.isSecure,
+                          decoration: InputDecoration(
+                            labelText: field.displayName,
+                            hintText: field.hintText,
+                            border: const OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                    if (validationError != null)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          validationError!,
+                          style: const TextStyle(color: Colors.redAccent),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("稍後再說", style: TextStyle(color: Colors.grey, fontSize: 16)),
+                onPressed: saving ? null : () => Navigator.pop(dialogContext),
+                child: const Text('取消'),
               ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _showSettingsDialog();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueGrey[800],
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                child: const Text("前往設定", style: TextStyle(color: Colors.white, fontSize: 15)),
+              FilledButton(
+                onPressed: saving
+                    ? null
+                    : () async {
+                        final values = {
+                          for (final entry in controllers.entries)
+                            entry.key: entry.value.text,
+                          'selectedLlmProvider': llm,
+                          'selectedImageProvider': image,
+                          'selectedSpeechProvider': speech,
+                        };
+                        final error = ReminiCareConfig.validateProviderSettings(
+                          values,
+                        );
+                        if (error != null) {
+                          return setDialogState(() => validationError = error);
+                        }
+                        setDialogState(() {
+                          saving = true;
+                          validationError = null;
+                        });
+                        await ReminiCareConfig.saveConfig(values);
+                        ApiServices().resetCache();
+                        if (dialogContext.mounted) Navigator.pop(dialogContext);
+                      },
+                child: Text(saving ? '儲存中…' : '儲存並套用'),
               ),
             ],
           );
-        }
-    );
-  }
-
-  // =========================================================================
-  // 互動式自訂設定視窗 (支援下拉選單無縫切換 Provider)
-  // =========================================================================
-  void _showSettingsDialog() {
-    final Map<String, TextEditingController> controllers = {};
-    for (var field in ReminiCareConfig.fields) {
-      controllers[field.apiKey] = TextEditingController(
-        text: ReminiCareConfig.getValue(field.apiKey),
-      );
-    }
-
-    final Map<String, bool> obscureStates = {};
-    for (var field in ReminiCareConfig.fields) {
-      obscureStates[field.apiKey] = true;
-    }
-
-    // 💡 讀取目前的 Provider 設定 (若無則給預設值)
-    String selectedLlm = ReminiCareConfig.getValue('selectedLlmProvider') ?? 'nvidia';
-    String selectedSpeech = ReminiCareConfig.getValue('selectedSpeechProvider') ?? 'yating';
-    String selectedImage = ReminiCareConfig.getValue('selectedImageProvider') ?? 'siliconflow';
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-            builder: (context, setStateDialog) {
-              return AlertDialog(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                title: Row(
-                  children: const [
-                    Icon(Icons.settings, color: Colors.blueGrey),
-                    SizedBox(width: 8),
-                    Text("ReminiCare AI 配置", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                  ],
-                ),
-                content: SizedBox(
-                  width: double.maxFinite,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          "在此選擇您想使用的 AI 引擎並填寫對應金鑰。設定完成後立即套用生效！",
-                          style: TextStyle(fontSize: 13, color: Colors.grey, height: 1.4),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // ==========================================
-                        // 🛠️ Provider 選擇區塊 (下拉選單)
-                        // ==========================================
-                        _buildDropdown(
-                          "大語言模型 (LLM)",
-                          selectedLlm,
-                          [
-                            {"value": "nvidia", "label": "NVIDIA (Qwen 80B)"},
-                            {"value": "openai", "label": "OpenAI (GPT-4o-mini)"},
-                            {"value": "gemini", "label": "Google Gemini (1.5 Flash)"},
-                          ],
-                              (val) => setStateDialog(() => selectedLlm = val!),
-                        ),
-                        _buildDropdown(
-                          "語音服務 (STT & TTS)",
-                          selectedSpeech,
-                          [
-                            {"value": "yating", "label": "雅婷 (Yating)"},
-                            {"value": "ncku", "label": "成大 (NCKU VITS)"},
-                          ],
-                              (val) => setStateDialog(() => selectedSpeech = val!),
-                        ),
-                        _buildDropdown(
-                          "生圖服務 (Image Gen)",
-                          selectedImage,
-                          [
-                            {"value": "siliconflow", "label": "SiliconFlow (Qwen)"},
-                            {"value": "openai", "label": "OpenAI (DALL-E 3)"},
-                          ],
-                              (val) => setStateDialog(() => selectedImage = val!),
-                        ),
-
-                        const Divider(height: 32, thickness: 1.5),
-
-                        // ==========================================
-                        // 🔑 API Keys 填寫區塊 (動態生成)
-                        // ==========================================
-                        ...ReminiCareConfig.fields.map((field) {
-                          final controller = controllers[field.apiKey]!;
-                          final isObscured = obscureStates[field.apiKey] ?? true;
-
-                          return _buildSettingsField(
-                            field.displayName,
-                            controller,
-                            field.hintText,
-                            isObscured,
-                            field.isSecure,
-                                () {
-                              setStateDialog(() {
-                                obscureStates[field.apiKey] = !isObscured;
-                              });
-                            },
-                          );
-                        }).toList(),
-                      ],
-                    ),
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () {
-                      for (var controller in controllers.values) {
-                        controller.dispose();
-                      }
-                      Navigator.of(context).pop();
-                    },
-                    child: const Text("取消", style: TextStyle(color: Colors.grey, fontSize: 16)),
-                  ),
-                  ElevatedButton(
-                    onPressed: () async {
-                      // 1. 收集 Controller 中的金鑰
-                      final Map<String, String> updatedData = {};
-                      controllers.forEach((key, controller) {
-                        updatedData[key] = controller.text;
-                      });
-
-                      // 2. 💡 收集下拉選單的 Provider 設定
-                      updatedData['selectedLlmProvider'] = selectedLlm;
-                      updatedData['selectedSpeechProvider'] = selectedSpeech;
-                      updatedData['selectedImageProvider'] = selectedImage;
-
-                      // 3. 儲存設定
-                      await ReminiCareConfig.saveConfig(updatedData);
-
-                      // 4. 💡 核心：清除 API 快取，讓系統下次使用時實例化新的 Provider！
-                      ApiServices().resetCache();
-
-                      for (var controller in controllers.values) {
-                        controller.dispose();
-                      }
-
-                      if (context.mounted) {
-                        Navigator.of(context).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("🎉 配置更新成功！已立即套用至系統。"),
-                            backgroundColor: Colors.green,
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueGrey[800],
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    child: const Text("儲存並套用", style: TextStyle(color: Colors.white, fontSize: 15)),
-                  ),
-                ],
-              );
-            }
-        );
-      },
-    );
-  }
-
-  /// 💡 自定義下拉選單組件
-  Widget _buildDropdown(String label, String currentValue, List<Map<String, String>> options, ValueChanged<String?> onChanged) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      child: DropdownButtonFormField<String>(
-        value: currentValue,
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.blueGrey),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          filled: true,
-          fillColor: Colors.grey[50],
-        ),
-        items: options.map((option) {
-          return DropdownMenuItem<String>(
-            value: option['value'],
-            child: Text(option['label']!, style: const TextStyle(fontSize: 14)),
-          );
-        }).toList(),
-        onChanged: onChanged,
+        },
       ),
     );
-  }
-
-  /// 自定義設定框組件
-  Widget _buildSettingsField(
-      String label,
-      TextEditingController controller,
-      String hint,
-      bool obscureText,
-      bool isSecure,
-      VoidCallback onToggleVisibility,
-      ) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      child: TextField(
-        controller: controller,
-        obscureText: isSecure ? obscureText : false,
-        style: const TextStyle(fontSize: 14),
-        decoration: InputDecoration(
-          labelText: label,
-          labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.blueGrey),
-          hintText: hint,
-          floatingLabelBehavior: FloatingLabelBehavior.always,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          suffixIcon: isSecure
-              ? IconButton(
-            icon: Icon(
-              obscureText ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-              size: 18,
-            ),
-            onPressed: onToggleVisibility,
-          )
-              : null,
-        ),
-      ),
-    );
+    for (final controller in controllers.values) {
+      controller.dispose();
+    }
+    if (mounted) setState(() {});
   }
 
   @override
-  Widget build(BuildContext context) {
-    final double screenWidth = MediaQuery.sizeOf(context).width;
-    final double buttonWidth = screenWidth > 600 ? screenWidth * 0.35 : screenWidth * 0.75;
-
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: const Text('首頁', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
-        centerTitle: true,
-        actions: [
-          // 語音快取管理按鈕
-          IconButton(
-            icon: const Icon(Icons.cleaning_services_rounded, color: Colors.black87),
-            onPressed: () {
-              context.push('/tts_cache_screen');
-            },
-            tooltip: "語音快取管理",
-          ),
-          // 回憶紀錄按鈕
-          IconButton(
-            icon: const Icon(Icons.history_rounded, color: Colors.black87),
-            onPressed: () {
-              if (!_isConfigComplete()) {
-                _showConfigWarning();
-              } else {
-                context.push('/history_screen');
-              }
-            },
-            tooltip: "查看回憶紀錄",
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined, color: Colors.black87),
-            onPressed: _showSettingsDialog,
-            tooltip: "設定 API 金鑰",
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: Center(
-        child: SingleChildScrollView(
-          child: Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 32.0,
-            runSpacing: 40.0,
-            children: [
-              _buildHomeButton(
-                context: context,
-                imagePath: 'assets/images/life_home.png',
-                width: buttonWidth,
-                label: '以前的生活',
-                routePath: '/life_screen',
-              ),
-            ],
-          ),
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: const Text('ReminiCare AI'),
+      actions: [
+        IconButton(
+          onPressed: () => context.push('/tts_cache_screen'),
+          icon: const Icon(Icons.cleaning_services_rounded),
+          tooltip: '語音快取',
         ),
-      ),
-    );
-  }
-
-  Widget _buildHomeButton({
-    required BuildContext context,
-    required String imagePath,
-    required double width,
-    required String label,
-    required String routePath,
-  }) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        GestureDetector(
-          onTap: () {
-            if (!_isConfigComplete()) {
-              _showConfigWarning();
-            } else {
-              context.push(routePath);
-            }
-          },
-          child: Container(
-            width: width,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: Colors.grey.shade400,
-                width: 1.5,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.15),
-                  blurRadius: 12,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(22.5),
-              child: Image.asset(
-                imagePath,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    height: width * 0.8,
-                    color: Colors.grey[200],
-                    alignment: Alignment.center,
-                    child: Text(
-                      '$label\n(圖片遺失)',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          color: Colors.grey,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 20
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
+        IconButton(
+          onPressed: () => context.push('/history_screen'),
+          icon: const Icon(Icons.history_rounded),
+          tooltip: '回憶紀錄',
         ),
-        const SizedBox(height: 16),
-        Text(
-          label,
-          style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF4E342E)
-          ),
-        )
+        IconButton(
+          onPressed: _showSettingsDialog,
+          icon: const Icon(Icons.settings_outlined),
+          tooltip: '設定',
+        ),
       ],
-    );
-  }
+    ),
+    body: Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          children: [
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(31),
+                child: Image.asset(
+                  'assets/images/life_home.png',
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+            const SizedBox(height: 30),
+            Text(
+              '一起聊聊以前的生活',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: ReminiCareBreakpoints.titleSize(context),
+              ),
+            ),
+            const SizedBox(height: 28),
+            FilledButton(
+              onPressed: _ready ? _start : null,
+              style: FilledButton.styleFrom(
+                backgroundColor: ReminiCareTheme.yellow,
+                foregroundColor: ReminiCareTheme.ink,
+                minimumSize: const Size(280, 76),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(38),
+                ),
+              ),
+              child: Text(
+                _ready ? '開始回憶' : '載入設定中…',
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _ProviderDropdown extends StatelessWidget {
+  const _ProviderDropdown({
+    required this.label,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+  });
+  final String label;
+  final String value;
+  final Map<String, String> options;
+  final ValueChanged<String> onChanged;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 14),
+    child: DropdownButtonFormField<String>(
+      initialValue: options.containsKey(value) ? value : options.keys.first,
+      decoration: InputDecoration(
+        labelText: label,
+        border: const OutlineInputBorder(),
+      ),
+      items: options.entries
+          .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+          .toList(),
+      onChanged: (next) {
+        if (next != null) onChanged(next);
+      },
+    ),
+  );
+}
+
+class _ProviderInfo extends StatelessWidget {
+  const _ProviderInfo({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    margin: const EdgeInsets.only(bottom: 14),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: const Color(0xFFF5F5F5),
+      borderRadius: BorderRadius.circular(10),
+    ),
+    child: Text('$label：$value', style: const TextStyle(fontSize: 13)),
+  );
 }

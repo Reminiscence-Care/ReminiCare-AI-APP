@@ -83,46 +83,52 @@ class VoiceAssistantManager {
     if (_isAudioSessionConfigured || _isManagerDisposed) return;
     try {
       if (!kIsWeb && (Platform.isIOS || Platform.isAndroid)) {
-
         // 💡 1. 啟用硬體級降噪 (Acoustic Echo Cancellation & Noise Suppression)
         final session = await a_session.AudioSession.instance;
-        await session.configure(a_session.AudioSessionConfiguration(
-          avAudioSessionCategory: a_session.AVAudioSessionCategory.playAndRecord,
-          // 保留 mixWithOthers 以避免與 Meet/LINE 衝突時直接閃退
-          avAudioSessionCategoryOptions: a_session.AVAudioSessionCategoryOptions.defaultToSpeaker |
-          a_session.AVAudioSessionCategoryOptions.allowBluetooth |
-          a_session.AVAudioSessionCategoryOptions.mixWithOthers,
-          avAudioSessionMode: a_session.AVAudioSessionMode.voiceChat, // 觸發 iOS 硬體降噪
+        await session.configure(
+          a_session.AudioSessionConfiguration(
+            avAudioSessionCategory:
+                a_session.AVAudioSessionCategory.playAndRecord,
+            // 保留 mixWithOthers 以避免與 Meet/LINE 衝突時直接閃退
+            avAudioSessionCategoryOptions:
+                a_session.AVAudioSessionCategoryOptions.defaultToSpeaker |
+                a_session.AVAudioSessionCategoryOptions.allowBluetooth |
+                a_session.AVAudioSessionCategoryOptions.mixWithOthers,
+            avAudioSessionMode:
+                a_session.AVAudioSessionMode.voiceChat, // 觸發 iOS 硬體降噪
 
-          androidAudioAttributes: a_session.AndroidAudioAttributes(
-            contentType: a_session.AndroidAudioContentType.speech,
-            usage: a_session.AndroidAudioUsage.voiceCommunication,
+            androidAudioAttributes: a_session.AndroidAudioAttributes(
+              contentType: a_session.AndroidAudioContentType.speech,
+              usage: a_session.AndroidAudioUsage.voiceCommunication,
+            ),
+            androidAudioFocusGainType: a_session.AndroidAudioFocusGainType.gain,
           ),
-          androidAudioFocusGainType: a_session.AndroidAudioFocusGainType.gain,
-        ));
+        );
 
         await session.setActive(true);
         debugPrint("🍎 [AudioSession] 硬體降噪與語音通訊模式 (AEC/NS) 已成功啟動！");
 
         // 💡 2. 對齊 AudioPlayer 的配置 (雙重保險)
-        await AudioPlayer.global.setAudioContext(AudioContext(
-          iOS: AudioContextIOS(
-            category: AVAudioSessionCategory.playAndRecord,
-            options: const {
-              AVAudioSessionOptions.defaultToSpeaker,
-              AVAudioSessionOptions.allowBluetooth,
-              AVAudioSessionOptions.mixWithOthers,
-            },
+        await AudioPlayer.global.setAudioContext(
+          AudioContext(
+            iOS: AudioContextIOS(
+              category: AVAudioSessionCategory.playAndRecord,
+              options: const {
+                AVAudioSessionOptions.defaultToSpeaker,
+                AVAudioSessionOptions.allowBluetooth,
+                AVAudioSessionOptions.mixWithOthers,
+              },
+            ),
+            android: AudioContextAndroid(
+              isSpeakerphoneOn: true,
+              stayAwake: true,
+              contentType: AndroidContentType.speech,
+              // 讓 AudioPlayer 也知道現在是語音通訊模式
+              usageType: AndroidUsageType.voiceCommunication,
+              audioFocus: AndroidAudioFocus.gain,
+            ),
           ),
-          android: AudioContextAndroid(
-            isSpeakerphoneOn: true,
-            stayAwake: true,
-            contentType: AndroidContentType.speech,
-            // 讓 AudioPlayer 也知道現在是語音通訊模式
-            usageType: AndroidUsageType.voiceCommunication,
-            audioFocus: AndroidAudioFocus.gain,
-          ),
-        ));
+        );
 
         if (_isManagerDisposed) return;
 
@@ -174,9 +180,9 @@ class VoiceAssistantManager {
   Future<void> _checkAndCleanupCache(int newFileSize) async {
     if (_isManagerDisposed) return;
     int currentTotalSize = 0;
-    _cacheMetadata.values.forEach((data) {
+    for (var data in _cacheMetadata.values) {
       currentTotalSize += (data['size'] as int? ?? 0);
-    });
+    }
 
     if (currentTotalSize + newFileSize <= _maxCacheSizeBytes) return;
 
@@ -195,7 +201,9 @@ class VoiceAssistantManager {
         final int size = data['size'] ?? 0;
         final file = _ttsCache[key];
         if (file != null && file.existsSync()) {
-          try { file.deleteSync(); } catch (_) {}
+          try {
+            file.deleteSync();
+          } catch (_) {}
         }
         _ttsCache.remove(key);
         _cacheMetadata.remove(key);
@@ -258,8 +266,12 @@ class VoiceAssistantManager {
       debugPrint("[硬體清理] 停止錄音失敗: $e");
     } finally {
       // 徹底停止並確保無音軌存留後，再安全銷毀驅動物件
-      try { await _audioPlayer.dispose(); } catch (_) {}
-      try { await _audioRecorder.dispose(); } catch (_) {}
+      try {
+        await _audioPlayer.dispose();
+      } catch (_) {}
+      try {
+        await _audioRecorder.dispose();
+      } catch (_) {}
     }
   }
 
@@ -275,7 +287,11 @@ class VoiceAssistantManager {
   }
 
   Future<void> _runSmartWakeWordCycle(int sessionId) async {
-    if (_isManagerDisposed || !_isRollingWakeWord || sessionId != _wakeWordSessionId) return;
+    if (_isManagerDisposed ||
+        !_isRollingWakeWord ||
+        sessionId != _wakeWordSessionId) {
+      return;
+    }
 
     await _ensureAudioSessionConfigured();
     if (_isManagerDisposed) return;
@@ -293,19 +309,29 @@ class VoiceAssistantManager {
         if (_isManagerDisposed) return;
 
         final directory = await getTemporaryDirectory();
-        _currentRecordPath = '${directory.path}/reminicare_wake_${DateTime.now().millisecondsSinceEpoch}.wav';
+        _currentRecordPath =
+            '${directory.path}/reminicare_wake_${DateTime.now().millisecondsSinceEpoch}.wav';
 
         await _audioRecorder.start(
-          const RecordConfig(encoder: AudioEncoder.wav, sampleRate: 16000, numChannels: 1),
+          const RecordConfig(
+            encoder: AudioEncoder.wav,
+            sampleRate: 16000,
+            numChannels: 1,
+          ),
           path: _currentRecordPath!,
         );
         _isRecordingOnHardware = true;
 
         if (!_isCalibrated) debugPrint("🎛️ [背景 VAD] 啟動環境雜音採樣校正...");
 
-        _vadTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) async {
+        _vadTimer = Timer.periodic(const Duration(milliseconds: 200), (
+          timer,
+        ) async {
           // 💡 防護：確認未被銷毀
-          if (_isManagerDisposed || !_isRecordingOnHardware || !_isRollingWakeWord || sessionId != _wakeWordSessionId) {
+          if (_isManagerDisposed ||
+              !_isRecordingOnHardware ||
+              !_isRollingWakeWord ||
+              sessionId != _wakeWordSessionId) {
             timer.cancel();
             return;
           }
@@ -328,7 +354,9 @@ class VoiceAssistantManager {
                 double avgNoise = _calibrationSumDb / 8;
                 _vadThresholdDb = (avgNoise + 12.0).clamp(-45.0, -20.0);
                 _isCalibrated = true;
-                debugPrint("🎛️ [VAD 自動校正完成] 房間雜音: ${avgNoise.toStringAsFixed(1)} dB, 門檻: ${_vadThresholdDb.toStringAsFixed(1)} dB");
+                debugPrint(
+                  "🎛️ [VAD 自動校正完成] 房間雜音: ${avgNoise.toStringAsFixed(1)} dB, 門檻: ${_vadThresholdDb.toStringAsFixed(1)} dB",
+                );
               }
             }
             return;
@@ -337,7 +365,10 @@ class VoiceAssistantManager {
           if (currentDb >= _vadThresholdDb) {
             _consecutiveLoudTicks++;
             if (_consecutiveLoudTicks >= 2 && !_hasSpoken) _hasSpoken = true;
-            if (_hasSpoken) { _silenceMs = 0; _idleMs = 0; }
+            if (_hasSpoken) {
+              _silenceMs = 0;
+              _idleMs = 0;
+            }
           } else {
             _consecutiveLoudTicks = 0;
             if (_hasSpoken) {
@@ -361,8 +392,13 @@ class VoiceAssistantManager {
     } catch (e) {
       debugPrint("[喚醒器] VAD 啟動異常: $e");
       _isRecordingOnHardware = false;
-      if (!_isManagerDisposed && _isRollingWakeWord && sessionId == _wakeWordSessionId) {
-        Future.delayed(const Duration(seconds: 2), () => _runSmartWakeWordCycle(sessionId));
+      if (!_isManagerDisposed &&
+          _isRollingWakeWord &&
+          sessionId == _wakeWordSessionId) {
+        Future.delayed(
+          const Duration(seconds: 2),
+          () => _runSmartWakeWordCycle(sessionId),
+        );
       }
     }
   }
@@ -370,11 +406,15 @@ class VoiceAssistantManager {
   Future<void> _restartWakeWordSilently(int sessionId) async {
     if (_isManagerDisposed) return;
     if (_isRecordingOnHardware) {
-      try { await _audioRecorder.stop(); } catch(_) {}
+      try {
+        await _audioRecorder.stop();
+      } catch (_) {}
       _isRecordingOnHardware = false;
     }
     if (_currentRecordPath != null) {
-      try { File(_currentRecordPath!).deleteSync(); } catch (_) {}
+      try {
+        File(_currentRecordPath!).deleteSync();
+      } catch (_) {}
     }
     if (!kIsWeb) await Future.delayed(const Duration(milliseconds: 150));
     _runSmartWakeWordCycle(sessionId);
@@ -383,16 +423,24 @@ class VoiceAssistantManager {
   Future<void> _processWakeWordChunk(String audioPath, int sessionId) async {
     if (_isManagerDisposed) return;
     if (_isRecordingOnHardware) {
-      try { await _audioRecorder.stop(); } catch(_) {}
+      try {
+        await _audioRecorder.stop();
+      } catch (_) {}
       _isRecordingOnHardware = false;
     }
     if (!kIsWeb) await Future.delayed(const Duration(milliseconds: 150));
 
     try {
       final String? transcript = await sttService.transcribe(audioPath);
-      try { File(audioPath).deleteSync(); } catch (_) {}
+      try {
+        File(audioPath).deleteSync();
+      } catch (_) {}
 
-      if (_isManagerDisposed || !_isRollingWakeWord || sessionId != _wakeWordSessionId) return;
+      if (_isManagerDisposed ||
+          !_isRollingWakeWord ||
+          sessionId != _wakeWordSessionId) {
+        return;
+      }
 
       if (transcript != null) {
         final String cleanText = transcript.replaceAll(" ", "");
@@ -408,7 +456,10 @@ class VoiceAssistantManager {
           _isRollingWakeWord = false;
           onEndChatFlow?.call();
           return;
-        } else if (_matchesCommand(cleanText, ReminiCareConfig.startWakeWords)) {
+        } else if (_matchesCommand(
+          cleanText,
+          ReminiCareConfig.startWakeWords,
+        )) {
           _isRollingWakeWord = false;
           onStartChatFlow?.call();
           return;
@@ -418,7 +469,9 @@ class VoiceAssistantManager {
       debugPrint("[喚醒器] 翻譯出錯: $e");
     }
 
-    if (!_isManagerDisposed && _isRollingWakeWord && sessionId == _wakeWordSessionId) {
+    if (!_isManagerDisposed &&
+        _isRollingWakeWord &&
+        sessionId == _wakeWordSessionId) {
       _runSmartWakeWordCycle(sessionId);
     }
   }
@@ -438,7 +491,7 @@ class VoiceAssistantManager {
     if (_isManagerDisposed) return;
     await stopActiveAudioOperations();
     _isRollingChatRecord = true;
-    _chatRecordSessionId++;
+    final sessionId = ++_chatRecordSessionId;
 
     await _ensureAudioSessionConfigured();
     if (_isManagerDisposed) return;
@@ -450,23 +503,32 @@ class VoiceAssistantManager {
 
     try {
       if (await _audioRecorder.hasPermission()) {
-
         if (Platform.isIOS || Platform.isMacOS) {
           await Future.delayed(const Duration(milliseconds: 300));
         }
         if (_isManagerDisposed) return;
 
         final directory = await getTemporaryDirectory();
-        _currentRecordPath = '${directory.path}/reminicare_chat_smart_${DateTime.now().millisecondsSinceEpoch}.wav';
+        _currentRecordPath =
+            '${directory.path}/reminicare_chat_smart_${DateTime.now().millisecondsSinceEpoch}.wav';
 
         await _audioRecorder.start(
-          const RecordConfig(encoder: AudioEncoder.wav, sampleRate: 16000, numChannels: 1),
+          const RecordConfig(
+            encoder: AudioEncoder.wav,
+            sampleRate: 16000,
+            numChannels: 1,
+          ),
           path: _currentRecordPath!,
         );
         _isRecordingOnHardware = true;
 
-        _vadTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) async {
-          if (_isManagerDisposed || !_isRecordingOnHardware || !_isRollingChatRecord) {
+        _vadTimer = Timer.periodic(const Duration(milliseconds: 200), (
+          timer,
+        ) async {
+          if (_isManagerDisposed ||
+              !_isRecordingOnHardware ||
+              !_isRollingChatRecord ||
+              sessionId != _chatRecordSessionId) {
             timer.cancel();
             return;
           }
@@ -497,9 +559,11 @@ class VoiceAssistantManager {
           if (currentDb >= _vadThresholdDb) {
             _consecutiveLoudTicks++;
             if (_consecutiveLoudTicks >= 2 && !_hasSpoken) _hasSpoken = true;
-            if (_hasSpoken) { _silenceMs = 0; _idleMs = 0; }
-          }
-          else {
+            if (_hasSpoken) {
+              _silenceMs = 0;
+              _idleMs = 0;
+            }
+          } else {
             _consecutiveLoudTicks = 0;
             if (_hasSpoken) {
               _silenceMs += 200;
@@ -543,7 +607,8 @@ class VoiceAssistantManager {
 
       if (_isManagerDisposed) return;
 
-      if (_currentRecordPath != null && File(_currentRecordPath!).existsSync()) {
+      if (_currentRecordPath != null &&
+          File(_currentRecordPath!).existsSync()) {
         onSpeechCompleted?.call([_currentRecordPath!]);
       } else {
         onSpeechCompleted?.call([]);
@@ -560,7 +625,9 @@ class VoiceAssistantManager {
   Future<void> stopCurrentPlayback() async {
     if (_isManagerDisposed) return;
     _playSessionId++;
-    try { await _audioPlayer.stop(); } catch (_) {}
+    try {
+      await _audioPlayer.stop();
+    } catch (_) {}
   }
 
   Future<void> playLanguageSequence({
@@ -570,7 +637,13 @@ class VoiceAssistantManager {
     int gapMs = 300,
     int partGapMs = 150,
   }) async {
-    if (texts.isEmpty || kIsWeb || languages.isEmpty || repeatCount <= 0 || _isManagerDisposed) return;
+    if (texts.isEmpty ||
+        kIsWeb ||
+        languages.isEmpty ||
+        repeatCount <= 0 ||
+        _isManagerDisposed) {
+      return;
+    }
 
     final currentSession = ++_playSessionId;
 
@@ -587,7 +660,8 @@ class VoiceAssistantManager {
           final cacheKey = '$lang::$text';
 
           if (_ttsCache.containsKey(cacheKey)) {
-            _cacheMetadata[cacheKey]?['lastUsed'] = DateTime.now().millisecondsSinceEpoch;
+            _cacheMetadata[cacheKey]?['lastUsed'] =
+                DateTime.now().millisecondsSinceEpoch;
             continue;
           }
 
@@ -603,7 +677,8 @@ class VoiceAssistantManager {
           final fileSize = audioBytes.length;
           await _checkAndCleanupCache(fileSize);
 
-          final fileName = 'tts_${safeLang}_${DateTime.now().millisecondsSinceEpoch}.wav';
+          final fileName =
+              'tts_${safeLang}_${DateTime.now().millisecondsSinceEpoch}.wav';
           final file = File('${storageDir.path}/$fileName');
 
           await file.writeAsBytes(audioBytes, flush: true);
