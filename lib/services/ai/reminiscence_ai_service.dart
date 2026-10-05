@@ -201,13 +201,58 @@ class ReminiscenceAiService {
   Future<String> extractElderName(String transcript) async {
     final result = await _client.complete(
       messages: [
-        const LlmMessage('system', '從自我介紹中擷取稱呼，只回傳名字；無法判斷就回傳「長輩」。'),
+        const LlmMessage(
+          'system',
+          '從自我介紹擷取正在說話者的姓名及本人明確指定的稱謂，不擷取其他人的姓名。'
+              '只輸出 JSON，例如 {"name":"王小明","title":"先生"}；未知值使用 JSON null，不是字串。'
+              'name 不包含稱謂或分析，必須出現在逐字稿內；不確定姓名時填 null。'
+              'title 僅能是先生、小姐、女士、阿公、阿嬤、伯伯、阿姨、爺爺、奶奶、哥哥、姊姊、長輩，'
+              '且必須是本人在逐字稿明確指定的稱呼；未指定填 null，不要依名字猜性別。',
+        ),
         LlmMessage('user', transcript),
       ],
       temperature: 0.1,
-      maxTokens: 30,
+      maxTokens: 1024,
+      jsonObject: true,
     );
-    return result.replaceAll(RegExp(r'[\n"「」]'), '').trim();
+    try {
+      final data = decodeJsonObjectFromText(result, requiredKey: 'name');
+      final name = data['name'];
+      final title = data['title'];
+      const titles = {
+        '先生',
+        '小姐',
+        '女士',
+        '阿公',
+        '阿嬤',
+        '伯伯',
+        '阿姨',
+        '爺爺',
+        '奶奶',
+        '哥哥',
+        '姊姊',
+        '長輩',
+      };
+      String compact(String text) => text.replaceAll(RegExp(r'\s+'), '');
+      if (name is! String ||
+          name.trim().isEmpty ||
+          name.trim().length > 40 ||
+          !RegExp(r"^[\u3400-\u9fffA-Za-z ·'’-]+$").hasMatch(name.trim()) ||
+          !compact(transcript).contains(compact(name.trim())) ||
+          titles.any((suffix) => name.trim().endsWith(suffix)) ||
+          (title != null &&
+              (title is! String ||
+                  !titles.contains(title) ||
+                  !transcript.contains(title)))) {
+        throw const FormatException('無法確認姓名或稱謂');
+      }
+      return '${name.trim()}${title ?? '長輩'}';
+    } on FormatException {
+      throw const AiServiceException(
+        AiServiceErrorKind.invalidResponse,
+        '沒有確認到您的姓名，請再介紹一次，例如「我叫王小明，請叫我王先生」。',
+      );
+    }
   }
 
   Future<String> generateExtendedQuestion(

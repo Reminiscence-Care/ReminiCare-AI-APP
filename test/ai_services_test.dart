@@ -141,8 +141,8 @@ void main() {
             'choices': [
               {
                 'message': {
-                  'content': null,
-                  'reasoning_content': '{"topics":[]}',
+                  'content': '{"topics":[]}',
+                  'reasoning_content': 'Private analysis, not a final answer',
                 },
               },
             ],
@@ -159,6 +159,56 @@ void main() {
     expect(requestBody['reasoning_effort'], 'low');
     expect(requestBody['chat_template_kwargs'], {'clear_thinking': true});
   });
+
+  test('reasoning-only responses are never exposed as final text', () {
+    for (final key in ['reasoning_content', 'reasoning', 'analysis']) {
+      expect(
+        extractProviderMessageText({
+          'choices': [
+            {
+              'message': {'content': null, key: 'Extract name: 王小明?'},
+            },
+          ],
+        }),
+        isNull,
+      );
+    }
+  });
+
+  test(
+    'name extraction accepts structured name and explicit honorific',
+    () async {
+      final service = ReminiscenceAiService(
+        _FakeLlmClient('{"name":"王小明","title":"先生"}'),
+      );
+      expect(await service.extractElderName('我叫王小明，叫我王先生。'), '王小明先生');
+      final neutral = ReminiscenceAiService(
+        _FakeLlmClient('{"name":"丁紅圓","title":null}'),
+      );
+      expect(await neutral.extractElderName('我叫丁紅圓'), '丁紅圓長輩');
+    },
+  );
+
+  test(
+    'name extraction rejects analysis, unknown names and guessed titles',
+    () async {
+      for (final response in [
+        'Extract name: 丁紅圓? Ambiguous;',
+        '{"name":null,"title":null}',
+        '{"name":"陳大文","title":null}',
+        '{"name":"丁紅圓","title":"小姐"}',
+        '{"name":"丁紅圓","title":"Extract name"}',
+        '{"name":"丁紅圓","title":',
+      ]) {
+        expect(
+          () => ReminiscenceAiService(
+            _FakeLlmClient(response),
+          ).extractElderName('我叫丁紅圓'),
+          throwsA(isA<AiServiceException>()),
+        );
+      }
+    },
+  );
 
   test('JSON parser selects the last complete object from model drafts', () {
     final result = decodeJsonObjectFromText(

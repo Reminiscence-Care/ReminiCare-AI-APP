@@ -10,14 +10,7 @@ String? extractProviderMessageText(dynamic decoded) {
       if (message is Map<String, dynamic>) {
         final content = _contentText(message['content']);
         if (content != null && content.isNotEmpty) return content;
-        for (final key in const [
-          'reasoning_content',
-          'reasoning',
-          'analysis',
-        ]) {
-          final fallback = _contentText(message[key]);
-          if (fallback != null && fallback.isNotEmpty) return fallback;
-        }
+        // Private reasoning is not a final answer, even when content is empty.
       }
       final text = _contentText(first['text']);
       if (text != null && text.isNotEmpty) return text;

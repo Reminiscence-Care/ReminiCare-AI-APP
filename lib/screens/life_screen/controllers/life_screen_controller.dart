@@ -330,11 +330,15 @@ class LifeScreenController extends ChangeNotifier {
         introductionState = IntroductionState.processing;
         _notify();
         try {
-          currentElderName = text.isEmpty
-              ? '長輩'
-              : await _ai.extractElderName(text);
+          final name = await _ai.extractElderName(text);
+          if (!_isCurrent(requestSession)) return;
+          currentElderName = name;
         } catch (_) {
-          currentElderName = '長輩';
+          if (!_isCurrent(requestSession)) return;
+          currentElderName = '';
+          errorMessage = '沒有確認到您的姓名，請再介紹一次，並說明希望怎麼稱呼您。';
+          introductionState = IntroductionState.ready;
+          return;
         }
         if (!_isCurrent(requestSession)) return;
         introductionState = IntroductionState.confirmed;

@@ -121,8 +121,40 @@ void main() {
       await controller.retryTranscription();
       expect(stt.calls, 2);
       expect(controller.introductionState, IntroductionState.confirmed);
+      expect(controller.currentElderName, '王先生');
       expect(await file.exists(), isFalse);
       expect(controller.isTranscribing, isFalse);
+      controller.dispose();
+    },
+  );
+
+  test(
+    'invalid name stays in introduction without saving model analysis',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'reminicare_name_test_',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final file = File('${root.path}/recording.wav');
+      await file.writeAsBytes([1, 2, 3]);
+      final llm = _TopicLlm()..nameResponse = 'Extract name: 王? Ambiguous;';
+      final image = _CountingImageClient();
+      final stt = _FailsOnceStt()..calls = 1;
+      final controller = LifeScreenController(
+        aiService: ReminiscenceAiService(llm),
+        imageService: image,
+        sttService: stt,
+      );
+      await controller.initialize();
+    controller.stage = LifeStage.introduction;
+      await controller.completeRecording([file.path]);
+      expect(controller.stage, LifeStage.introduction);
+      expect(controller.introductionState, IntroductionState.ready);
+      expect(controller.currentElderName, isEmpty);
+      expect(controller.elderNames, isEmpty);
+      expect(controller.errorMessage, contains('請再介紹一次'));
+      expect(controller.isTranscribing, isFalse);
+      expect(image.generateCalls, 0);
       controller.dispose();
     },
   );
@@ -177,6 +209,7 @@ class _PendingLlm implements LlmClient {
 
 class _TopicLlm implements LlmClient {
   int calls = 0;
+  String nameResponse = '{"name":"王","title":"先生"}';
 
   @override
   Future<String> complete({
@@ -186,6 +219,9 @@ class _TopicLlm implements LlmClient {
     bool jsonObject = false,
   }) async {
     calls++;
+    if (messages.any((m) => m.content.contains('正在說話者'))) {
+      return nameResponse;
+    }
     return '''
       {"topics":[
         {"title":"下棋","question":"以前在哪裡下棋？","followUpQuestion":"和誰一起？","imagePrompt":"chess","imageSearchQuery":"台灣 下棋 老照片 | vintage Taiwan chess","categoryId":"childhood_games"},
