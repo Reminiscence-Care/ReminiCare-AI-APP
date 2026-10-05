@@ -179,13 +179,13 @@ void main() {
     'name extraction accepts structured name and explicit honorific',
     () async {
       final service = ReminiscenceAiService(
-        _FakeLlmClient('{"name":"王小明","title":"先生"}'),
+        _FakeLlmClient('{"surname":"王","title":"先生"}'),
       );
-      expect(await service.extractElderName('我叫王小明，叫我王先生。'), '王小明先生');
+      expect(await service.extractElderName('我叫王小明，叫我王先生。'), '王先生');
       final neutral = ReminiscenceAiService(
-        _FakeLlmClient('{"name":"丁紅圓","title":null}'),
+        _FakeLlmClient('{"surname":"丁","title":null}'),
       );
-      expect(await neutral.extractElderName('我叫丁紅圓'), '丁紅圓長輩');
+      expect(await neutral.extractElderName('我叫丁紅圓'), '丁長輩');
     },
   );
 
@@ -194,11 +194,13 @@ void main() {
     () async {
       for (final response in [
         'Extract name: 丁紅圓? Ambiguous;',
-        '{"name":null,"title":null}',
-        '{"name":"陳大文","title":null}',
-        '{"name":"丁紅圓","title":"小姐"}',
-        '{"name":"丁紅圓","title":"Extract name"}',
-        '{"name":"丁紅圓","title":',
+        '{"surname":null,"title":null}',
+        '{"surname":"陳","title":null}',
+        '{"surname":"丁","title":"小姐"}',
+        '{"surname":"丁","title":"Extract name"}',
+        '{"surname":"丁","title":',
+        '{"surname":"丁紅圓","title":null}',
+        '{"surname":"丁紅","title":null}',
       ]) {
         expect(
           () => ReminiscenceAiService(
@@ -207,6 +209,22 @@ void main() {
           throwsA(isA<AiServiceException>()),
         );
       }
+    },
+  );
+
+  test(
+    'surname display ignores given-name homophones and preserves compounds',
+    () async {
+      final service = ReminiscenceAiService(
+        _FakeLlmClient('{"surname":"王","title":"先生"}'),
+      );
+      for (final givenName in ['鴻', '泓']) {
+        expect(await service.extractElderName('我叫王$givenName，叫我王先生'), '王先生');
+      }
+      final compound = ReminiscenceAiService(
+        _FakeLlmClient('{"surname":"歐陽","title":"女士"}'),
+      );
+      expect(await compound.extractElderName('我叫歐陽秀，請叫我歐陽女士'), '歐陽女士');
     },
   );
 

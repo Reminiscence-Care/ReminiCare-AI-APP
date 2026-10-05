@@ -203,9 +203,10 @@ class ReminiscenceAiService {
       messages: [
         const LlmMessage(
           'system',
-          '從自我介紹擷取正在說話者的姓名及本人明確指定的稱謂，不擷取其他人的姓名。'
-              '只輸出 JSON，例如 {"name":"王小明","title":"先生"}；未知值使用 JSON null，不是字串。'
-              'name 不包含稱謂或分析，必須出現在逐字稿內；不確定姓名時填 null。'
+          '從自我介紹只擷取正在說話者的姓氏及本人明確指定的稱謂，不擷取名字或其他人的姓氏。'
+              '只輸出 JSON，例如 {"surname":"王","title":"先生"}；未知值使用 JSON null，不是字串。'
+              'surname 只包含姓氏，通常一個中文字，歐陽、司馬等複姓保留兩字；'
+              '例如王鴻、王泓皆回傳王，歐陽鴻回傳歐陽。必須出現在逐字稿內；不確定姓氏填 null。'
               'title 僅能是先生、小姐、女士、阿公、阿嬤、伯伯、阿姨、爺爺、奶奶、哥哥、姊姊、長輩，'
               '且必須是本人在逐字稿明確指定的稱呼；未指定填 null，不要依名字猜性別。',
         ),
@@ -216,9 +217,60 @@ class ReminiscenceAiService {
       jsonObject: true,
     );
     try {
-      final data = decodeJsonObjectFromText(result, requiredKey: 'name');
-      final name = data['name'];
+      final data = decodeJsonObjectFromText(result, requiredKey: 'surname');
+      final name = data['surname'];
       final title = data['title'];
+      const compoundSurnames = {
+        '歐陽',
+        '欧阳',
+        '司馬',
+        '司马',
+        '上官',
+        '諸葛',
+        '诸葛',
+        '司徒',
+        '司空',
+        '夏侯',
+        '皇甫',
+        '尉遲',
+        '尉迟',
+        '公孫',
+        '公孙',
+        '慕容',
+        '令狐',
+        '宇文',
+        '南宮',
+        '南宫',
+        '東方',
+        '东方',
+        '西門',
+        '西门',
+        '獨孤',
+        '独孤',
+        '長孫',
+        '长孙',
+        '端木',
+        '赫連',
+        '赫连',
+        '澹臺',
+        '澹台',
+        '太史',
+        '聞人',
+        '闻人',
+        '申屠',
+        '公羊',
+        '仲孫',
+        '仲孙',
+        '軒轅',
+        '轩辕',
+        '太叔',
+        '淳于',
+        '公冶',
+        '子車',
+        '子车',
+        '顓孫',
+        '颛孙',
+      };
       const titles = {
         '先生',
         '小姐',
@@ -236,21 +288,22 @@ class ReminiscenceAiService {
       String compact(String text) => text.replaceAll(RegExp(r'\s+'), '');
       if (name is! String ||
           name.trim().isEmpty ||
-          name.trim().length > 40 ||
-          !RegExp(r"^[\u3400-\u9fffA-Za-z ·'’-]+$").hasMatch(name.trim()) ||
+          !RegExp(r'^[\u3400-\u9fff]{1,2}$').hasMatch(name.trim()) ||
+          (name.trim().length == 2 &&
+              !compoundSurnames.contains(name.trim())) ||
           !compact(transcript).contains(compact(name.trim())) ||
           titles.any((suffix) => name.trim().endsWith(suffix)) ||
           (title != null &&
               (title is! String ||
                   !titles.contains(title) ||
                   !transcript.contains(title)))) {
-        throw const FormatException('無法確認姓名或稱謂');
+        throw const FormatException('無法確認姓氏或稱謂');
       }
       return '${name.trim()}${title ?? '長輩'}';
     } on FormatException {
       throw const AiServiceException(
         AiServiceErrorKind.invalidResponse,
-        '沒有確認到您的姓名，請再介紹一次，例如「我叫王小明，請叫我王先生」。',
+        '沒有確認到您的姓氏，請再介紹一次，例如「我姓王，請叫我王先生」。',
       );
     }
   }

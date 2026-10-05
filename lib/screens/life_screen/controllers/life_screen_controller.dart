@@ -336,7 +336,7 @@ class LifeScreenController extends ChangeNotifier {
         } catch (_) {
           if (!_isCurrent(requestSession)) return;
           currentElderName = '';
-          errorMessage = '沒有確認到您的姓名，請再介紹一次，並說明希望怎麼稱呼您。';
+          errorMessage = '沒有確認到您的姓氏，請再介紹一次，並說明希望怎麼稱呼您。';
           introductionState = IntroductionState.ready;
           return;
         }

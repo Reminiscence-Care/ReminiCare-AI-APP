@@ -146,7 +146,7 @@ void main() {
         sttService: stt,
       );
       await controller.initialize();
-    controller.stage = LifeStage.introduction;
+      controller.stage = LifeStage.introduction;
       await controller.completeRecording([file.path]);
       expect(controller.stage, LifeStage.introduction);
       expect(controller.introductionState, IntroductionState.ready);
@@ -209,7 +209,7 @@ class _PendingLlm implements LlmClient {
 
 class _TopicLlm implements LlmClient {
   int calls = 0;
-  String nameResponse = '{"name":"王","title":"先生"}';
+  String nameResponse = '{"surname":"王","title":"先生"}';
 
   @override
   Future<String> complete({
