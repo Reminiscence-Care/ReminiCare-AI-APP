@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../models/reminiscence_topic.dart';
+import '../../../models/participant_address.dart';
+import 'participant_address_dialog.dart';
 import '../../../theme/remini_care_theme.dart';
 import '../controllers/life_screen_controller.dart';
 
@@ -174,12 +176,42 @@ class IntroductionStage extends StatelessWidget {
             child: Text(
               controller.currentElderName.isEmpty
                   ? '我叫＿＿＿＿'
-                  : '我叫 ${controller.currentElderName}',
+                  : '稱呼您：${controller.currentElderName}',
               style: TextStyle(
                 fontSize: ReminiCareBreakpoints.actionSize(context),
               ),
             ),
           ),
+          if (state == IntroductionState.confirmed ||
+              (state == IntroductionState.ready &&
+                  controller.errorMessage != null)) ...[
+            TextButton.icon(
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('修改稱呼', style: TextStyle(fontSize: 24)),
+              onPressed: () async {
+                final revision = controller.introductionRevision;
+                final address = await showDialog<ParticipantAddress>(
+                  context: context,
+                  builder: (_) => ParticipantAddressDialog(
+                    initial: ParticipantAddress.fromDisplayName(
+                      controller.currentElderName,
+                    ),
+                  ),
+                );
+                if (address != null) {
+                  controller.correctParticipantAddress(
+                    address,
+                    revision: revision,
+                  );
+                }
+              },
+            ),
+            const Text(
+              '確認稱呼正確後，按「下一位」或「開始聊天」。',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 20),
+            ),
+          ],
           const SizedBox(height: 52),
           _TranscriptionFeedback(controller: controller),
           if (state == IntroductionState.processing)

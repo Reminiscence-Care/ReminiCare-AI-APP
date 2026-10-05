@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../models/reminiscence_topic.dart';
+import '../../../models/participant_address.dart';
 import '../../../services/ai/ai_models.dart';
 import '../../../services/ai/ai_service_exception.dart';
 import '../../../services/ai/reminiscence_ai_service.dart';
@@ -58,6 +59,8 @@ class LifeScreenController extends ChangeNotifier {
   ReminiscenceTopic? selectedTopic;
   List<String> elderNames = [];
   String currentElderName = '';
+  int _introductionRevision = 0;
+  int get introductionRevision => _introductionRevision;
   String selectedLanguage = '台語';
   String currentQuestion = '';
   String transcript = '';
@@ -124,6 +127,7 @@ class LifeScreenController extends ChangeNotifier {
 
   void selectTopic(ReminiscenceTopic topic) {
     if (stage != LifeStage.topicSelection) return;
+    _introductionRevision++;
     _session++;
     selectedTopic = topic;
     currentQuestion = topic.question;
@@ -135,6 +139,7 @@ class LifeScreenController extends ChangeNotifier {
 
   Future<void> startIntroductionRecording() async {
     if (_busy || introductionState == IntroductionState.recording) return;
+    _introductionRevision++;
     if (await _startRecording()) {
       introductionState = IntroductionState.recording;
     }
@@ -145,6 +150,13 @@ class LifeScreenController extends ChangeNotifier {
       _voice?.forceEndChat() ?? Future.value();
 
   void addNextParticipant() {
+    if (_disposed ||
+        _busy ||
+        introductionState != IntroductionState.confirmed ||
+        stage != LifeStage.introduction) {
+      return;
+    }
+    _introductionRevision++;
     if (currentElderName.isNotEmpty && currentElderName != '長輩') {
       elderNames.add(currentElderName);
     }
@@ -154,6 +166,13 @@ class LifeScreenController extends ChangeNotifier {
   }
 
   Future<void> finishIntroduction() async {
+    if (_disposed ||
+        _busy ||
+        introductionState != IntroductionState.confirmed ||
+        stage != LifeStage.introduction) {
+      return;
+    }
+    _introductionRevision++;
     if (currentElderName.isNotEmpty && currentElderName != '長輩') {
       elderNames.add(currentElderName);
     }
@@ -162,6 +181,27 @@ class LifeScreenController extends ChangeNotifier {
     introductionState = IntroductionState.ready;
     _notify();
     await _play(currentQuestion, bothLanguages: true);
+  }
+
+  void correctParticipantAddress(
+    ParticipantAddress address, {
+    required int revision,
+  }) {
+    if (_disposed ||
+        _busy ||
+        isRecording ||
+        (introductionState != IntroductionState.ready &&
+            introductionState != IntroductionState.confirmed) ||
+        stage != LifeStage.introduction ||
+        revision != _introductionRevision ||
+        !address.isValid) {
+      return;
+    }
+    currentElderName = address.displayName;
+    introductionState = IntroductionState.confirmed;
+    errorMessage = null;
+    _introductionRevision++;
+    _notify();
   }
 
   Future<void> startAnswerRecording() async {
@@ -242,6 +282,7 @@ class LifeScreenController extends ChangeNotifier {
   }
 
   Future<void> leave() async {
+    _introductionRevision++;
     _session++;
     await _stopAllAudio();
     await _clearPendingAudio();
