@@ -45,6 +45,8 @@ class ReminiscenceTopic {
     required this.imagePrompt,
     required this.imageSearchQuery,
     this.categoryId = 'other',
+    this.topicId,
+    this.illustrative = false,
     this.thumbnailPath,
     this.thumbnailStatus = ThumbnailStatus.idle,
     this.thumbnailSourceId,
@@ -59,6 +61,8 @@ class ReminiscenceTopic {
   final String imagePrompt;
   final String imageSearchQuery;
   final String categoryId;
+  final String? topicId;
+  final bool illustrative;
   final String? thumbnailPath;
   final ThumbnailStatus thumbnailStatus;
   final String? thumbnailSourceId;
@@ -69,6 +73,8 @@ class ReminiscenceTopic {
   static const _unset = Object();
 
   ReminiscenceTopic copyWith({
+    String? question,
+    String? followUpQuestion,
     Object? thumbnailPath = _unset,
     ThumbnailStatus? thumbnailStatus,
     Object? thumbnailSourceId = _unset,
@@ -77,8 +83,10 @@ class ReminiscenceTopic {
     Object? thumbnailAttribution = _unset,
   }) => ReminiscenceTopic(
     title: title,
-    question: question,
-    followUpQuestion: followUpQuestion,
+    question: question ?? this.question,
+    followUpQuestion: followUpQuestion ?? this.followUpQuestion,
+    topicId: topicId,
+    illustrative: illustrative,
     imagePrompt: imagePrompt,
     imageSearchQuery: imageSearchQuery,
     categoryId: categoryId,
@@ -104,6 +112,7 @@ class ReminiscenceTopic {
     String value(String key) => (json[key] ?? '').toString().trim();
     final title = value('title');
     return ReminiscenceTopic(
+      topicId: value('topicId').isEmpty ? null : value('topicId'),
       title: title,
       question: value('question'),
       followUpQuestion: value('followUpQuestion'),

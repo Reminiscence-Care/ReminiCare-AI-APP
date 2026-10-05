@@ -181,6 +181,7 @@ class IntroductionStage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 52),
+          _TranscriptionFeedback(controller: controller),
           if (state == IntroductionState.processing)
             const CircularProgressIndicator(color: ReminiCareTheme.yellow)
           else if (state == IntroductionState.confirmed)
@@ -203,7 +204,9 @@ class IntroductionStage extends StatelessWidget {
             )
           else
             _RoundAction(
-              label: state == IntroductionState.recording ? '說完了' : '開始介紹',
+              label: state == IntroductionState.recording
+                  ? '說完了'
+                  : (controller.canRetryTranscription ? '重新錄音' : '開始介紹'),
               icon: state == IntroductionState.recording
                   ? Icons.stop_rounded
                   : Icons.mic_rounded,
@@ -217,6 +220,36 @@ class IntroductionStage extends StatelessWidget {
   }
 }
 
+class _TranscriptionFeedback extends StatelessWidget {
+  const _TranscriptionFeedback({required this.controller});
+  final LifeScreenController controller;
+  @override
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      if (controller.isTranscribing) ...[
+        const LinearProgressIndicator(),
+        Text(
+          '辨識中 ${controller.transcriptionComplete}/${controller.transcriptionTotal}',
+          style: const TextStyle(fontSize: 20),
+        ),
+      ],
+      if (controller.stage == LifeStage.introduction &&
+          controller.errorMessage != null)
+        Text(
+          controller.errorMessage!,
+          style: const TextStyle(color: Colors.redAccent, fontSize: 18),
+        ),
+      if (controller.canRetryTranscription)
+        TextButton.icon(
+          onPressed: controller.retryTranscription,
+          icon: const Icon(Icons.refresh),
+          label: const Text('重試辨識'),
+        ),
+    ],
+  );
+}
+
 class QuestionStage extends StatelessWidget {
   const QuestionStage({super.key, required this.controller});
   final LifeScreenController controller;
@@ -225,6 +258,7 @@ class QuestionStage extends StatelessWidget {
     child: Column(
       children: [
         _LanguageSelector(controller: controller),
+        _TranscriptionFeedback(controller: controller),
         const Spacer(),
         Container(
           width: double.infinity,
@@ -260,7 +294,9 @@ class QuestionStage extends StatelessWidget {
           ),
         const SizedBox(height: 16),
         _RoundAction(
-          label: controller.isRecording ? '說完了' : '開始說',
+          label: controller.isRecording
+              ? '說完了'
+              : (controller.canRetryTranscription ? '重新錄音' : '開始說'),
           icon: controller.isRecording ? Icons.stop_rounded : Icons.mic_rounded,
           onPressed: controller.isRecording
               ? controller.stopAnswerRecording
@@ -374,6 +410,7 @@ class RevisionStage extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         _LanguageSelector(controller: controller),
+        _TranscriptionFeedback(controller: controller),
         const Spacer(),
         Text(
           '哪裡不太像呢？',
@@ -404,7 +441,9 @@ class RevisionStage extends StatelessWidget {
           ),
         const SizedBox(height: 16),
         _RoundAction(
-          label: controller.isRecording ? '說完了' : '開始說',
+          label: controller.isRecording
+              ? '說完了'
+              : (controller.canRetryTranscription ? '重新錄音' : '開始說'),
           icon: controller.isRecording ? Icons.stop_rounded : Icons.mic_rounded,
           onPressed: controller.isRecording
               ? controller.stopAnswerRecording
@@ -644,6 +683,7 @@ class _TopicImage extends StatelessWidget {
               right: 8,
               child: _AttributionButton(
                 attribution: topic.thumbnailAttribution!,
+                illustrative: topic.illustrative,
               ),
             ),
         ],
@@ -658,20 +698,26 @@ class _TopicImageFile extends StatelessWidget {
   final BoxFit fit;
 
   @override
-  Widget build(BuildContext context) => Image.file(
-    File(path),
-    fit: fit,
-    gaplessPlayback: true,
-    errorBuilder: (_, _, _) => const ColoredBox(
-      color: Color(0xFFF1EFE9),
-      child: Center(child: Icon(Icons.broken_image_outlined, size: 54)),
-    ),
-  );
+  Widget build(BuildContext context) => path.startsWith('asset:')
+      ? Image.asset(path.substring(6), fit: fit, gaplessPlayback: true)
+      : Image.file(
+          File(path),
+          fit: fit,
+          gaplessPlayback: true,
+          errorBuilder: (_, _, _) => const ColoredBox(
+            color: Color(0xFFF1EFE9),
+            child: Center(child: Icon(Icons.broken_image_outlined, size: 54)),
+          ),
+        );
 }
 
 class _AttributionButton extends StatelessWidget {
-  const _AttributionButton({required this.attribution});
+  const _AttributionButton({
+    required this.attribution,
+    this.illustrative = false,
+  });
   final TopicImageAttribution attribution;
+  final bool illustrative;
 
   @override
   Widget build(BuildContext context) => Material(
@@ -695,6 +741,7 @@ class _AttributionButton extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(attribution.title),
+          if (illustrative) const Text('示意照片：用於引導回憶，並非當年的歷史照片。'),
           const SizedBox(height: 12),
           Text('作者：${attribution.creator}'),
           Text('來源：${attribution.source}'),

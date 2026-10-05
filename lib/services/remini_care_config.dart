@@ -30,6 +30,22 @@ abstract final class ReminiCareConfig {
 
   static const fields = <ConfigField>[
     ConfigField(
+      apiKey: 'VOICE_INTRO_SILENCE_SECONDS',
+      displayName: '自我介紹：說完後等待秒數（1–30）',
+      hintText: '3',
+      isSecure: false,
+      hasDefaultValue: true,
+      defaultValue: '3',
+    ),
+    ConfigField(
+      apiKey: 'VOICE_CHAT_SILENCE_SECONDS',
+      displayName: '聊天／修圖：說完後等待秒數（1–30）',
+      hintText: '6',
+      isSecure: false,
+      hasDefaultValue: true,
+      defaultValue: '6',
+    ),
+    ConfigField(
       apiKey: 'NVIDIA_API_KEY',
       displayName: 'NVIDIA API Key',
       hintText: 'nvapi-...',
@@ -273,6 +289,24 @@ abstract final class ReminiCareConfig {
 
   static String? validateProviderSettings(Map<String, String> values) {
     String read(String key) => (values[key] ?? getValue(key)).trim();
+    for (final key in [
+      'VOICE_INTRO_SILENCE_SECONDS',
+      'VOICE_CHAT_SILENCE_SECONDS',
+    ]) {
+      final raw = values.containsKey(key)
+          ? read(key)
+          : (read(key).isEmpty
+                ? (key == 'VOICE_INTRO_SILENCE_SECONDS' ? '3' : '6')
+                : read(key));
+      final number = double.tryParse(raw);
+      if (number == null ||
+          !number.isFinite ||
+          number < 1 ||
+          number > 30 ||
+          !RegExp(r'^\d+(\.\d)?$').hasMatch(raw)) {
+        return '${key == 'VOICE_INTRO_SILENCE_SECONDS' ? '自我介紹' : '聊天／修圖'}等待時間需為 1–30 秒，最多小數一位';
+      }
+    }
     final llm = read('selectedLlmProvider').isEmpty
         ? 'nvidia'
         : read('selectedLlmProvider');

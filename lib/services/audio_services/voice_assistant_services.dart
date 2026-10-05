@@ -13,6 +13,8 @@ import 'package:remini_care_ai_app/services/remini_care_config.dart';
 import 'package:audio_session/audio_session.dart' as a_session;
 
 import 'package:remini_care_ai_app/services/audio_services/speech_services.dart';
+import 'stt_result.dart';
+import 'speech_pause_detector.dart';
 
 // =========================================================================
 // 🎙️ 💡 獨立語音助手核心控制器 (VoiceAssistantManager)
@@ -235,6 +237,13 @@ class VoiceAssistantManager {
         _isRecordingOnHardware = false;
         if (!kIsWeb) await Future.delayed(const Duration(milliseconds: 300));
       }
+      final cancelledPath = _currentRecordPath;
+      _currentRecordPath = null;
+      if (cancelledPath != null) {
+        try {
+          await File(cancelledPath).delete();
+        } catch (_) {}
+      }
     } catch (e) {
       debugPrint("[助理] 停止錄音硬體釋放異常: $e");
     }
@@ -272,6 +281,13 @@ class VoiceAssistantManager {
       try {
         await _audioRecorder.dispose();
       } catch (_) {}
+      final path = _currentRecordPath;
+      _currentRecordPath = null;
+      if (path != null) {
+        try {
+          await File(path).delete();
+        } catch (_) {}
+      }
     }
   }
 
@@ -487,7 +503,9 @@ class VoiceAssistantManager {
   // ==========================================
   // 🎙️ 引擎 B：智慧語音對話流 (聊天室模式 VAD)
   // ==========================================
-  Future<void> startChatFlow() async {
+  Future<void> startChatFlow({
+    Duration silenceTimeout = const Duration(seconds: 6),
+  }) async {
     if (_isManagerDisposed) return;
     await stopActiveAudioOperations();
     _isRollingChatRecord = true;
@@ -500,6 +518,10 @@ class VoiceAssistantManager {
     _silenceMs = 0;
     _idleMs = 0;
     _consecutiveLoudTicks = 0;
+
+    final clock = Stopwatch()..start();
+    final pauseDetector = SpeechPauseDetector(silenceTimeout: silenceTimeout);
+    var sampling = false;
 
     try {
       if (await _audioRecorder.hasPermission()) {
@@ -525,6 +547,7 @@ class VoiceAssistantManager {
         _vadTimer = Timer.periodic(const Duration(milliseconds: 200), (
           timer,
         ) async {
+          if (sampling) return;
           if (_isManagerDisposed ||
               !_isRecordingOnHardware ||
               !_isRollingChatRecord ||
@@ -534,12 +557,16 @@ class VoiceAssistantManager {
           }
 
           Amplitude amplitude;
+          sampling = true;
           try {
             amplitude = await _audioRecorder.getAmplitude();
           } catch (e) {
             timer.cancel();
             return;
+          } finally {
+            sampling = false;
           }
+          if (sessionId != _chatRecordSessionId || _isManagerDisposed) return;
 
           final currentDb = amplitude.current;
 
@@ -556,40 +583,30 @@ class VoiceAssistantManager {
             return;
           }
 
-          if (currentDb >= _vadThresholdDb) {
-            _consecutiveLoudTicks++;
-            if (_consecutiveLoudTicks >= 2 && !_hasSpoken) _hasSpoken = true;
-            if (_hasSpoken) {
-              _silenceMs = 0;
-              _idleMs = 0;
-            }
-          } else {
-            _consecutiveLoudTicks = 0;
-            if (_hasSpoken) {
-              _silenceMs += 200;
-              if (_silenceMs >= _silenceThresholdMs) {
-                timer.cancel();
-                await forceEndChat();
-              }
-            } else {
-              _idleMs += 200;
-              if (_idleMs >= _idleTimeoutMs) {
-                timer.cancel();
-                await forceEndChat();
-              }
-            }
+          if (pauseDetector.sample(
+            elapsed: clock.elapsed,
+            loud: currentDb >= _vadThresholdDb,
+          )) {
+            timer.cancel();
+            await forceEndChat();
           }
         });
       } else {
-        debugPrint("❌ 麥克風權限已被拒絕！");
+        throw const SttException(
+          SttErrorKind.invalidAudio,
+          '麥克風權限未開啟，請到裝置設定允許錄音。',
+        );
       }
     } catch (e) {
       debugPrint("[智慧對話錄音] 啟動異常: $e");
       _isRecordingOnHardware = false;
+      _isRollingChatRecord = false;
+      rethrow;
     }
   }
 
   Future<void> forceEndChat() async {
+    if (!_isRollingChatRecord) return;
     _isRollingChatRecord = false;
     _chatRecordSessionId++;
 
@@ -607,9 +624,10 @@ class VoiceAssistantManager {
 
       if (_isManagerDisposed) return;
 
-      if (_currentRecordPath != null &&
-          File(_currentRecordPath!).existsSync()) {
-        onSpeechCompleted?.call([_currentRecordPath!]);
+      final path = _currentRecordPath;
+      _currentRecordPath = null;
+      if (path != null && File(path).existsSync()) {
+        onSpeechCompleted?.call([path]);
       } else {
         onSpeechCompleted?.call([]);
       }

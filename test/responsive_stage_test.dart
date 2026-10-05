@@ -6,6 +6,7 @@ import 'package:remini_care_ai_app/models/reminiscence_topic.dart';
 import 'package:remini_care_ai_app/screens/life_screen/controllers/life_screen_controller.dart';
 import 'package:remini_care_ai_app/screens/life_screen/widgets/stage_views.dart';
 import 'package:remini_care_ai_app/theme/remini_care_theme.dart';
+import 'package:remini_care_ai_app/services/topic_catalog.dart';
 
 void main() {
   const topics = [
@@ -38,6 +39,35 @@ void main() {
       imageSearchQuery: '節日 | festival',
     ),
   ];
+
+  testWidgets(
+    'catalog cards render bundled images and illustrative attribution',
+    (tester) async {
+      final catalog = await TopicCatalog.load();
+      final controller = LifeScreenController()
+        ..stage = LifeStage.topicSelection
+        ..topics = catalog.topics.where((t) => t.illustrative).take(4).toList();
+      await tester.binding.setSurfaceSize(const Size(1366, 1024));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: TopicSelectionStage(controller: controller)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widgetList<Image>(find.byType(Image))
+            .any((image) => image.image is AssetImage),
+        isTrue,
+      );
+      await tester.tap(find.byTooltip('圖片來源與授權').first);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('示意照片'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      controller.dispose();
+    },
+  );
 
   for (final size in const [
     Size(1366, 1024),

@@ -1,4 +1,6 @@
 import 'package:flutter/services.dart';
+import 'dart:io';
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remini_care_ai_app/models/reminiscence_topic.dart';
 import 'package:remini_care_ai_app/screens/life_screen/controllers/life_screen_controller.dart';
@@ -9,6 +11,7 @@ import 'package:remini_care_ai_app/services/audio_services/speech_services.dart'
 import 'package:remini_care_ai_app/services/image_gen_api_service.dart';
 import 'package:remini_care_ai_app/services/api_services.dart';
 import 'package:remini_care_ai_app/services/remini_care_config.dart';
+import 'package:remini_care_ai_app/services/audio_services/stt_result.dart';
 import 'package:remini_care_ai_app/services/topic_image_search_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -82,13 +85,94 @@ void main() {
         everyElement(ThumbnailStatus.ready),
       );
       expect(llm.calls, 1);
-      expect(topicImages.calls, 4);
+      expect(topicImages.calls, 0);
       expect(images.generateCalls, 0);
       expect(images.editCalls, 0);
 
       controller.dispose();
     },
   );
+
+  test(
+    'STT failure preserves recording; retry cleans it after success',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'reminicare_controller_test_',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final file = File('${root.path}/recording.wav');
+      await file.writeAsBytes([1, 2, 3]);
+      final llm = _TopicLlm();
+      final image = _CountingImageClient();
+      final stt = _FailsOnceStt();
+      final controller = LifeScreenController(
+        aiService: ReminiscenceAiService(llm),
+        imageService: image,
+        sttService: stt,
+      );
+      await controller.initialize();
+      controller.stage = LifeStage.introduction;
+      await controller.completeRecording([file.path]);
+      expect(controller.errorMessage, contains('測試失敗'));
+      expect(controller.canRetryTranscription, isTrue);
+      expect(await file.exists(), isTrue);
+      expect(llm.calls, 1);
+      expect(image.generateCalls, 0);
+      await controller.retryTranscription();
+      expect(stt.calls, 2);
+      expect(controller.introductionState, IntroductionState.confirmed);
+      expect(await file.exists(), isFalse);
+      expect(controller.isTranscribing, isFalse);
+      controller.dispose();
+    },
+  );
+
+  test(
+    'local cards appear while topic LLM is pending and after leave no update',
+    () async {
+      final llm = _PendingLlm();
+      final controller = LifeScreenController(
+        aiService: ReminiscenceAiService(llm),
+        imageService: _CountingImageClient(),
+        sttService: _FakeStt(),
+      );
+      final initializing = controller.initialize();
+      while (controller.topics.isEmpty) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+      expect(controller.stage, LifeStage.topicSelection);
+      expect(
+        controller.topics.every((t) => t.thumbnailPath!.startsWith('asset:')),
+        isTrue,
+      );
+      final original = controller.topics;
+      await controller.leave();
+      llm.pending.complete('{"topics":[]}');
+      await initializing;
+      expect(controller.topics, same(original));
+      controller.dispose();
+    },
+  );
+}
+
+class _FailsOnceStt implements ISTTService {
+  int calls = 0;
+  @override
+  Future<String?> transcribe(String path) async {
+    if (++calls == 1) throw const SttException(SttErrorKind.server, '測試失敗');
+    return '我叫王先生';
+  }
+}
+
+class _PendingLlm implements LlmClient {
+  final pending = Completer<String>();
+  @override
+  Future<String> complete({
+    required List<LlmMessage> messages,
+    double temperature = 0.6,
+    int maxTokens = 500,
+    bool jsonObject = false,
+  }) => pending.future;
 }
 
 class _TopicLlm implements LlmClient {

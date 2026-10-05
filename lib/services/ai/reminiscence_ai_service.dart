@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:convert';
 
 import '../../models/reminiscence_topic.dart';
 import 'ai_service_exception.dart';
@@ -21,6 +22,45 @@ class TopicRecommendationResult {
 class ReminiscenceAiService {
   ReminiscenceAiService(this._client);
   final LlmClient _client;
+
+  Future<List<ReminiscenceTopic>> questionsForTopics(
+    List<ReminiscenceTopic> topics,
+  ) async {
+    final raw = await _client.complete(
+      messages: [
+        const LlmMessage('system', '你是台灣長輩回憶聊天引導員，只輸出合法 JSON。'),
+        LlmMessage(
+          'user',
+          '為以下固定主題各產生一個親切主問題與延伸問題。不得改變 topicId 或主題。回傳 {"topics":[{"topicId":"...","question":"...","followUpQuestion":"..."}]}。主題：${jsonEncode(topics.map((t) => {'topicId': t.topicId, 'title': t.title}).toList())}',
+        ),
+      ],
+      jsonObject: true,
+      maxTokens: 1200,
+    );
+    final data = decodeJsonObjectFromText(raw, requiredKey: 'topics');
+    final rows = data['topics'];
+    if (rows is! List || rows.length != 4) {
+      throw const FormatException('四主題問題不完整');
+    }
+    final byId = {
+      for (final row in rows.whereType<Map<String, dynamic>>())
+        row['topicId']: row,
+    };
+    return topics.map((topic) {
+      final row = byId[topic.topicId];
+      if (row == null ||
+          row['question'] is! String ||
+          row['followUpQuestion'] is! String ||
+          (row['question'] as String).trim().isEmpty ||
+          (row['followUpQuestion'] as String).trim().isEmpty) {
+        throw const FormatException('主題 ID 或問題錯誤');
+      }
+      return topic.copyWith(
+        question: row['question'] as String,
+        followUpQuestion: row['followUpQuestion'] as String,
+      );
+    }).toList();
+  }
 
   static const _fallbackTopics = <ReminiscenceTopic>[
     ReminiscenceTopic(

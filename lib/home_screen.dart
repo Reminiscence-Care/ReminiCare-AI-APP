@@ -108,6 +108,8 @@ class _HomeScreenState extends State<HomeScreen> {
             } else
               'YATING_API_KEY',
             'VOICE_MAX_RECORD_LIMIT',
+            'VOICE_INTRO_SILENCE_SECONDS',
+            'VOICE_CHAT_SILENCE_SECONDS',
             'WAKE_WORDS_START',
             'WAKE_WORDS_END',
             'WAKE_WORDS_RESTART',
@@ -183,6 +185,14 @@ class _HomeScreenState extends State<HomeScreen> {
                           decoration: InputDecoration(
                             labelText: field.displayName,
                             hintText: field.hintText,
+                            helperText: switch (field.apiKey) {
+                              'VOICE_INTRO_SILENCE_SECONDS' ||
+                              'VOICE_CHAT_SILENCE_SECONDS' =>
+                                '開始說話後，連續安靜這段時間才自動結束；尚未說話最多等待 15 秒。',
+                              'VOICE_MAX_RECORD_LIMIT' =>
+                                '單次錄音總時限，與說完後等待時間分開計算。',
+                              _ => null,
+                            },
                             border: const OutlineInputBorder(),
                           ),
                         ),
