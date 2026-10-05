@@ -36,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _ => ReminiCareConfig.nvidiaApiKey,
     };
     final imageKey = switch (image) {
+      'cloudflare' => ReminiCareConfig.getValue('CLOUDFLARE_IMAGE_APP_TOKEN'),
       'openai' => ReminiCareConfig.openaiApiKey,
       'custom' => ReminiCareConfig.getValue('CUSTOM_IMAGE_API_KEY'),
       _ => ReminiCareConfig.siliconFlowApiKey,
@@ -96,6 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
               _ => 'NVIDIA_LLM_MODEL',
             },
             switch (image) {
+              'cloudflare' => 'CLOUDFLARE_IMAGE_APP_TOKEN',
               'openai' => 'OPENAI_API_KEY',
               'custom' => 'CUSTOM_IMAGE_API_KEY',
               _ => 'SILICONFLOW_API_KEY',
@@ -114,6 +116,7 @@ class _HomeScreenState extends State<HomeScreen> {
               'CUSTOM_IMAGE_BASE_URL',
               'CUSTOM_IMAGE_MODEL',
             },
+            if (image == 'cloudflare') 'CLOUDFLARE_IMAGE_WORKER_URL',
           };
           final llmPreset = switch (llm) {
             'nvidia' => 'https://integrate.api.nvidia.com/v1',
@@ -123,6 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
             _ => '自訂 OpenAI-compatible 端點與模型',
           };
           final imagePreset = switch (image) {
+            'cloudflare' => 'FLUX.2 Klein 4B（支援生成與改圖，透過安全 Worker）',
             'siliconflow' =>
               'https://api.siliconflow.com/v1  •  Qwen/Qwen-Image（支援改圖）',
             'openai' => 'https://api.openai.com/v1  •  gpt-image-2',
@@ -152,6 +156,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       label: '生圖服務',
                       value: image,
                       options: const {
+                        'cloudflare': 'Cloudflare Workers AI（支援改圖）',
                         'siliconflow': 'SiliconFlow（支援改圖）',
                         'openai': 'OpenAI',
                         'custom': 'Custom OpenAI-compatible（僅生成）',

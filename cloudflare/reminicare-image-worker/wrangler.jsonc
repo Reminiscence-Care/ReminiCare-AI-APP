@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "reminicare-image-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "ai": { "binding": "AI" },
+  "ratelimits": [
+    {
+      "name": "IMAGE_RATE_LIMITER",
+      "namespace_id": "1042",
+      "simple": { "limit": 10, "period": 60 }
+    }
+  ],
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 }
+}

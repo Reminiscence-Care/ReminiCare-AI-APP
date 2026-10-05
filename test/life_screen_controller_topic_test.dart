@@ -7,6 +7,8 @@ import 'package:remini_care_ai_app/services/ai/llm_client.dart';
 import 'package:remini_care_ai_app/services/ai/reminiscence_ai_service.dart';
 import 'package:remini_care_ai_app/services/audio_services/speech_services.dart';
 import 'package:remini_care_ai_app/services/image_gen_api_service.dart';
+import 'package:remini_care_ai_app/services/api_services.dart';
+import 'package:remini_care_ai_app/services/remini_care_config.dart';
 import 'package:remini_care_ai_app/services/topic_image_search_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -27,6 +29,35 @@ void main() {
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(secureStorage, null);
+  });
+
+  test(
+    'fresh installs default to Cloudflare and reload its endpoint',
+    () async {
+      await ReminiCareConfig.loadConfig();
+      expect(ReminiCareConfig.getValue('selectedImageProvider'), 'cloudflare');
+      await ReminiCareConfig.saveConfig({
+        'CLOUDFLARE_IMAGE_WORKER_URL': 'https://first-worker.test',
+      });
+      final first = ApiServices().image;
+      expect(first, isA<CloudflareWorkerImageClient>());
+      expect(first.config.baseUrl, 'https://first-worker.test');
+      await ReminiCareConfig.saveConfig({
+        'CLOUDFLARE_IMAGE_WORKER_URL': 'https://second-worker.test',
+      });
+      expect(ApiServices().image, isNot(same(first)));
+      expect(ApiServices().image.config.baseUrl, 'https://second-worker.test');
+    },
+  );
+
+  test('existing installs retain their chosen image provider', () async {
+    SharedPreferences.setMockInitialValues({
+      'secure_storage_migration_v1': true,
+      'selectedImageProvider': 'siliconflow',
+    });
+    await ReminiCareConfig.loadConfig();
+    expect(ReminiCareConfig.getValue('selectedImageProvider'), 'siliconflow');
+    expect(ApiServices().image, isA<OpenAiCompatibleImageClient>());
   });
 
   test(

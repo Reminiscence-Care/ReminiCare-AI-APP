@@ -83,9 +83,7 @@ class LifeScreenController extends ChangeNotifier {
     if (_disposed) return;
     _ai = _injectedAi ?? ApiServices().reminiscenceAi;
     _image = _injectedImage ?? ApiServices().image;
-    _topicImages =
-        _injectedTopicImages ??
-        WikimediaTopicImageSearchClient();
+    _topicImages = _injectedTopicImages ?? WikimediaTopicImageSearchClient();
     _stt = _injectedStt ?? ApiServices().stt;
     await refreshTopics();
   }
@@ -413,7 +411,9 @@ class LifeScreenController extends ChangeNotifier {
       if (canEditImage) {
         currentImagePath = await _image.edit(
           imagePath: currentImagePath,
-          instruction: instruction,
+          instruction: instruction.trim().isEmpty
+              ? 'Make the image better match the speaker’s memory while preserving the people and composition.'
+              : instruction,
         );
       } else {
         final prompt = const NostalgicImagePromptBuilder().build(

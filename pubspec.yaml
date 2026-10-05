@@ -44,6 +44,7 @@ dependencies:
   flutter_secure_storage: ^9.2.4
   audio_session: ^0.2.4
   url_launcher: ^6.3.2
+  image: ^4.5.4
 
 dev_dependencies:
   flutter_test:

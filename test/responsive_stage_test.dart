@@ -73,6 +73,37 @@ void main() {
     );
   }
 
+  testWidgets('memory evaluation preserves the complete source image', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1366, 1024));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final controller = LifeScreenController()
+      ..stage = LifeStage.evaluation
+      ..currentImagePath = File('assets/images/life_home.png').absolute.path;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ReminiCareTheme.light,
+        home: Scaffold(body: EvaluationStage(controller: controller)),
+      ),
+    );
+    await tester.pump();
+    expect(
+      tester
+          .widgetList<AspectRatio>(find.byType(AspectRatio))
+          .any((widget) => widget.aspectRatio == 8 / 5),
+      isTrue,
+    );
+    expect(
+      tester
+          .widgetList<Image>(find.byType(Image))
+          .any((widget) => widget.fit == BoxFit.contain),
+      isTrue,
+    );
+    expect(tester.takeException(), isNull);
+    controller.dispose();
+  });
+
   testWidgets('live window resize never produces a black/error frame', (
     tester,
   ) async {

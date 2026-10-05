@@ -19,6 +19,7 @@ abstract final class ReminiCareConfig {
     'GEMINI_API_KEY',
     'OPENAI_API_KEY',
     'SILICONFLOW_API_KEY',
+    'CLOUDFLARE_IMAGE_APP_TOKEN',
     'CUSTOM_LLM_API_KEY',
     'CUSTOM_IMAGE_API_KEY',
     'CUSTOM_VISION_API_KEY',
@@ -47,6 +48,19 @@ abstract final class ReminiCareConfig {
       apiKey: 'SILICONFLOW_API_KEY',
       displayName: 'SiliconFlow API Key',
       hintText: 'sk-...',
+    ),
+    ConfigField(
+      apiKey: 'CLOUDFLARE_IMAGE_APP_TOKEN',
+      displayName: 'Cloudflare Image App Token',
+      hintText: '與 Worker APP_API_TOKEN 相同的值',
+    ),
+    ConfigField(
+      apiKey: 'CLOUDFLARE_IMAGE_WORKER_URL',
+      displayName: 'Cloudflare Image Worker URL',
+      hintText: 'https://reminicare-image-api.<subdomain>.workers.dev',
+      isSecure: false,
+      hasDefaultValue: true,
+      defaultValue: 'https://reminicare-image-api.hding49.workers.dev',
     ),
     ConfigField(
       apiKey: 'CUSTOM_LLM_API_KEY',
@@ -231,7 +245,7 @@ abstract final class ReminiCareConfig {
     _configs['selectedSpeechProvider'] =
         prefs.getString('selectedSpeechProvider') ?? 'yating';
     _configs['selectedImageProvider'] =
-        prefs.getString('selectedImageProvider') ?? 'siliconflow';
+        prefs.getString('selectedImageProvider') ?? 'cloudflare';
     _configs['selectedVisionProvider'] =
         prefs.getString('selectedVisionProvider') ?? 'nvidia';
     if (kDebugMode && !kIsWeb) await _readDebugEnv();
@@ -263,7 +277,7 @@ abstract final class ReminiCareConfig {
         ? 'nvidia'
         : read('selectedLlmProvider');
     final image = read('selectedImageProvider').isEmpty
-        ? 'siliconflow'
+        ? 'cloudflare'
         : read('selectedImageProvider');
     final speech = read('selectedSpeechProvider').isEmpty
         ? 'yating'
@@ -275,6 +289,7 @@ abstract final class ReminiCareConfig {
       _ => 'NVIDIA_API_KEY',
     };
     final imageKey = switch (image) {
+      'cloudflare' => 'CLOUDFLARE_IMAGE_APP_TOKEN',
       'openai' => 'OPENAI_API_KEY',
       'custom' => 'CUSTOM_IMAGE_API_KEY',
       _ => 'SILICONFLOW_API_KEY',
@@ -308,6 +323,12 @@ abstract final class ReminiCareConfig {
         read('CUSTOM_IMAGE_MODEL'),
       );
       if (error != null) return '自訂生圖：$error';
+    }
+    if (image == 'cloudflare') {
+      final uri = Uri.tryParse(read('CLOUDFLARE_IMAGE_WORKER_URL'));
+      if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
+        return 'Cloudflare Worker URL 必須是有效的 HTTPS 網址';
+      }
     }
     return null;
   }

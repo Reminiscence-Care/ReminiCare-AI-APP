@@ -40,10 +40,16 @@ class ApiServices {
 
   IImageGenerationClient get image {
     _ensureCurrent();
-    return _image ??= OpenAiCompatibleImageClient(
-      config: _imageConfig(),
-      apiKey: ReminiCareConfig.getValue(_imageConfig().apiKeyReference),
-    );
+    final config = _imageConfig();
+    return _image ??= config.id == 'cloudflare'
+        ? CloudflareWorkerImageClient(
+            config: config,
+            appToken: ReminiCareConfig.getValue(config.apiKeyReference),
+          )
+        : OpenAiCompatibleImageClient(
+            config: config,
+            apiKey: ReminiCareConfig.getValue(config.apiKeyReference),
+          );
   }
 
   ImageProviderConfig get imageConfig => _imageConfig();
@@ -119,6 +125,19 @@ class ApiServices {
 
   ImageProviderConfig _imageConfig() {
     final id = ReminiCareConfig.getValue('selectedImageProvider');
+    if (id == 'cloudflare') {
+      final preset = ProviderRegistry.imagePresets['cloudflare']!;
+      return ImageProviderConfig(
+        id: preset.id,
+        displayName: preset.displayName,
+        baseUrl: ReminiCareConfig.getValue('CLOUDFLARE_IMAGE_WORKER_URL'),
+        generationModel: preset.generationModel,
+        editModel: preset.editModel,
+        apiKeyReference: preset.apiKeyReference,
+        capabilities: preset.capabilities,
+        timeout: preset.timeout,
+      );
+    }
     if (id == 'custom') {
       return ImageProviderConfig(
         id: 'custom',
@@ -131,7 +150,7 @@ class ApiServices {
       );
     }
     return ProviderRegistry.imagePresets[id] ??
-        ProviderRegistry.imagePresets['siliconflow']!;
+        ProviderRegistry.imagePresets['cloudflare']!;
   }
 
   VisionProviderConfig _visionConfig() {

@@ -1,8 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:image/image.dart' as img;
 import 'package:remini_care_ai_app/models/reminiscence_topic.dart';
 import 'package:remini_care_ai_app/services/ai/ai_models.dart';
 import 'package:remini_care_ai_app/services/ai/ai_service_exception.dart';
@@ -10,6 +13,7 @@ import 'package:remini_care_ai_app/services/ai/llm_client.dart';
 import 'package:remini_care_ai_app/services/ai/provider_registry.dart';
 import 'package:remini_care_ai_app/services/ai/provider_response_parser.dart';
 import 'package:remini_care_ai_app/services/ai/reminiscence_ai_service.dart';
+import 'package:remini_care_ai_app/services/image_gen_api_service.dart';
 import 'package:remini_care_ai_app/services/remini_care_config.dart';
 
 void main() {
@@ -204,6 +208,12 @@ void main() {
 
   test('provider capabilities distinguish edit from generation', () {
     expect(
+      ProviderRegistry.imagePresets['cloudflare']!.supports(
+        ProviderCapability.imageEditing,
+      ),
+      isTrue,
+    );
+    expect(
       ProviderRegistry.imagePresets['siliconflow']!.supports(
         ProviderCapability.imageEditing,
       ),
@@ -216,6 +226,125 @@ void main() {
       isFalse,
     );
   });
+
+  test('Cloudflare client requests a 1.6:1 image from the Worker', () async {
+    late http.Request captured;
+    final store = _MemoryImageStore();
+    final client = CloudflareWorkerImageClient(
+      config: ProviderRegistry.imagePresets['cloudflare']!.copyWithForTest(
+        baseUrl: 'https://image-worker.test/',
+      ),
+      appToken: 'app-secret',
+      store: store,
+      httpClient: MockClient((request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode({
+            'data': [
+              {
+                'b64_json': base64Encode([1, 2, 3]),
+              },
+            ],
+          }),
+          200,
+        );
+      }),
+    );
+
+    expect(await client.generate(prompt: '1960s Taiwan'), 'memory://generated');
+    expect(
+      captured.url.toString(),
+      'https://image-worker.test/v1/images/generations',
+    );
+    expect(captured.headers['Authorization'], 'Bearer app-secret');
+    final payload = jsonDecode(captured.body) as Map<String, dynamic>;
+    expect(payload['width'], 1024);
+    expect(payload['height'], 640);
+    expect(store.bytes, [1, 2, 3]);
+  });
+
+  test(
+    'Cloudflare edit sends a compressed reference and preservation prompt',
+    () async {
+      late Map<String, dynamic> payload;
+      final client = CloudflareWorkerImageClient(
+        config: ProviderRegistry.imagePresets['cloudflare']!.copyWithForTest(
+          baseUrl: 'https://image-worker.test',
+        ),
+        appToken: 'app-secret',
+        store: _MemoryImageStore(),
+        preprocessor: _FakePreprocessor(),
+        httpClient: MockClient((request) async {
+          payload = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response(
+            jsonEncode({
+              'data': [
+                {
+                  'b64_json': base64Encode([4, 5, 6]),
+                },
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+
+      await client.edit(
+        imagePath: 'ignored.png',
+        instruction: 'remove the car',
+      );
+      expect(payload['imageBase64'], base64Encode([7, 8, 9]));
+      expect(payload['imageMimeType'], 'image/jpeg');
+      expect(payload['prompt'], contains('Preserve the same people'));
+      expect(payload['prompt'], contains('remove the car'));
+    },
+  );
+
+  test('Cloudflare edit input is resized below the model limit', () async {
+    final directory = await Directory.systemTemp.createTemp('reminicare_test_');
+    addTearDown(() => directory.delete(recursive: true));
+    final file = File('${directory.path}${Platform.pathSeparator}large.png');
+    await file.writeAsBytes(img.encodePng(img.Image(width: 800, height: 600)));
+    final prepared = await const ImageInputPreprocessor().prepare(file.path);
+    final decoded = img.decodeJpg(prepared.bytes)!;
+    expect(decoded.width, 504);
+    expect(decoded.height, 378);
+    expect(prepared.mimeType, 'image/jpeg');
+  });
+
+  for (final status in [401, 429, 502]) {
+    test(
+      'Cloudflare HTTP $status produces a typed error without retry',
+      () async {
+        var calls = 0;
+        final client = CloudflareWorkerImageClient(
+          config: ProviderRegistry.imagePresets['cloudflare']!.copyWithForTest(
+            baseUrl: 'https://image-worker.test',
+          ),
+          appToken: 'app-secret',
+          httpClient: MockClient((_) async {
+            calls++;
+            return http.Response('{}', status);
+          }),
+        );
+        await expectLater(
+          client.generate(prompt: 'Taiwan'),
+          throwsA(
+            isA<AiServiceException>().having(
+              (error) => error.kind,
+              'kind',
+              status == 401
+                  ? AiServiceErrorKind.authentication
+                  : status == 429
+                  ? AiServiceErrorKind.rateLimit
+                  : AiServiceErrorKind.network,
+            ),
+          ),
+        );
+        expect(calls, 1);
+      },
+    );
+  }
 
   test('custom provider settings require HTTPS and a model', () {
     final base = <String, String>{
@@ -245,6 +374,36 @@ void main() {
       isNull,
     );
   });
+}
+
+extension on ImageProviderConfig {
+  ImageProviderConfig copyWithForTest({required String baseUrl}) =>
+      ImageProviderConfig(
+        id: id,
+        displayName: displayName,
+        baseUrl: baseUrl,
+        generationModel: generationModel,
+        apiKeyReference: apiKeyReference,
+        capabilities: capabilities,
+        editModel: editModel,
+        timeout: timeout,
+      );
+}
+
+class _MemoryImageStore extends LocalImageStore {
+  List<int>? bytes;
+
+  @override
+  Future<String> save(Uint8List value, {required String prefix}) async {
+    bytes = value;
+    return 'memory://$prefix';
+  }
+}
+
+class _FakePreprocessor extends ImageInputPreprocessor {
+  @override
+  Future<PreparedImage> prepare(String path) async =>
+      PreparedImage(Uint8List.fromList([7, 8, 9]), 'image/jpeg');
 }
 
 class _FakeLlmClient implements LlmClient {

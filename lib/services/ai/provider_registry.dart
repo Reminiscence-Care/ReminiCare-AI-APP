@@ -26,6 +26,18 @@ abstract final class ProviderRegistry {
   };
 
   static const imagePresets = <String, ImageProviderConfig>{
+    'cloudflare': ImageProviderConfig(
+      id: 'cloudflare',
+      displayName: 'Cloudflare Workers AI',
+      baseUrl: 'https://reminicare-image-api.hding49.workers.dev',
+      generationModel: '@cf/black-forest-labs/flux-2-klein-4b',
+      editModel: '@cf/black-forest-labs/flux-2-klein-4b',
+      apiKeyReference: 'CLOUDFLARE_IMAGE_APP_TOKEN',
+      capabilities: {
+        ProviderCapability.imageGeneration,
+        ProviderCapability.imageEditing,
+      },
+    ),
     'siliconflow': ImageProviderConfig(
       id: 'siliconflow',
       displayName: 'SiliconFlow',

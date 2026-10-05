@@ -53,3 +53,6 @@ app.*.map.json
 
 # Local Codex diagnostics and screenshots
 .codex-diagnostics/
+
+# Local API smoke-test output
+cloudflare-test.*

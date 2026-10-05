@@ -736,7 +736,7 @@ class _MemoryImage extends StatelessWidget {
   final String path;
   @override
   Widget build(BuildContext context) => AspectRatio(
-    aspectRatio: 4 / 3,
+    aspectRatio: 8 / 5,
     child: ClipRRect(
       borderRadius: BorderRadius.circular(31),
       child: path.isEmpty
@@ -744,17 +744,28 @@ class _MemoryImage extends StatelessWidget {
               color: Color(0xFFF1EFE9),
               child: Icon(Icons.photo_outlined, size: 90),
             )
-          : _LocalImage(path: path),
+          : Stack(
+              fit: StackFit.expand,
+              children: [
+                ImageFiltered(
+                  imageFilter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                  child: _LocalImage(path: path, fit: BoxFit.cover),
+                ),
+                const ColoredBox(color: Color(0x22000000)),
+                _LocalImage(path: path, fit: BoxFit.contain),
+              ],
+            ),
     ),
   );
 }
 
 class _LocalImage extends StatelessWidget {
-  const _LocalImage({required this.path});
+  const _LocalImage({required this.path, required this.fit});
   final String path;
+  final BoxFit fit;
   @override
   Widget build(BuildContext context) {
-    if (path.startsWith('http')) return Image.network(path, fit: BoxFit.cover);
+    if (path.startsWith('http')) return Image.network(path, fit: fit);
     if (kIsWeb) {
       return const ColoredBox(
         color: Color(0xFFF1EFE9),
@@ -763,7 +774,7 @@ class _LocalImage extends StatelessWidget {
     }
     return Image.file(
       File(path),
-      fit: BoxFit.cover,
+      fit: fit,
       errorBuilder: (_, _, _) => const ColoredBox(
         color: Color(0xFFF1EFE9),
         child: Icon(Icons.broken_image_outlined),

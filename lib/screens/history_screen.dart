@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -185,20 +186,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: imagePath.isNotEmpty
-                    ? (imagePath.startsWith('http') ||
-                              imagePath.startsWith('https')
-                          ? Image.network(imagePath, fit: BoxFit.cover)
-                          : (kIsWeb
-                                ? const Center(
-                                    child: Icon(
-                                      Icons.image,
-                                      color: Colors.grey,
-                                    ),
-                                  )
-                                : Image.file(
-                                    File(imagePath),
-                                    fit: BoxFit.cover,
-                                  )))
+                    ? _CompleteMemoryImage(path: imagePath)
                     : const Center(
                         child: Icon(Icons.image, size: 32, color: Colors.grey),
                       ),
@@ -446,7 +434,7 @@ class MemoryDetailScreen extends StatelessWidget {
 
   Widget _buildMemoryImage(String imagePath, double fontSize) {
     return AspectRatio(
-      aspectRatio: 4 / 3, // 維持懷舊照片的 4:3 比例
+      aspectRatio: 8 / 5,
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
@@ -454,19 +442,7 @@ class MemoryDetailScreen extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: imagePath.isNotEmpty
-            ? (imagePath.startsWith('http') || imagePath.startsWith('https')
-                  ? Image.network(imagePath, fit: BoxFit.cover)
-                  : (kIsWeb
-                        ? Center(
-                            child: Text(
-                              'Web 無法預覽',
-                              style: TextStyle(
-                                color: Colors.grey,
-                                fontSize: fontSize * 0.6,
-                              ),
-                            ),
-                          )
-                        : Image.file(File(imagePath), fit: BoxFit.cover)))
+            ? _CompleteMemoryImage(path: imagePath)
             : Center(
                 child: Icon(
                   Icons.image,
@@ -522,4 +498,40 @@ class MemoryDetailScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+class _CompleteMemoryImage extends StatelessWidget {
+  const _CompleteMemoryImage({required this.path});
+  final String path;
+
+  Widget _image(BoxFit fit) {
+    if (path.startsWith('http')) return Image.network(path, fit: fit);
+    if (kIsWeb) {
+      return const ColoredBox(
+        color: Color(0xFFF1EFE9),
+        child: Center(child: Icon(Icons.image, color: Colors.grey)),
+      );
+    }
+    return Image.file(
+      File(path),
+      fit: fit,
+      errorBuilder: (_, _, _) => const ColoredBox(
+        color: Color(0xFFF1EFE9),
+        child: Center(child: Icon(Icons.broken_image_outlined)),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.expand,
+    children: [
+      ImageFiltered(
+        imageFilter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: _image(BoxFit.cover),
+      ),
+      const ColoredBox(color: Color(0x22000000)),
+      _image(BoxFit.contain),
+    ],
+  );
 }
