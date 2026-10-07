@@ -43,7 +43,7 @@
 - Initial macOS CI exposed a pre-existing Runner configuration that referenced
   CocoaPods settings directly and omitted Flutter's generated build variables.
   Debug/Release/Profile now use Flutter's wrapper xcconfig files; the unsigned
-  iOS build must pass on the corrected revision before device deployment.
+  iOS build passed on revision 843406a in GitHub macOS CI (run 37674070644).
 
 ## Required external/device acceptance
 
@@ -57,7 +57,8 @@ short STT request do not prove microphone stability or transcription quality.
 - Collect medium/long Chinese and Taiwanese samples and record segment-boundary
   accuracy plus total latency; keep the existing 5-second/240-KiB budget until
   real results justify a change. No synthetic requests probe server limits.
-- macOS/Xcode unsigned iOS build: configured in CI, not locally executed.
+- macOS/Xcode unsigned iOS debug build: passed in CI, not locally executed.
+  Signing/installing on an actual iPad remains outstanding.
 - TLS endpoint provisioning for NCKU remains a server-side dependency. The
   current default HTTP STT and raw TCP TTS endpoints remain unencrypted; the
   added TLS configuration alone does not secure those servers.
