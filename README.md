@@ -2,6 +2,12 @@
 
 ReminiCare 是以 iPad 橫向為主要裝置的多人回憶治療輔助 App。流程會先推薦四個台灣懷舊主題，再引導長輩自我介紹、以台語／中文聆聽問題、共同分享回憶、產生懷舊圖片並確認或修改，最後保存摘要。
 
+## Claude／Codex 新 session 與工作交接
+
+請依序閱讀 [AGENTS.md](AGENTS.md) 的共同規則、本文、[專案脈絡](PROJECT_CONTEXT.md) 與 [目前工作交接](docs/AI_HANDOFF.md)，並核對實際 Git 分支、未提交改動與近期提交。Claude 另有 [CLAUDE.md](CLAUDE.md) 作入口；所有協作者共用同一份脈絡與交接，不重複維護現況。
+
+可在新 session 貼上：「請先讀 AGENTS.md、README.md、PROJECT_CONTEXT.md、docs/AI_HANDOFF.md，確認目前分支與工作狀態，摘要已完成及待驗收項目；先不要更改程式，等我指定本次任務。」本機 `.env`、真實錄音與 Token 不放入交接文件。工作告一段落時更新交接，架構／操作變更則同步更新脈絡與 README。
+
 ## 架構
 
 - `lib/services/ai/`：OpenAI-compatible 通用文字傳輸、Provider 設定、typed error 與回憶治療領域服務。
@@ -40,7 +46,7 @@ Cloudflare 正式圖片輸出為 1024×640，對應新版 Figma 約 1.6:1 的圖
 
 STT 成功而生圖失敗時，可按「重試處理」，不用重新錄音。回憶以多輪資料保存，修圖指令與原分享分開；產圖使用累積內容及 LLM 擷取的年代、地點。回憶保存使用穩定 ID 避免連點重複，舊資料備份位於裝置文件目錄 `reminicare_memories/legacy-backup.json`，損壞單筆不阻止其他紀錄載入。
 
-成大 STT／TTS 端點可設定，TTS 支援 TLS 連線。現有預設伺服器仍使用 HTTP／未加密 TCP，正式部署前需由服務端提供 HTTPS／TLS 或受控網路安全入口；App 不會把一般 TCP 標記為已加密。
+成大 STT／TTS 是外部實驗室管理的服務，使用者無法修改服務端。端點可設定，TTS client 支援 TLS，但現有預設 HTTP／未加密 TCP 仍是已知限制，不能靠 App 單方面解決；本輪不要求實驗室修改，也不把它當成錄音驗收的前提。若日後部署要求加密，再另行評估可用端點或 Provider。App 不會把一般 TCP 標記為已加密。
 
 成大 STT 將長錄音分成至多 5 秒的完整音訊段落，每個編碼後請求保守限制在 240 KiB；遇到 413 再縮段，最多兩段並行並按原順序合併。失敗時保留本次錄音並顯示重試，成功段落不重送。辨識成功、重新錄音或離開流程後清除錄音；過期暫存檔會在啟動時清理。真實中文／台語及 iPad 驗收狀態見 `docs/recording-topic-validation.md`。
 

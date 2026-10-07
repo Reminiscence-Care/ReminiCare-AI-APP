@@ -1,0 +1,53 @@
+# ReminiCare：AI 協作者工作規則
+
+適用於本 repository 的 Claude、Codex 與其他程式協作者。子目錄若有更具體的規則，請一併閱讀；使用者當次指示優先於本文件的專案慣例。
+
+## 新 session 先讀
+
+1. `README.md`：產品、設定、操作與隱私。
+2. `PROJECT_CONTEXT.md`：架構、既定決策與已知限制。
+3. `docs/AI_HANDOFF.md`：最近完成工作、驗證證據與下一步。
+4. 修改區域的實際程式、測試及相關驗收文件。
+
+文件是導航，不是即時狀態保證。開始工作先檢查 `git status --short`、`git branch --show-current` 和近期提交；不要只憑交接文件認定分支、測試或部署現況。
+
+## 工作範圍與分支
+
+- 使用繁體中文與使用者溝通，清楚區分「已實作」「已自動測試」「已實機驗收」。
+- 目前開發分支為 `codex/figma-ui-2026-10-02`，原始基準分支為 `no-music-screen`。不得覆寫原分支；若實際分支不同，先釐清，不自行切換或重設。
+- 保留使用者未提交改動、錄音樣本與本機設定，不做破壞性 reset／checkout 或廣泛刪除。
+- 審查／診斷要求不等於授權實作；commit、push、Worker 部署及其他外部變更依當次授權處理。
+- 不主動恢復音樂功能、即時主題圖片搜尋、Vision 排序或本地 AI 模型。Windows resize 問題已由使用者暫緩，不納入一般穩定性工作。
+- 避免全面更換套件或狀態管理框架；優先沿用既有 ports、job、Provider client 與 repository。
+
+## 不可破壞的行為
+
+- 主要裝置是 iPad 橫向；同時保留手機／平板直向重排與長輩可讀字體、觸控區。
+- 四主題由本地圖庫抽選，圖片與標題固定配對、離線立即可見。LLM 只替四個 topicId 產生問題；主題選單不呼叫生圖或圖片搜尋 API。
+- 雲端生圖／改圖只用於正式回憶圖片。Cloudflare 失敗不自動轉 SiliconFlow，不悄悄消耗其他 Provider 額度。
+- 稱呼為「姓氏＋稱謂」，同音候選由人確認，不自動改字，不推測性別，也不顯示 LLM 推理文字。
+- 錄音與播放不能同時占用音訊；硬體啟動成功後才開始錄音計時。音量偵測失效必須可見並提供手動停止。
+- 中斷保留可用錄音；辨識失敗不能繼續姓名確認或生圖。辨識成功後的 LLM／生圖失敗可重試後段，不要求重錄。
+- 所有等待後更新狀態前檢查 session／operation 有效性；舊結果與舊 `finally` 不得覆蓋新流程。
+- Widget 透過 Controller 具名事件改變流程，不直接改狀態或公開呼叫 `notifyListeners()`。
+- 原分享、延伸分享和修圖要求分開保存；摘要與生成 prompt 不得遺失之前回憶。
+- 歷史遷移先備份，清理圖片只處理受管理且未被引用的檔案，保留舊資料相容性。
+
+## 外部服務與隱私
+
+- 成大 STT／TTS 是他們實驗室管理的外部服務，使用者無法修改。不要把要求成大改伺服器當成使用者待辦或本輪完成條件。
+- 現有成大預設 HTTP／TCP 未加密，是已知外部限制；端點設定或安全儲存不代表已解決傳輸加密。不自行架代理、改端點或切換 Provider。
+- 成大分段 5 秒／240 KiB 是 App 保守策略，不是已確認的伺服器限制。不得任意探測伺服器極限。
+- 不輸出或提交 API key、Token、`.env`、完整逐字稿、真實錄音或個人資料。`testAudio/` 是被忽略的本機真實樣本，不是公開 fixture。
+- Cloudflare App Token 與帳號 API Token 不同；帳號 Token 不放 Flutter。不得讀取秘密後把值寫入交接文件。
+- 優先 fake service 測試；真實 STT／LLM／生圖、Worker remote dev 或 smoke test 會傳送資料／消耗額度，執行前確認當次授權與用途。取消請求不保證已受理的雲端工作停止計費。
+
+## 驗證與交接
+
+- Flutter：`flutter analyze`、`flutter test`；針對修改區域補回歸測試。Build 依平台風險執行，iOS 需要 macOS／Xcode。
+- Worker：在 `cloudflare/reminicare-image-worker` 執行 `pnpm check`、`pnpm test`。只改 Flutter 不需要重新部署 Worker。
+- 文件-only 修改可做 diff／本地連結檢查，不必冒用之前測試結果作為本次重新執行的證據。
+- 音訊、Controller 的回歸至少考慮：快速連點、啟動中離開、雙重停止、播放取消、背景切換、dispose、逾時與舊回應。
+- 診斷只記操作 ID、時長、大小、停止原因、進度及錯誤種類，不記秘密與完整內容。
+- 回覆交代修改、實際執行的驗證及未驗證項目；硬體穩定性不能由 mock 測試或 build 通過推論。
+- 完成一段工作或即將中斷時更新 `docs/AI_HANDOFF.md`；架構／決策有變才更新 `PROJECT_CONTEXT.md`，操作／設定變更更新 README。不要在這些文件複製整段聊天紀錄。

@@ -59,9 +59,11 @@ short STT request do not prove microphone stability or transcription quality.
   real results justify a change. No synthetic requests probe server limits.
 - macOS/Xcode unsigned iOS debug build: passed in CI, not locally executed.
   Signing/installing on an actual iPad remains outstanding.
-- TLS endpoint provisioning for NCKU remains a server-side dependency. The
-  current default HTTP STT and raw TCP TTS endpoints remain unencrypted; the
-  added TLS configuration alone does not secure those servers.
+- NCKU is an externally managed laboratory service; the user cannot change its
+  servers. Current default HTTP STT and raw TCP TTS remain unencrypted. This is
+  an acknowledged external limitation, not a user task or a prerequisite for
+  long-recording acceptance. TLS configuration alone does not secure a server;
+  future deployment security requirements need a separate decision.
 - Confirm migration on a copy of real existing history, save failures/retry and
   shared-image deletion. The legacy JSON backup must be retained for recovery.
 
