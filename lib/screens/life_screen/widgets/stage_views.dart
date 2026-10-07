@@ -54,7 +54,18 @@ class LifeStageView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => switch (controller.stage) {
-    LifeStage.topicLoading => const TopicLoadingStage(),
+    LifeStage.topicLoading =>
+      controller.errorMessage == null
+          ? const TopicLoadingStage()
+          : Center(
+              child: TextButton(
+                onPressed: controller.initialize,
+                child: Text(
+                  controller.errorMessage!,
+                  style: const TextStyle(fontSize: 26),
+                ),
+              ),
+            ),
     LifeStage.topicSelection => TopicSelectionStage(controller: controller),
     LifeStage.introduction => IntroductionStage(controller: controller),
     LifeStage.question => QuestionStage(controller: controller),
@@ -259,6 +270,18 @@ class _TranscriptionFeedback extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     mainAxisSize: MainAxisSize.min,
     children: [
+      if (controller.audioWarning != null)
+        Text(
+          controller.audioWarning!,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 20, color: Colors.deepOrange),
+        ),
+      if (controller.canRetryLastStep)
+        TextButton.icon(
+          onPressed: controller.retryLastStep,
+          icon: const Icon(Icons.refresh),
+          label: const Text('重試處理'),
+        ),
       if (controller.isTranscribing) ...[
         const LinearProgressIndicator(),
         Text(
@@ -276,7 +299,7 @@ class _TranscriptionFeedback extends StatelessWidget {
         TextButton.icon(
           onPressed: controller.retryTranscription,
           icon: const Icon(Icons.refresh),
-          label: const Text('重試辨識'),
+          label: Text(controller.hasInterruptedRecording ? '辨識保留的錄音' : '重試辨識'),
         ),
     ],
   );
@@ -548,12 +571,16 @@ class SummaryStage extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           _PillButton(
-            label: '保存今天的回憶',
+            label: controller.isSaving ? '保存中…' : '保存今天的回憶',
             onPressed: () async {
-              await controller.saveMemory();
-              onDone();
+              if (await controller.saveMemory()) onDone();
             },
           ),
+          if (controller.errorMessage != null)
+            Text(
+              controller.errorMessage!,
+              style: const TextStyle(color: Colors.redAccent, fontSize: 20),
+            ),
         ],
       ),
     );

@@ -108,10 +108,12 @@ class _TtsCacheScreenState extends State<TtsCacheScreen> {
   /// 💡 重新生成指定的 TTS 音檔
   Future<void> _regenerateItem(String key) async {
     final parts = key.split('::');
-    if (parts.length < 2) return;
-
-    final lang = parts[0];
-    final text = parts.sublist(1).join("::");
+    final existing = _cacheMetadata[key];
+    final lang = existing?['language'] ?? (parts.length >= 2 ? parts[0] : null);
+    final text =
+        existing?['text'] ??
+        (parts.length >= 2 ? parts.sublist(1).join('::') : null);
+    if (lang is! String || text is! String) return;
 
     setState(() => _regeneratingKeys.add(key));
 
@@ -139,10 +141,18 @@ class _TtsCacheScreenState extends State<TtsCacheScreen> {
         await newFile.writeAsBytes(audioBytes, flush: true);
 
         // 更新快取元資料
-        _cacheMetadata[key] = {
+        _cacheMetadata.remove(key);
+        _cacheMetadata[jsonEncode([
+          ReminiCareConfig.ttsCacheIdentity,
+          lang,
+          text,
+        ])] = {
           "path": newFile.path,
           "lastUsed": DateTime.now().millisecondsSinceEpoch,
           "size": audioBytes.length,
+          'language': lang,
+          'text': text,
+          'provider': ReminiCareConfig.ttsCacheIdentity,
         };
 
         // 寫入 SharedPreferences
@@ -399,10 +409,14 @@ class _TtsCacheScreenState extends State<TtsCacheScreen> {
 
                       // Key 的格式為 "語言::文本"，拆解出來顯示
                       final parts = key.split('::');
-                      final lang = parts.isNotEmpty ? parts[0] : "未知";
-                      final text = parts.length > 1
-                          ? parts.sublist(1).join("::")
-                          : "無內容";
+                      final lang =
+                          data['language'] ??
+                          (parts.isNotEmpty ? parts[0] : "未知");
+                      final text =
+                          data['text'] ??
+                          (parts.length > 1
+                              ? parts.sublist(1).join("::")
+                              : "無內容");
 
                       final filePath = data['path'] as String;
                       final sizeStr = _formatSize(data['size'] ?? 0);

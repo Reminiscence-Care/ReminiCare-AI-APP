@@ -45,8 +45,10 @@ void main() {
     (tester) async {
       final catalog = await TopicCatalog.load();
       final controller = LifeScreenController()
-        ..stage = LifeStage.topicSelection
-        ..topics = catalog.topics.where((t) => t.illustrative).take(4).toList();
+        ..restoreForTesting(stage: LifeStage.topicSelection)
+        ..restoreForTesting(
+          topics: catalog.topics.where((t) => t.illustrative).take(4).toList(),
+        );
       await tester.binding.setSurfaceSize(const Size(1366, 1024));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
@@ -80,8 +82,8 @@ void main() {
         await tester.binding.setSurfaceSize(size);
         addTearDown(() => tester.binding.setSurfaceSize(null));
         final controller = LifeScreenController()
-          ..stage = LifeStage.topicSelection
-          ..topics = topics;
+          ..restoreForTesting(stage: LifeStage.topicSelection)
+          ..restoreForTesting(topics: topics);
         await tester.pumpWidget(
           MaterialApp(
             theme: ReminiCareTheme.light,
@@ -109,8 +111,10 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1366, 1024));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final controller = LifeScreenController()
-      ..stage = LifeStage.evaluation
-      ..currentImagePath = File('assets/images/life_home.png').absolute.path;
+      ..restoreForTesting(stage: LifeStage.evaluation)
+      ..restoreForTesting(
+        currentImagePath: File('assets/images/life_home.png').absolute.path,
+      );
     await tester.pumpWidget(
       MaterialApp(
         theme: ReminiCareTheme.light,
@@ -138,8 +142,8 @@ void main() {
     tester,
   ) async {
     final controller = LifeScreenController()
-      ..stage = LifeStage.topicSelection
-      ..topics = topics;
+      ..restoreForTesting(stage: LifeStage.topicSelection)
+      ..restoreForTesting(topics: topics);
     await tester.binding.setSurfaceSize(const Size(1366, 1024));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -171,10 +175,10 @@ void main() {
     tester,
   ) async {
     final controller = LifeScreenController()
-      ..stage = LifeStage.topicSelection
-      ..topics = topics
-      ..topicWarning = '模型不存在'
-      ..imageWarning = '部分主題圖片未找到，仍可直接選擇主題。';
+      ..restoreForTesting(stage: LifeStage.topicSelection)
+      ..restoreForTesting(topics: topics)
+      ..restoreForTesting(topicWarning: '模型不存在')
+      ..restoreForTesting(imageWarning: '部分主題圖片未找到，仍可直接選擇主題。');
     await tester.pumpWidget(
       MaterialApp(
         theme: ReminiCareTheme.light,
@@ -210,8 +214,8 @@ void main() {
       ),
     );
     final controller = LifeScreenController()
-      ..stage = LifeStage.topicSelection
-      ..topics = [readyTopic, ...topics.skip(1)];
+      ..restoreForTesting(stage: LifeStage.topicSelection)
+      ..restoreForTesting(topics: [readyTopic, ...topics.skip(1)]);
 
     await tester.pumpWidget(
       MaterialApp(

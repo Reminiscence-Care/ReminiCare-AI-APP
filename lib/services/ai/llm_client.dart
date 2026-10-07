@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'ai_models.dart';
 import 'ai_service_exception.dart';
 import 'provider_response_parser.dart';
+import 'ai_http_transport.dart';
 
 abstract interface class LlmClient {
   Future<String> complete({
@@ -17,16 +18,21 @@ abstract interface class LlmClient {
   });
 }
 
-class OpenAiCompatibleLlmClient implements LlmClient {
+class OpenAiCompatibleLlmClient implements LlmClient, CancelableAiWork {
   OpenAiCompatibleLlmClient({
     required this.config,
     required this.apiKey,
     http.Client? httpClient,
-  }) : _http = httpClient ?? http.Client();
+  }) : _http = AiHttpTransport(
+         httpClient ?? http.Client(),
+         timeout: config.timeout,
+       );
 
   final LlmProviderConfig config;
   final String apiKey;
-  final http.Client _http;
+  final AiHttpTransport _http;
+  @override
+  void cancelPending() => _http.cancelPending();
 
   @override
   Future<String> complete({

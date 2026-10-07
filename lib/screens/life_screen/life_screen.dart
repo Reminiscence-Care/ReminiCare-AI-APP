@@ -12,12 +12,13 @@ class LifeScreen extends StatefulWidget {
   State<LifeScreen> createState() => _LifeScreenState();
 }
 
-class _LifeScreenState extends State<LifeScreen> {
+class _LifeScreenState extends State<LifeScreen> with WidgetsBindingObserver {
   late final LifeScreenController _controller;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _controller = LifeScreenController()..addListener(_refresh);
     _controller.initialize();
   }
@@ -28,9 +29,19 @@ class _LifeScreenState extends State<LifeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.removeListener(_refresh);
     _controller.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      unawaited(_controller.interruptAudio());
+    }
   }
 
   Future<void> _back() async {

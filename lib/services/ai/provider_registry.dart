@@ -59,28 +59,4 @@ abstract final class ProviderRegistry {
       capabilities: {ProviderCapability.imageGeneration},
     ),
   };
-
-  static const visionPresets = <String, VisionProviderConfig>{
-    'nvidia': VisionProviderConfig(
-      id: 'nvidia',
-      displayName: 'NVIDIA Vision',
-      baseUrl: 'https://integrate.api.nvidia.com/v1',
-      model: 'meta/llama-3.2-11b-vision-instruct',
-      apiKeyReference: 'NVIDIA_API_KEY',
-    ),
-    'openai': VisionProviderConfig(
-      id: 'openai',
-      displayName: 'OpenAI Vision',
-      baseUrl: 'https://api.openai.com/v1',
-      model: 'gpt-4o-mini',
-      apiKeyReference: 'OPENAI_API_KEY',
-    ),
-    'gemini': VisionProviderConfig(
-      id: 'gemini',
-      displayName: 'Google Gemini Vision',
-      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-      model: 'gemini-2.5-flash',
-      apiKeyReference: 'GEMINI_API_KEY',
-    ),
-  };
 }

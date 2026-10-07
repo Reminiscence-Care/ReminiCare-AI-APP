@@ -7,7 +7,9 @@ ReminiCare 是以 iPad 橫向為主要裝置的多人回憶治療輔助 App。�
 - `lib/services/ai/`：OpenAI-compatible 通用文字傳輸、Provider 設定、typed error 與回憶治療領域服務。
 - `lib/services/image_gen_api_service.dart`：通用生圖 client、Provider capability、懷舊 prompt 與本地圖片保存。
 - `cloudflare/reminicare-image-worker/`：Cloudflare Workers AI 安全代理；Flutter 不持有 Cloudflare 帳號 Token。
-- `lib/services/topic_image_search_service.dart`：依受控主題分類向 Wikimedia Commons 取得公開授權照片，包含授權過濾、去重、下載驗證與 100 MB 本機快取。
+- `lib/services/topic_catalog.dart`：離線圖片與固定主題圖庫；即時圖片搜尋及 Vision 排序已移除。
+- `lib/services/audio_services/`：錄音／播放 port、音訊協調器、停頓偵測、可取消 STT job 及 Provider／聲音分開的 TTS 快取。
+- `lib/services/memory_repository.dart`：逐筆 JSON 回憶、舊紀錄備份遷移、相對圖片路徑與引用清理。
 - `lib/services/remini_care_config.dart`：非敏感偏好與安全金鑰儲存。舊 SharedPreferences 明文 key 會只遷移一次。
 - `lib/screens/life_screen/controllers/`：具名事件與 session token 管理；Widget 不直接寫流程狀態。
 - `lib/screens/life_screen/widgets/stage_views.dart`：新版 Figma 流程的響應式階段元件。
@@ -32,6 +34,14 @@ Cloudflare 正式圖片輸出為 1024×640，對應新版 Figma 約 1.6:1 的圖
 
 設定頁可分別調整自我介紹（預設 3 秒）、聊天／修圖（預設 6 秒）的說完後等待時間，接受 1–30 秒與一位小數。這和最長錄音秒數分開；開始說話前最多等待 15 秒。錄音使用 16kHz、單聲道、16-bit WAV。
 
+最長錄音可設定 15–600 秒，預設 180 秒。環境校正最多一秒，開頭說話也會參與停頓偵測；音量取樣连续失敗時提示改用「說完了」，最長限制仍生效。App 進入背景或音訊／輸入裝置中斷時保留可用錄音，回到流程可選擇辨識或重新錄音。播放停止、逾時與失敗都會結束等待。
+
+雅婷必須收到 `asr_eof` 才判定完整成功，完成期限預設為音訊送完後 30 秒。部分結果不會觸發姓名確認或生圖。雅婷目前仍以服務要求的接近即時速度送出已錄音訊，長錄音等待時間包含音訊傳送時間；未改成未知支援度的高速傳送。
+
+STT 成功而生圖失敗時，可按「重試處理」，不用重新錄音。回憶以多輪資料保存，修圖指令與原分享分開；產圖使用累積內容及 LLM 擷取的年代、地點。回憶保存使用穩定 ID 避免連點重複，舊資料備份位於裝置文件目錄 `reminicare_memories/legacy-backup.json`，損壞單筆不阻止其他紀錄載入。
+
+成大 STT／TTS 端點可設定，TTS 支援 TLS 連線。現有預設伺服器仍使用 HTTP／未加密 TCP，正式部署前需由服務端提供 HTTPS／TLS 或受控網路安全入口；App 不會把一般 TCP 標記為已加密。
+
 成大 STT 將長錄音分成至多 5 秒的完整音訊段落，每個編碼後請求保守限制在 240 KiB；遇到 413 再縮段，最多兩段並行並按原順序合併。失敗時保留本次錄音並顯示重試，成功段落不重送。辨識成功、重新錄音或離開流程後清除錄音；過期暫存檔會在啟動時清理。真實中文／台語及 iPad 驗收狀態見 `docs/recording-topic-validation.md`。
 
 ## 執行與測試
@@ -45,6 +55,8 @@ flutter build ios --no-codesign
 ```
 
 iOS build 需要 macOS 與 Xcode。安裝至 iPad 前，請在 Xcode 設定 Signing Team，並在實機確認麥克風權限、台語／中文 TTS、STT、播放與錄音互斥、生圖時間及完整保存流程。
+
+一般 push／PR 的 CI 執行 Flutter analyze／test、Android debug、macOS 未簽章 iOS debug build，以及 Worker 型別／單元測試。2026-10-08 的驗證與實機待驗收項目見 [穩定性驗收紀錄](docs/stability-validation-2026-10-08.md)。本機真實語音測試資料放在被 Git 忽略的 `testAudio/`。
 
 ## 隱私
 

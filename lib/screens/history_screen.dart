@@ -1,9 +1,8 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../services/memory_repository.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -15,6 +14,8 @@ class HistoryScreen extends StatefulWidget {
 class _HistoryScreenState extends State<HistoryScreen> {
   List<Map<String, dynamic>> _records = [];
   bool _isLoading = true;
+  final _repository = MemoryRepository();
+  String? _error;
 
   @override
   void initState() {
@@ -24,43 +25,36 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   // 💡 讀取紀錄 (修正 Key 為 chat_memories 確保與 LifeScreen 寫入一致)
   Future<void> _loadHistory() async {
-    final prefs = await SharedPreferences.getInstance();
-    final List<String> savedList = prefs.getStringList('chat_memories') ?? [];
-
-    setState(() {
-      // 反轉陣列讓最新的紀錄排在最上面
-      _records = savedList
-          .map((e) => jsonDecode(e) as Map<String, dynamic>)
-          .toList()
-          .reversed
-          .toList();
-      _isLoading = false;
-    });
+    try {
+      final rows = await _repository.load();
+      if (!mounted) return;
+      setState(() {
+        _records = rows;
+        _isLoading = false;
+        _error = null;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = '無法讀取回憶，請重試。';
+        });
+      }
+    }
   }
 
   // 💡 刪除紀錄
   Future<void> _deleteRecord(int index) async {
-    final prefs = await SharedPreferences.getInstance();
-    final List<String> savedList = prefs.getStringList('chat_memories') ?? [];
-
-    // 因為 _records 是反轉過的，所以要推算回原本在 savedList 中的真實索引
-    final int originalIndex = _records.length - 1 - index;
-
-    if (originalIndex >= 0 && originalIndex < savedList.length) {
-      savedList.removeAt(originalIndex);
-      await prefs.setStringList('chat_memories', savedList);
-
-      setState(() {
-        _records.removeAt(index);
-      });
-
+    if (index < 0 || index >= _records.length) return;
+    final id = _records[index]['id'] as String;
+    try {
+      await _repository.delete(id);
+      await _loadHistory();
+    } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('已刪除該筆回憶紀錄'),
-            backgroundColor: Colors.grey,
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('刪除失敗，請重試。')));
       }
     }
   }
@@ -130,6 +124,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: Colors.orange))
+          : _error != null
+          ? Center(
+              child: TextButton(onPressed: _loadHistory, child: Text(_error!)),
+            )
           : _records.isEmpty
           ? const Center(
               child: Text(

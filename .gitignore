@@ -56,3 +56,6 @@ app.*.map.json
 
 # Local API smoke-test output
 cloudflare-test.*
+
+# Local real-speech acceptance samples (not app assets)
+/testAudio/

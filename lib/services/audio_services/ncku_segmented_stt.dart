@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'stt_result.dart';
 import 'wav_audio.dart';
+import 'speech_recognition_job.dart';
 
 class _Segment {
   _Segment(this.audio);
@@ -13,20 +14,77 @@ class _Segment {
   List<_Segment>? children;
 }
 
-class NckuSegmentedStt implements ProgressSttService {
+class NckuSegmentedStt implements ProgressSttService, JobSttService {
   NckuSegmentedStt({
     http.Client? client,
     required this.token,
     this.timeout = const Duration(seconds: 60),
-  }) : _client = client ?? http.Client();
+    Uri? endpoint,
+    http.Client Function()? clientFactory,
+  }) : _client = client ?? http.Client(),
+       _endpoint = endpoint,
+       _clientFactory = clientFactory ?? http.Client.new;
   final http.Client _client;
   final String Function() token;
   final Duration timeout;
+  Uri get endpoint =>
+      _endpoint ?? Uri.parse('http://140.116.245.149:5002/proxy');
+  Uri? _endpoint;
+  final http.Client Function() _clientFactory;
   final _jobs = <String, List<_Segment>>{};
+  final _cancelledPaths = <String>{};
+  final _activeWorkers = <String, NckuSegmentedStt>{};
+  bool _cancelled = false;
+  @override
+  SpeechRecognitionJob createJob(String path) => SpeechRecognitionJob(
+    run: (progress) async {
+      _cancelledPaths.remove(path);
+      final worker = NckuSegmentedStt(
+        token: token,
+        timeout: timeout,
+        client: _clientFactory(),
+      );
+      worker._endpoint = endpoint;
+      worker.onProgress = progress;
+      if (_jobs.containsKey(path)) worker._jobs[path] = _jobs[path]!;
+      _activeWorkers[path] = worker;
+      try {
+        final text = await worker.transcribe(path);
+        return SttResult(text: text ?? '');
+      } on SttException catch (error) {
+        return SttResult(error: error);
+      } finally {
+        if (!worker._cancelled &&
+            !_cancelledPaths.contains(path) &&
+            worker._jobs.containsKey(path)) {
+          _jobs[path] = worker._jobs[path]!;
+        }
+        worker._client.close();
+        if (identical(_activeWorkers[path], worker)) {
+          _activeWorkers.remove(path);
+        }
+        _cancelledPaths.remove(path);
+      }
+    },
+    abort: () {
+      _cancelledPaths.add(path);
+      final worker = _activeWorkers.remove(path);
+      worker?._cancelled = true;
+      worker?._client.close();
+    },
+  );
   @override
   void Function(int complete, int total)? onProgress;
   @override
-  void forget(String path) => _jobs.remove(path);
+  void forget(String path) {
+    _cancelledPaths.add(path);
+    final worker = _activeWorkers.remove(path);
+    worker?._cancelled = true;
+    worker?._client.close();
+    if (worker == null) _cancelledPaths.remove(path);
+    _jobs.remove(path);
+  }
+
   static const maximumBodyBytes = 240 * 1024;
 
   String bodyFor(WavAudio audio) =>
@@ -42,6 +100,7 @@ class NckuSegmentedStt implements ProgressSttService {
           .join('&');
 
   Future<String?> transcribe(String path) async {
+    _cancelledPaths.remove(path);
     final progress = onProgress;
     try {
       if (token().isEmpty) {
@@ -64,6 +123,9 @@ class NckuSegmentedStt implements ProgressSttService {
       progress?.call(complete, segments.length);
       Future<void> worker() async {
         while (next < segments.length) {
+          if (_cancelled || _cancelledPaths.contains(path)) {
+            throw const SttException(SttErrorKind.cancelled, '已取消辨識。');
+          }
           final segment = segments[next++];
           if (segment.text != null) continue;
           try {
@@ -93,6 +155,7 @@ class NckuSegmentedStt implements ProgressSttService {
   }
 
   Future<String> _recognize(_Segment segment) async {
+    if (_cancelled) throw const SttException(SttErrorKind.cancelled, '已取消辨識。');
     if (segment.text != null) return segment.text!;
     if (segment.children != null) {
       final texts = <String>[];
@@ -107,7 +170,7 @@ class NckuSegmentedStt implements ProgressSttService {
     try {
       final response = await _client
           .post(
-            Uri.parse('http://140.116.245.149:5002/proxy'),
+            endpoint,
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
             body: body,
           )

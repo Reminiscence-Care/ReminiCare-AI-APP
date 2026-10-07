@@ -9,6 +9,7 @@ import 'package:remini_care_ai_app/services/remini_care_config.dart';
 import 'ncku_segmented_stt.dart';
 import 'stt_result.dart';
 import 'wav_audio.dart';
+import 'speech_recognition_job.dart';
 
 // =========================================================================
 // 💡 1. 定義通用的語音辨識 (STT) 介面
@@ -44,10 +45,17 @@ abstract class ITTSService {
 // 🎙️ 3. 成大自研語音服務 (100% 完美接合 NCKU ASR & VITS TCP-TTS)
 // =========================================================================
 class NckuSpeechService
-    implements ISTTService, ITTSService, ProgressSttService {
+    implements ISTTService, ITTSService, ProgressSttService, JobSttService {
   final _segmented = NckuSegmentedStt(
     token: () => ReminiCareConfig.nckuSttToken,
+    endpoint: Uri.parse(
+      ReminiCareConfig.getValue('NCKU_STT_URL').isEmpty
+          ? 'http://140.116.245.149:5002/proxy'
+          : ReminiCareConfig.getValue('NCKU_STT_URL'),
+    ),
   );
+  @override
+  SpeechRecognitionJob createJob(String path) => _segmented.createJob(path);
   @override
   void Function(int, int)? get onProgress => _segmented.onProgress;
   @override
@@ -55,8 +63,11 @@ class NckuSpeechService
       _segmented.onProgress = value;
   @override
   void forget(String path) => _segmented.forget(path);
-  final String _ttsHost = '140.116.245.146';
-  final int _ttsPort = 9998;
+  final String _ttsHost = ReminiCareConfig.getValue('NCKU_TTS_HOST').isEmpty
+      ? '140.116.245.146'
+      : ReminiCareConfig.getValue('NCKU_TTS_HOST');
+  final int _ttsPort =
+      int.tryParse(ReminiCareConfig.getValue('NCKU_TTS_PORT')) ?? 9998;
   final String _ttsEndOfTransmission = 'EOT';
   final String _ttsApiId = '10012';
 
@@ -91,8 +102,12 @@ class NckuSpeechService
 
     debugPrint("[NCKU TTS] 正在建立與 VITS-TCP Server 的連線: $_ttsHost:$_ttsPort");
 
+    Socket? socket;
     try {
-      final Socket socket = await Socket.connect(
+      final connector = ReminiCareConfig.getValue('NCKU_TTS_TLS') == 'true'
+          ? SecureSocket.connect
+          : Socket.connect;
+      socket = await connector(
         _ttsHost,
         _ttsPort,
         timeout: const Duration(seconds: 5),
@@ -112,7 +127,7 @@ class NckuSpeechService
           try {
             final String resultString = utf8.decode(responseBytes);
             if (resultString.isEmpty) {
-              completer.complete(null);
+              if (!completer.isCompleted) completer.complete(null);
               return;
             }
 
@@ -124,18 +139,20 @@ class NckuSpeechService
               final Uint8List wavBytes = base64Decode(base64Wav);
 
               debugPrint("✅ [NCKU TTS 成功] 語音合成流加載完成。");
-              completer.complete(wavBytes);
+              if (!completer.isCompleted) completer.complete(wavBytes);
             } else {
               final String error =
                   response["message"] ?? response["Message"] ?? "Unknown Error";
               debugPrint("❌ [NCKU TTS 伺服器錯誤]: $error");
-              completer.complete(null);
+              if (!completer.isCompleted) completer.complete(null);
             }
           } catch (e) {
-            completer.completeError(e);
+            if (!completer.isCompleted) completer.completeError(e);
           }
         },
-        onError: (e) => completer.completeError(e),
+        onError: (e) {
+          if (!completer.isCompleted) completer.completeError(e);
+        },
         cancelOnError: true,
       );
 
@@ -144,13 +161,12 @@ class NckuSpeechService
         onTimeout: () => throw TimeoutException('成大 TTS 伺服器接收超時'),
       );
 
-      await socket.close();
-      socket.destroy();
-
       return audioData;
     } catch (e) {
       debugPrint("❌ [NCKU TTS 致命錯誤]: $e");
       return null;
+    } finally {
+      socket?.destroy();
     }
   }
 }
@@ -158,198 +174,231 @@ class NckuSpeechService
 // =========================================================================
 // 🎙️ 4. 雅婷即時語音服務 (Yating Real-time ASR) 實作 STT
 // =========================================================================
-class YatingSttService implements ISTTService {
-  final String _tokenUrl = 'https://asr.api.yating.tw/v1/token';
-  final String _wsBaseUrl = 'wss://asr.api.yating.tw/ws/v1/';
+abstract interface class YatingChannel {
+  Stream<dynamic> get messages;
+  void send(dynamic data);
+  Future<void> close();
+}
 
-  // 💡 升級：不只提取 PCM，還同時解析 fmt chunk 以驗證 WAV 格式！
-  Uint8List _extractAndValidatePcmFromWav(Uint8List bytes) =>
-      WavAudio.parse(bytes).pcm;
+class NativeYatingChannel implements YatingChannel {
+  NativeYatingChannel(this.socket);
+  final WebSocket socket;
+  @override
+  Stream<dynamic> get messages => socket;
+  @override
+  void send(dynamic data) => socket.add(data);
+  @override
+  Future<void> close() async {
+    await socket.close();
+  }
+}
+
+class YatingSttService implements ISTTService, JobSttService {
+  YatingSttService({
+    http.Client? client,
+    this.connect,
+    this.completionTimeout = const Duration(seconds: 30),
+    this.sendDelay = const Duration(microseconds: 62500),
+  }) : _http = client ?? http.Client();
+  final http.Client _http;
+  final Future<YatingChannel> Function(String)? connect;
+  final Duration completionTimeout;
+  final Duration sendDelay;
+  final _cancelled = Completer<void>();
+  YatingChannel? _channel;
+  bool _running = false;
 
   @override
-  Future<String?> transcribe(String audioFilePath) async {
-    if (kIsWeb) {
-      throw const SttException(SttErrorKind.invalidAudio, '無法讀取音訊或建立語音辨識連線。');
+  SpeechRecognitionJob createJob(String path) {
+    final worker = YatingSttService(
+      connect: connect,
+      completionTimeout: completionTimeout,
+      sendDelay: sendDelay,
+    );
+    return SpeechRecognitionJob(
+      run: (progress) async {
+        progress(0, 1);
+        try {
+          final text = await worker.transcribe(path);
+          progress(1, 1);
+          return SttResult(text: text ?? '');
+        } on SttException catch (error) {
+          return SttResult(error: error);
+        } finally {
+          worker._http.close();
+        }
+      },
+      abort: worker.cancel,
+    );
+  }
+
+  void cancel() {
+    if (!_cancelled.isCompleted) _cancelled.complete();
+    _http.close();
+    unawaited(_channel?.close() ?? Future<void>.value());
+  }
+
+  Future<T> _wait<T>(Future<T> value) => Future.any([
+    value,
+    _cancelled.future.then<T>(
+      (_) => throw const SttException(SttErrorKind.cancelled, '已取消辨識。'),
+    ),
+  ]);
+
+  @override
+  Future<String?> transcribe(String path) async {
+    if (_running) throw const SttException(SttErrorKind.server, '辨識工作已在執行。');
+    _running = true;
+    StreamSubscription<dynamic>? subscription;
+    final finished = Completer<String>();
+    final ready = Completer<void>();
+    finished.future.ignore();
+    ready.future.ignore();
+    var full = '';
+    var current = '';
+    String partial() => (full + current).trim();
+    void fail(SttException error) {
+      if (!ready.isCompleted) ready.completeError(error);
+      if (!finished.isCompleted) finished.completeError(error);
     }
 
-    debugPrint("\n========== [Yating STT Debug 開始] ==========");
-    debugPrint("[Yating STT Debug] 📁 準備處理音檔: $audioFilePath");
-    WebSocket? connection;
-    Timer? eofTimer;
-
     try {
-      final file = File(audioFilePath);
-      if (!await file.exists()) {
-        throw const SttException(SttErrorKind.invalidAudio, '找不到錄音檔。');
-      }
-
-      final bytes = await file.readAsBytes();
-      if (bytes.length <= 44) {
-        debugPrint("[Yating STT Debug] ❌ 致命錯誤：音檔過小，代表麥克風錄製到空音軌。");
-        throw const SttException(SttErrorKind.invalidAudio, '無法讀取音訊或建立語音辨識連線。');
-      }
-
-      // 💡 使用新的驗證方法
-      final pcmBytes = _extractAndValidatePcmFromWav(bytes);
-      if (pcmBytes.isEmpty) {
-        debugPrint("[Yating STT Debug] ❌ 提取 PCM 或格式驗證失敗，終止辨識。");
-        throw const SttException(SttErrorKind.invalidAudio, '無法讀取音訊或建立語音辨識連線。');
-      }
-
-      final tokenResponse = await http
-          .post(
-            Uri.parse(_tokenUrl),
-            headers: {
-              'key': ReminiCareConfig.yatingApiKey,
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({"pipeline": "asr-zh-tw-std"}),
-          )
-          .timeout(const Duration(seconds: 10));
-
-      if (tokenResponse.statusCode != 201) {
+      final audio = WavAudio.parse(await File(path).readAsBytes());
+      final response = await _wait(
+        _http
+            .post(
+              Uri.parse('https://asr.api.yating.tw/v1/token'),
+              headers: {
+                'key': ReminiCareConfig.yatingApiKey,
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({'pipeline': 'asr-zh-tw-std'}),
+            )
+            .timeout(const Duration(seconds: 10)),
+      );
+      if (response.statusCode != 201) {
         throw const SttException(SttErrorKind.authentication, '雅婷 STT 驗證失敗。');
       }
-      final tokenData = jsonDecode(tokenResponse.body);
-      if (tokenData['success'] != true || tokenData['auth_token'] == null) {
-        throw const SttException(SttErrorKind.invalidAudio, '無法讀取音訊或建立語音辨識連線。');
+      final token = jsonDecode(utf8.decode(response.bodyBytes));
+      if (token is! Map ||
+          token['success'] != true ||
+          token['auth_token'] is! String) {
+        throw const SttException(
+          SttErrorKind.invalidResponse,
+          '雅婷 STT 驗證回應不正確。',
+        );
       }
-
-      final ws = await WebSocket.connect(
-        '$_wsBaseUrl?token=${tokenData['auth_token']}',
-      );
-      connection = ws;
-      final completer = Completer<String?>();
-      completer.future.ignore();
-      var allAudioSent = false;
-
-      String fullTranscript = "";
-      String currentSentence = "";
-      bool isReadyToSend = false;
-
-      ws.listen(
-        (message) async {
-          if (message is String) {
+      final connection = connect != null
+          ? connect!(
+              'wss://asr.api.yating.tw/ws/v1/?token=${token['auth_token']}',
+            )
+          : WebSocket.connect(
+              'wss://asr.api.yating.tw/ws/v1/?token=${token['auth_token']}',
+            ).then<YatingChannel>(NativeYatingChannel.new);
+      var abandoned = false;
+      connection.then((channel) {
+        if (abandoned || _cancelled.isCompleted) unawaited(channel.close());
+      }, onError: (Object _) {});
+      try {
+        _channel = await _wait(connection.timeout(const Duration(seconds: 10)));
+      } catch (_) {
+        abandoned = true;
+        rethrow;
+      }
+      subscription = _channel!.messages.listen(
+        (message) {
+          try {
+            if (message is! String) return;
             final data = jsonDecode(message);
+            if (data is! Map) throw const FormatException('Invalid ASR event');
             if (data['status'] == 'error') {
-              debugPrint("[ASR LISTEN ERROR]");
-              if (!completer.isCompleted) {
-                completer.completeError(
-                  const SttException(SttErrorKind.server, '雅婷辨識服務回報錯誤。'),
-                );
-              }
-              ws.close();
+              fail(const SttException(SttErrorKind.server, '雅婷辨識服務回報錯誤。'));
               return;
             }
-
-            if (data['status'] == 'ok') isReadyToSend = true;
-
-            if (data['pipe'] != null) {
-              debugPrint(
-                "\n============================= [ASR DATA] =============================",
-              );
-
-              debugPrint(
-                "============================= [ASR DATA] =============================\n",
-              );
-              final pipe = data['pipe'];
-              if (pipe['asr_sentence'] != null) {
-                currentSentence = pipe['asr_sentence'];
+            if (data['status'] == 'ok' && !ready.isCompleted) ready.complete();
+            final pipe = data['pipe'];
+            if (pipe is Map) {
+              if (pipe['asr_sentence'] is String) {
+                current = pipe['asr_sentence'];
               }
-
               if (pipe['asr_final'] == true) {
-                fullTranscript += "$currentSentence，";
-                currentSentence = "";
+                full += '$current，';
+                current = '';
               }
-
-              if (pipe['asr_state'] == 'asr_eof') {
-                if (!completer.isCompleted) {
-                  completer.complete(fullTranscript + currentSentence);
-                  ws.close();
-                }
+              if (pipe['asr_state'] == 'asr_eof' && !finished.isCompleted) {
+                finished.complete(partial());
               }
             }
-          }
-        },
-        onError: (e) {
-          if (!completer.isCompleted) {
-            completer.completeError(
-              const SttException(SttErrorKind.network, '雅婷辨識連線失敗。'),
+          } catch (_) {
+            fail(
+              const SttException(SttErrorKind.invalidResponse, '雅婷回傳格式不正確。'),
             );
           }
         },
+        onError: (Object _) {
+          fail(
+            SttException(
+              SttErrorKind.network,
+              '雅婷辨識連線失敗。',
+              partialText: partial(),
+            ),
+          );
+        },
         onDone: () {
-          if (!completer.isCompleted) {
-            if (allAudioSent) {
-              completer.complete(fullTranscript + currentSentence);
-            } else {
-              completer.completeError(
-                const SttException(SttErrorKind.network, '語音傳送中斷，請重試。'),
-              );
-            }
+          if (!finished.isCompleted) {
+            fail(
+              SttException(
+                SttErrorKind.incomplete,
+                '辨識連線未完整結束，請重試。',
+                partialText: partial(),
+              ),
+            );
           }
         },
       );
-
-      int waitReadyCount = 0;
-      while (!isReadyToSend && waitReadyCount < 50) {
-        await Future.delayed(const Duration(milliseconds: 100));
-        waitReadyCount++;
-      }
-
-      if (!isReadyToSend) {
-        ws.close();
-        throw const SttException(SttErrorKind.timeout, '雅婷辨識服務未就緒，請重試。');
-      }
-
-      final int chunkSize = 2000;
-      for (int i = 0; i < pcmBytes.length; i += chunkSize) {
-        if (ws.readyState != WebSocket.open) break;
-        int end = (i + chunkSize < pcmBytes.length)
-            ? i + chunkSize
-            : pcmBytes.length;
-        ws.add(pcmBytes.sublist(i, end));
-
-        // 💡 升級修復：依照官方建議 Streaming 速率，精準控速為 62500 微秒 (62.5ms)
-        await Future.delayed(const Duration(microseconds: 62500));
-      }
-
-      if (ws.readyState == WebSocket.open) {
-        allAudioSent = true;
-        ws.add(Uint8List(0));
-      }
-
-      Timer eofFallbackTimer = Timer(const Duration(seconds: 3), () {
-        if (!completer.isCompleted) {
-          debugPrint("[Yating STT Debug] ⏱️ 伺服器已讀取完畢但未回傳 asr_eof (靜音裝死)，強制結算！");
-          completer.complete(fullTranscript + currentSentence);
-          ws.close();
+      await _wait(ready.future.timeout(const Duration(seconds: 5)));
+      for (var offset = 0; offset < audio.pcm.length; offset += 2000) {
+        if (finished.isCompleted) break;
+        if (_cancelled.isCompleted) {
+          throw const SttException(SttErrorKind.cancelled, '已取消辨識。');
         }
-      });
-      eofTimer = eofFallbackTimer;
-
-      final String? finalTranscription = await completer.future;
-      eofFallbackTimer.cancel();
-
-      String cleanedTranscription =
-          finalTranscription?.replaceAll(RegExp(r'^[，\s]+|[，\s]+$'), '') ?? "";
-
-      debugPrint("========== [Yating STT Debug 結束] ==========\n");
-
-      return cleanedTranscription.isNotEmpty
-          ? cleanedTranscription.trim()
-          : null;
+        _channel!.send(
+          audio.pcm.sublist(offset, (offset + 2000).clamp(0, audio.pcm.length)),
+        );
+        await _wait(Future<void>.delayed(sendDelay));
+      }
+      _channel!.send(Uint8List(0));
+      final text = await _wait(
+        finished.future.timeout(
+          completionTimeout,
+          onTimeout: () => throw SttException(
+            SttErrorKind.incomplete,
+            '辨識尚未完整完成，請重試。',
+            partialText: partial(),
+          ),
+        ),
+      );
+      return text.replaceAll(RegExp(r'^[，\s]+|[，\s]+$'), '');
     } on SttException {
       rethrow;
     } on TimeoutException {
-      throw const SttException(SttErrorKind.timeout, '雅婷語音辨識逾時。');
+      throw SttException(
+        SttErrorKind.timeout,
+        '雅婷語音辨識逾時。',
+        partialText: partial(),
+      );
     } on FormatException {
       throw const SttException(SttErrorKind.invalidAudio, '錄音或辨識回應格式不正確。');
     } catch (_) {
-      throw const SttException(SttErrorKind.network, '雅婷語音辨識失敗，請重試。');
+      throw SttException(
+        SttErrorKind.network,
+        '雅婷語音辨識失敗，請重試。',
+        partialText: partial(),
+      );
     } finally {
-      eofTimer?.cancel();
-      await connection?.close();
+      await subscription?.cancel();
+      await _channel?.close();
+      _running = false;
     }
   }
 }
@@ -451,9 +500,11 @@ class YatingTtsService implements ITTSService {
 // =========================================================================
 // 🎙️ 6. 雅婷全端語音服務整合版
 // =========================================================================
-class YatingSpeechService implements ISTTService, ITTSService {
+class YatingSpeechService implements ISTTService, ITTSService, JobSttService {
   final YatingSttService _sttService = YatingSttService();
   final YatingTtsService _ttsService = YatingTtsService();
+  @override
+  SpeechRecognitionJob createJob(String path) => _sttService.createJob(path);
   @override
   Future<String?> transcribe(String audioFilePath) =>
       _sttService.transcribe(audioFilePath);

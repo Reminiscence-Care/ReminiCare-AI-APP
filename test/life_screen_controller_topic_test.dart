@@ -12,7 +12,6 @@ import 'package:remini_care_ai_app/services/image_gen_api_service.dart';
 import 'package:remini_care_ai_app/services/api_services.dart';
 import 'package:remini_care_ai_app/services/remini_care_config.dart';
 import 'package:remini_care_ai_app/services/audio_services/stt_result.dart';
-import 'package:remini_care_ai_app/services/topic_image_search_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -68,11 +67,9 @@ void main() {
     () async {
       final llm = _TopicLlm();
       final images = _CountingImageClient();
-      final topicImages = _FakeTopicImageSearch();
       final controller = LifeScreenController(
         aiService: ReminiscenceAiService(llm),
         imageService: images,
-        topicImageSearchService: topicImages,
         sttService: _FakeStt(),
       );
 
@@ -85,7 +82,6 @@ void main() {
         everyElement(ThumbnailStatus.ready),
       );
       expect(llm.calls, 1);
-      expect(topicImages.calls, 0);
       expect(images.generateCalls, 0);
       expect(images.editCalls, 0);
 
@@ -111,7 +107,7 @@ void main() {
         sttService: stt,
       );
       await controller.initialize();
-      controller.stage = LifeStage.introduction;
+      controller.restoreForTesting(stage: LifeStage.introduction);
       await controller.completeRecording([file.path]);
       expect(controller.errorMessage, contains('測試失敗'));
       expect(controller.canRetryTranscription, isTrue);
@@ -146,7 +142,7 @@ void main() {
         sttService: stt,
       );
       await controller.initialize();
-      controller.stage = LifeStage.introduction;
+      controller.restoreForTesting(stage: LifeStage.introduction);
       await controller.completeRecording([file.path]);
       expect(controller.stage, LifeStage.introduction);
       expect(controller.introductionState, IntroductionState.ready);
@@ -181,7 +177,7 @@ void main() {
       await controller.leave();
       llm.pending.complete('{"topics":[]}');
       await initializing;
-      expect(controller.topics, same(original));
+      expect(controller.topics, orderedEquals(original));
       controller.dispose();
     },
   );
@@ -260,33 +256,6 @@ class _CountingImageClient implements IImageGenerationClient {
   }) async {
     editCalls++;
     return 'edited.png';
-  }
-}
-
-class _FakeTopicImageSearch implements ITopicImageSearchClient {
-  int calls = 0;
-
-  @override
-  Future<TopicThumbnailResult> findForTopic(
-    ReminiscenceTopic topic, {
-    Set<String> excludedSourceIds = const {},
-  }) async {
-    calls++;
-    final sourceId = 'wikimedia:${topic.title}';
-    return TopicThumbnailResult(
-      path: '${topic.title}.jpg',
-      sourceId: sourceId,
-      width: 1024,
-      height: 768,
-      attribution: TopicImageAttribution(
-        title: topic.title,
-        creator: 'Test creator',
-        source: 'Wikimedia',
-        license: 'CC BY',
-        originalUrl: 'https://example.test/${topic.title}',
-        licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
-      ),
-    );
   }
 }
 

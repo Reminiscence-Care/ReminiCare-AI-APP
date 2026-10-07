@@ -6,6 +6,7 @@ import 'ai_service_exception.dart';
 import 'ai_models.dart';
 import 'llm_client.dart';
 import 'provider_response_parser.dart';
+import 'ai_http_transport.dart';
 
 class TopicRecommendationResult {
   const TopicRecommendationResult({
@@ -22,6 +23,12 @@ class TopicRecommendationResult {
 class ReminiscenceAiService {
   ReminiscenceAiService(this._client);
   final LlmClient _client;
+  void cancelPending() {
+    final client = _client;
+    if (client is CancelableAiWork) {
+      (client as CancelableAiWork).cancelPending();
+    }
+  }
 
   Future<List<ReminiscenceTopic>> questionsForTopics(
     List<ReminiscenceTopic> topics,
@@ -335,7 +342,8 @@ class ReminiscenceAiService {
         LlmMessage('user', transcript),
       ],
       temperature: 0.1,
-      maxTokens: 400,
+      maxTokens: 1024,
+      jsonObject: true,
     );
     return decodeJsonObjectFromText(raw, requiredKey: 'scene');
   }

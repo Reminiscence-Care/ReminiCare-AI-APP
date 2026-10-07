@@ -46,4 +46,48 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
   });
+
+  test(
+    'failed secure storage write leaves config revision and snapshot intact',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'secure_storage_migration_v1': true,
+        'NVIDIA_LLM_MODEL': 'old-model',
+      });
+      final secureValues = <String, String>{'NVIDIA_API_KEY': 'old-key'};
+      var fail = false;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            final args = Map<String, dynamic>.from(call.arguments as Map);
+            final key = args['key'];
+            if (call.method == 'read') return secureValues[key];
+            if (call.method == 'write') {
+              if (fail && args['value'] == 'new-key') {
+                throw PlatformException(code: 'test-failure');
+              }
+              secureValues[key] = args['value'];
+            }
+            return null;
+          });
+      await ReminiCareConfig.loadConfig();
+      final revision = ReminiCareConfig.revision;
+      fail = true;
+      await expectLater(
+        ReminiCareConfig.saveConfig({
+          'NVIDIA_LLM_MODEL': 'new-model',
+          'NVIDIA_API_KEY': 'new-key',
+        }),
+        throwsException,
+      );
+      expect(ReminiCareConfig.revision, revision);
+      expect(ReminiCareConfig.getValue('NVIDIA_LLM_MODEL'), 'old-model');
+      expect(
+        (await SharedPreferences.getInstance()).getString('NVIDIA_LLM_MODEL'),
+        'old-model',
+      );
+      expect(secureValues['NVIDIA_API_KEY'], 'old-key');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    },
+  );
 }

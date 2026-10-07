@@ -1,5 +1,4 @@
 import 'ai/ai_models.dart';
-import 'ai/cloud_vision_reranker.dart';
 import 'ai/llm_client.dart';
 import 'ai/provider_registry.dart';
 import 'ai/reminiscence_ai_service.dart';
@@ -17,7 +16,6 @@ class ApiServices {
   IImageGenerationClient? _image;
   ISTTService? _stt;
   ITTSService? _tts;
-  ITopicImageReranker? _topicImageReranker;
 
   void resetCache() {
     _builtRevision = -1;
@@ -25,7 +23,6 @@ class ApiServices {
     _image = null;
     _stt = null;
     _tts = null;
-    _topicImageReranker = null;
   }
 
   ReminiscenceAiService get reminiscenceAi {
@@ -41,7 +38,9 @@ class ApiServices {
   IImageGenerationClient get image {
     _ensureCurrent();
     final config = _imageConfig();
-    return _image ??= config.id == 'cloudflare'
+    final cached = _image;
+    if (cached != null) return cached;
+    final IImageGenerationClient service = config.id == 'cloudflare'
         ? CloudflareWorkerImageClient(
             config: config,
             appToken: ReminiCareConfig.getValue(config.apiKeyReference),
@@ -50,17 +49,11 @@ class ApiServices {
             config: config,
             apiKey: ReminiCareConfig.getValue(config.apiKeyReference),
           );
+    _image = service;
+    return service;
   }
 
   ImageProviderConfig get imageConfig => _imageConfig();
-
-  ITopicImageReranker get topicImageReranker {
-    _ensureCurrent();
-    return _topicImageReranker ??= CloudTopicImageReranker(
-      config: _visionConfig(),
-      apiKey: ReminiCareConfig.getValue(_visionConfig().apiKeyReference),
-    );
-  }
 
   ISTTService get stt {
     _ensureCurrent();
@@ -151,36 +144,5 @@ class ApiServices {
     }
     return ProviderRegistry.imagePresets[id] ??
         ProviderRegistry.imagePresets['cloudflare']!;
-  }
-
-  VisionProviderConfig _visionConfig() {
-    final id = ReminiCareConfig.getValue('selectedVisionProvider');
-    if (id == 'custom') {
-      return VisionProviderConfig(
-        id: 'custom',
-        displayName: 'Custom Vision OpenAI-compatible',
-        baseUrl: ReminiCareConfig.getValue('CUSTOM_VISION_BASE_URL'),
-        model: ReminiCareConfig.getValue('CUSTOM_VISION_MODEL'),
-        apiKeyReference: 'CUSTOM_VISION_API_KEY',
-        isCustom: true,
-      );
-    }
-    final preset =
-        ProviderRegistry.visionPresets[id] ??
-        ProviderRegistry.visionPresets['nvidia']!;
-    final modelKey = switch (preset.id) {
-      'openai' => 'OPENAI_VISION_MODEL',
-      'gemini' => 'GEMINI_VISION_MODEL',
-      _ => 'NVIDIA_VISION_MODEL',
-    };
-    final configuredModel = ReminiCareConfig.getValue(modelKey).trim();
-    return VisionProviderConfig(
-      id: preset.id,
-      displayName: preset.displayName,
-      baseUrl: preset.baseUrl,
-      model: configuredModel.isEmpty ? preset.model : configuredModel,
-      apiKeyReference: preset.apiKeyReference,
-      timeout: preset.timeout,
-    );
   }
 }

@@ -20,26 +20,6 @@ class LlmProviderConfig {
   final bool isCustom;
 }
 
-class VisionProviderConfig {
-  const VisionProviderConfig({
-    required this.id,
-    required this.displayName,
-    required this.baseUrl,
-    required this.model,
-    required this.apiKeyReference,
-    this.timeout = const Duration(seconds: 45),
-    this.isCustom = false,
-  });
-
-  final String id;
-  final String displayName;
-  final String baseUrl;
-  final String model;
-  final String apiKeyReference;
-  final Duration timeout;
-  final bool isCustom;
-}
-
 class ImageProviderConfig {
   const ImageProviderConfig({
     required this.id,

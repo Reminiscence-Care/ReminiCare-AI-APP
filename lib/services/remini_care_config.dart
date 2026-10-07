@@ -13,6 +13,12 @@ abstract final class ReminiCareConfig {
   static const _migrationMarker = 'secure_storage_migration_v1';
   static final Map<String, String> _configs = {};
   static int _revision = 0;
+  static Future<void> _operation = Future.value();
+  static Future<void> _serialize(Future<void> Function() action) {
+    final work = _operation.then((_) => action());
+    _operation = work.catchError((Object _) {});
+    return work;
+  }
 
   static const Set<String> secretKeys = {
     'NVIDIA_API_KEY',
@@ -29,6 +35,38 @@ abstract final class ReminiCareConfig {
   };
 
   static const fields = <ConfigField>[
+    ConfigField(
+      apiKey: 'NCKU_STT_URL',
+      displayName: '成大 STT 端點（正式部署需 HTTPS）',
+      hintText: 'https://...',
+      isSecure: false,
+      hasDefaultValue: true,
+      defaultValue: 'http://140.116.245.149:5002/proxy',
+    ),
+    ConfigField(
+      apiKey: 'NCKU_TTS_HOST',
+      displayName: '成大 TTS 主機',
+      hintText: 'tts.example.org',
+      isSecure: false,
+      hasDefaultValue: true,
+      defaultValue: '140.116.245.146',
+    ),
+    ConfigField(
+      apiKey: 'NCKU_TTS_PORT',
+      displayName: '成大 TTS Port',
+      hintText: '9998',
+      isSecure: false,
+      hasDefaultValue: true,
+      defaultValue: '9998',
+    ),
+    ConfigField(
+      apiKey: 'NCKU_TTS_TLS',
+      displayName: '成大 TTS 使用 TLS（true/false）',
+      hintText: 'false',
+      isSecure: false,
+      hasDefaultValue: true,
+      defaultValue: 'false',
+    ),
     ConfigField(
       apiKey: 'VOICE_INTRO_SILENCE_SECONDS',
       displayName: '自我介紹：說完後等待秒數（1–30）',
@@ -89,11 +127,6 @@ abstract final class ReminiCareConfig {
       hintText: 'sk-...',
     ),
     ConfigField(
-      apiKey: 'CUSTOM_VISION_API_KEY',
-      displayName: 'Custom Vision API Key',
-      hintText: 'sk-...',
-    ),
-    ConfigField(
       apiKey: 'NCKU_TTS_TOKEN',
       displayName: 'NCKU TTS Token',
       hintText: 'Token...',
@@ -133,18 +166,6 @@ abstract final class ReminiCareConfig {
       isSecure: false,
     ),
     ConfigField(
-      apiKey: 'CUSTOM_VISION_BASE_URL',
-      displayName: 'Custom Vision Base URL',
-      hintText: 'https://example.com/v1',
-      isSecure: false,
-    ),
-    ConfigField(
-      apiKey: 'CUSTOM_VISION_MODEL',
-      displayName: 'Custom Vision 模型',
-      hintText: 'vision-model-name',
-      isSecure: false,
-    ),
-    ConfigField(
       apiKey: 'NVIDIA_LLM_MODEL',
       displayName: 'NVIDIA LLM 模型',
       hintText: 'deepseek-ai/deepseek-v4.1-flash',
@@ -163,30 +184,6 @@ abstract final class ReminiCareConfig {
     ConfigField(
       apiKey: 'GEMINI_LLM_MODEL',
       displayName: 'Gemini LLM 模型',
-      hintText: 'gemini-2.5-flash',
-      isSecure: false,
-      hasDefaultValue: true,
-      defaultValue: 'gemini-2.5-flash',
-    ),
-    ConfigField(
-      apiKey: 'NVIDIA_VISION_MODEL',
-      displayName: 'NVIDIA Vision 模型',
-      hintText: 'meta/llama-3.2-11b-vision-instruct',
-      isSecure: false,
-      hasDefaultValue: true,
-      defaultValue: 'meta/llama-3.2-11b-vision-instruct',
-    ),
-    ConfigField(
-      apiKey: 'OPENAI_VISION_MODEL',
-      displayName: 'OpenAI Vision 模型',
-      hintText: 'gpt-4o-mini',
-      isSecure: false,
-      hasDefaultValue: true,
-      defaultValue: 'gpt-4o-mini',
-    ),
-    ConfigField(
-      apiKey: 'GEMINI_VISION_MODEL',
-      displayName: 'Gemini Vision 模型',
       hintText: 'gemini-2.5-flash',
       isSecure: false,
       hasDefaultValue: true,
@@ -242,8 +239,14 @@ abstract final class ReminiCareConfig {
   static List<String> get endWakeWords => _wordList('WAKE_WORDS_END');
   static List<String> get restartWakeWords => _wordList('WAKE_WORDS_RESTART');
   static String getValue(String key) => _configs[key] ?? '';
+  static String get ttsCacheIdentity =>
+      '${getValue('selectedSpeechProvider')}|'
+      '${getValue('NCKU_TTS_HOST')}|${getValue('NCKU_TTS_PORT')}|'
+      'tw:M04|zh:4793|yating:tw=tai_female_1,zh=zh_en_female_1';
 
-  static Future<void> loadConfig() async {
+  static Future<void> loadConfig() => _serialize(_loadConfig);
+  static Future<void> _loadConfig() async {
+    final snapshot = <String, String>{};
     final prefs = await SharedPreferences.getInstance();
     await _migrateSecrets(prefs);
     for (final field in fields) {
@@ -254,41 +257,83 @@ abstract final class ReminiCareConfig {
         value = field.defaultValue;
         await prefs.setString(field.apiKey, value);
       }
-      _configs[field.apiKey] = value;
+      snapshot[field.apiKey] = value;
     }
-    _configs['selectedLlmProvider'] =
+    snapshot['selectedLlmProvider'] =
         prefs.getString('selectedLlmProvider') ?? 'nvidia';
-    _configs['selectedSpeechProvider'] =
+    snapshot['selectedSpeechProvider'] =
         prefs.getString('selectedSpeechProvider') ?? 'yating';
-    _configs['selectedImageProvider'] =
+    snapshot['selectedImageProvider'] =
         prefs.getString('selectedImageProvider') ?? 'cloudflare';
-    _configs['selectedVisionProvider'] =
-        prefs.getString('selectedVisionProvider') ?? 'nvidia';
-    if (kDebugMode && !kIsWeb) await _readDebugEnv();
+    if (kDebugMode && !kIsWeb) await _readDebugEnv(snapshot);
+    _configs
+      ..clear()
+      ..addAll(snapshot);
     _revision++;
   }
 
-  static Future<void> saveConfig(Map<String, String> values) async {
+  static Future<void> saveConfig(Map<String, String> values) {
+    final snapshot = Map<String, String>.of(values);
+    return _serialize(() => _saveConfig(snapshot));
+  }
+
+  static Future<void> _saveConfig(Map<String, String> values) async {
     final prefs = await SharedPreferences.getInstance();
-    for (final entry in values.entries) {
-      final value = entry.value.trim();
-      _configs[entry.key] = value;
-      if (secretKeys.contains(entry.key)) {
-        if (value.isEmpty) {
-          await _secureStorage.delete(key: entry.key);
-        } else {
-          await _secureStorage.write(key: entry.key, value: value);
-        }
-        await prefs.remove(entry.key);
-      } else {
-        await prefs.setString(entry.key, value);
-      }
+    final previous = <String, String?>{};
+    for (final key in values.keys) {
+      previous[key] = secretKeys.contains(key)
+          ? await _secureStorage.read(key: key)
+          : prefs.getString(key);
     }
+    try {
+      for (final entry in values.entries) {
+        final value = entry.value.trim();
+        if (secretKeys.contains(entry.key)) {
+          if (value.isEmpty) {
+            await _secureStorage.delete(key: entry.key);
+          } else {
+            await _secureStorage.write(key: entry.key, value: value);
+          }
+          await prefs.remove(entry.key);
+        } else {
+          await prefs.setString(entry.key, value);
+        }
+      }
+    } catch (_) {
+      for (final key in values.keys.toList().reversed) {
+        try {
+          final value = previous[key];
+          if (secretKeys.contains(key)) {
+            if (value == null) {
+              await _secureStorage.delete(key: key);
+            } else {
+              await _secureStorage.write(key: key, value: value);
+            }
+          } else if (value == null) {
+            await prefs.remove(key);
+          } else {
+            await prefs.setString(key, value);
+          }
+        } catch (_) {
+          debugPrint('[Settings] rollback failed for $key');
+        }
+      }
+      rethrow;
+    }
+    _configs.addAll(values.map((key, value) => MapEntry(key, value.trim())));
     _revision++;
   }
 
   static String? validateProviderSettings(Map<String, String> values) {
     String read(String key) => (values[key] ?? getValue(key)).trim();
+    final maximum = int.tryParse(
+      read('VOICE_MAX_RECORD_LIMIT').isEmpty
+          ? '180'
+          : read('VOICE_MAX_RECORD_LIMIT'),
+    );
+    if (maximum == null || maximum < 15 || maximum > 600) {
+      return '最長錄音需為 15–600 秒的整數';
+    }
     for (final key in [
       'VOICE_INTRO_SILENCE_SECONDS',
       'VOICE_CHAT_SILENCE_SECONDS',
@@ -341,6 +386,28 @@ abstract final class ReminiCareConfig {
         (read('NCKU_TTS_TOKEN').isEmpty || read('NCKU_STT_TOKEN').isEmpty)) {
       return 'NCKU 語音服務需要 TTS 與 STT Token';
     }
+    if (speech == 'ncku') {
+      final url = Uri.tryParse(
+        read('NCKU_STT_URL').isEmpty
+            ? 'http://140.116.245.149:5002/proxy'
+            : read('NCKU_STT_URL'),
+      );
+      final port = int.tryParse(
+        read('NCKU_TTS_PORT').isEmpty ? '9998' : read('NCKU_TTS_PORT'),
+      );
+      if (url == null ||
+          !{'http', 'https'}.contains(url.scheme) ||
+          url.host.isEmpty) {
+        return '成大 STT 端點格式不正確';
+      }
+      if (port == null || port < 1 || port > 65535) return '成大 TTS Port 格式不正確';
+      if (!{'true', 'false', ''}.contains(read('NCKU_TTS_TLS'))) {
+        return '成大 TTS TLS 請填 true 或 false';
+      }
+      if (read('NCKU_TTS_HOST').contains(RegExp(r'[\s/]'))) {
+        return '成大 TTS 主機請填主機名稱或 IP';
+      }
+    }
     if (speech != 'ncku' && read('YATING_API_KEY').isEmpty) {
       return '雅婷語音服務 Token 不可空白';
     }
@@ -388,7 +455,7 @@ abstract final class ReminiCareConfig {
     await prefs.setBool(_migrationMarker, true);
   }
 
-  static Future<void> _readDebugEnv() async {
+  static Future<void> _readDebugEnv(Map<String, String> snapshot) async {
     final file = File('.env');
     if (!await file.exists()) return;
     for (var line in await file.readAsLines()) {
@@ -397,8 +464,8 @@ abstract final class ReminiCareConfig {
       final index = line.indexOf('=');
       final key = line.substring(0, index).trim();
       final value = line.substring(index + 1).trim();
-      if (_configs.containsKey(key) && getValue(key).isEmpty) {
-        _configs[key] = value;
+      if (snapshot.containsKey(key) && snapshot[key]!.isEmpty) {
+        snapshot[key] = value;
       }
     }
   }

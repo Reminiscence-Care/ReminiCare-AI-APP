@@ -13,6 +13,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _ready = false;
+  String? _loadError;
 
   @override
   void initState() {
@@ -21,8 +22,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _load() async {
-    await ReminiCareConfig.loadConfig();
-    if (mounted) setState(() => _ready = true);
+    if (mounted) setState(() => _loadError = null);
+    try {
+      await ReminiCareConfig.loadConfig();
+      if (mounted) setState(() => _ready = true);
+    } catch (_) {
+      if (mounted) setState(() => _loadError = '設定讀取失敗，點此重試');
+    }
   }
 
   String? _missingConfiguration() {
@@ -235,9 +241,20 @@ class _HomeScreenState extends State<HomeScreen> {
                           saving = true;
                           validationError = null;
                         });
-                        await ReminiCareConfig.saveConfig(values);
-                        ApiServices().resetCache();
-                        if (dialogContext.mounted) Navigator.pop(dialogContext);
+                        try {
+                          await ReminiCareConfig.saveConfig(values);
+                          ApiServices().resetCache();
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+                        } catch (_) {
+                          if (dialogContext.mounted) {
+                            setDialogState(() {
+                              saving = false;
+                              validationError = '設定儲存失敗，原設定已保留，請重試。';
+                            });
+                          }
+                        }
                       },
                 child: Text(saving ? '儲存中…' : '儲存並套用'),
               ),
@@ -299,7 +316,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 28),
             FilledButton(
-              onPressed: _ready ? _start : null,
+              onPressed: _ready ? _start : (_loadError != null ? _load : null),
               style: FilledButton.styleFrom(
                 backgroundColor: ReminiCareTheme.yellow,
                 foregroundColor: ReminiCareTheme.ink,
@@ -309,7 +326,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               child: Text(
-                _ready ? '開始回憶' : '載入設定中…',
+                _ready ? '開始回憶' : (_loadError ?? '載入設定中…'),
                 style: const TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.w600,

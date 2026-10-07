@@ -6,12 +6,15 @@ enum SttErrorKind {
   timeout,
   server,
   invalidResponse,
+  cancelled,
+  incomplete,
 }
 
 class SttException implements Exception {
-  const SttException(this.kind, this.message);
+  const SttException(this.kind, this.message, {this.partialText = ''});
   final SttErrorKind kind;
   final String message;
+  final String partialText;
   @override
   String toString() => 'SttException($kind): $message';
 }

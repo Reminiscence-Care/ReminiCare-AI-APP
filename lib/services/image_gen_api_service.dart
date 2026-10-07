@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'ai/ai_models.dart';
 import 'ai/ai_service_exception.dart';
+import 'ai/ai_http_transport.dart';
 
 abstract interface class IImageGenerationClient {
   ImageProviderConfig get config;
@@ -110,19 +111,25 @@ class LocalImageStore {
   }
 }
 
-class OpenAiCompatibleImageClient implements IImageGenerationClient {
+class OpenAiCompatibleImageClient
+    implements IImageGenerationClient, CancelableAiWork {
   OpenAiCompatibleImageClient({
     required this.config,
     required this.apiKey,
     http.Client? httpClient,
     LocalImageStore? store,
-  }) : _http = httpClient ?? http.Client(),
+  }) : _http = AiHttpTransport(
+         httpClient ?? http.Client(),
+         timeout: config.timeout,
+       ),
        _store = store ?? LocalImageStore();
 
   @override
   final ImageProviderConfig config;
   final String apiKey;
-  final http.Client _http;
+  final AiHttpTransport _http;
+  @override
+  void cancelPending() => _http.cancelPending();
   final LocalImageStore _store;
 
   @override
@@ -293,21 +300,27 @@ class OpenAiCompatibleImageClient implements IImageGenerationClient {
   }
 }
 
-class CloudflareWorkerImageClient implements IImageGenerationClient {
+class CloudflareWorkerImageClient
+    implements IImageGenerationClient, CancelableAiWork {
   CloudflareWorkerImageClient({
     required this.config,
     required this.appToken,
     http.Client? httpClient,
     LocalImageStore? store,
     ImageInputPreprocessor? preprocessor,
-  }) : _http = httpClient ?? http.Client(),
+  }) : _http = AiHttpTransport(
+         httpClient ?? http.Client(),
+         timeout: config.timeout,
+       ),
        _store = store ?? LocalImageStore(),
        _preprocessor = preprocessor ?? const ImageInputPreprocessor();
 
   @override
   final ImageProviderConfig config;
   final String appToken;
-  final http.Client _http;
+  final AiHttpTransport _http;
+  @override
+  void cancelPending() => _http.cancelPending();
   final LocalImageStore _store;
   final ImageInputPreprocessor _preprocessor;
 

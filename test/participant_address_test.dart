@@ -21,9 +21,9 @@ void main() {
     'manual correction is pending until participant confirmation; stale edits ignored',
     () {
       final controller = LifeScreenController()
-        ..stage = LifeStage.introduction
-        ..introductionState = IntroductionState.confirmed
-        ..currentElderName = '於長輩';
+        ..restoreForTesting(stage: LifeStage.introduction)
+        ..restoreForTesting(introductionState: IntroductionState.confirmed)
+        ..restoreForTesting(currentElderName: '於長輩');
       final revision = controller.introductionRevision;
       controller.correctParticipantAddress(
         const ParticipantAddress('余', '先生'),
@@ -46,8 +46,8 @@ void main() {
     'manual correction works after failed introduction and ignores invalid input',
     () {
       final controller = LifeScreenController()
-        ..stage = LifeStage.introduction
-        ..errorMessage = '姓名辨識失敗';
+        ..restoreForTesting(stage: LifeStage.introduction)
+        ..restoreForTesting(errorMessage: '姓名辨識失敗');
       controller.correctParticipantAddress(
         const ParticipantAddress('', '長輩'),
         revision: 0,
@@ -70,9 +70,9 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(1024, 768));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final controller = LifeScreenController()
-        ..stage = LifeStage.introduction
-        ..introductionState = IntroductionState.confirmed
-        ..currentElderName = '於長輩';
+        ..restoreForTesting(stage: LifeStage.introduction)
+        ..restoreForTesting(introductionState: IntroductionState.confirmed)
+        ..restoreForTesting(currentElderName: '於長輩');
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
