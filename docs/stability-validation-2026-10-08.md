@@ -40,6 +40,10 @@
   were not logged. The original sample was not modified or committed.
 - Worker was not changed; its existing checks are run in CI. No Worker deployment
   is part of this update.
+- Initial macOS CI exposed a pre-existing Runner configuration that referenced
+  CocoaPods settings directly and omitted Flutter's generated build variables.
+  Debug/Release/Profile now use Flutter's wrapper xcconfig files; the unsigned
+  iOS build must pass on the corrected revision before device deployment.
 
 ## Required external/device acceptance
 
