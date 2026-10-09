@@ -1,3 +1,4 @@
+import 'app_log.dart';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -12,6 +13,11 @@ abstract final class ReminiCareConfig {
   );
   static const _migrationMarker = 'secure_storage_migration_v1';
   static final Map<String, String> _configs = {};
+  static const debugFlowKey = 'DEBUG_FIXED_FLOW';
+  static bool get debugFixedFlow =>
+      kDebugMode && getValue(debugFlowKey) == 'true';
+  static bool resolveDebugFixedFlow(bool? override) =>
+      kDebugMode && (override ?? debugFixedFlow);
   static int _revision = 0;
   static Future<void> _operation = Future.value();
   static Future<void> _serialize(Future<void> Function() action) {
@@ -259,6 +265,7 @@ abstract final class ReminiCareConfig {
       }
       snapshot[field.apiKey] = value;
     }
+    snapshot[debugFlowKey] = prefs.getString(debugFlowKey) ?? 'false';
     snapshot['selectedLlmProvider'] =
         prefs.getString('selectedLlmProvider') ?? 'nvidia';
     snapshot['selectedSpeechProvider'] =
@@ -270,6 +277,7 @@ abstract final class ReminiCareConfig {
       ..clear()
       ..addAll(snapshot);
     _revision++;
+    AppLog.instance.record(LogArea.settings, LogEvent.completed);
   }
 
   static Future<void> saveConfig(Map<String, String> values) {
@@ -315,13 +323,14 @@ abstract final class ReminiCareConfig {
             await prefs.setString(key, value);
           }
         } catch (_) {
-          debugPrint('[Settings] rollback failed for $key');
+          AppLog.instance.record(LogArea.settings, LogEvent.failed);
         }
       }
       rethrow;
     }
     _configs.addAll(values.map((key, value) => MapEntry(key, value.trim())));
     _revision++;
+    AppLog.instance.record(LogArea.settings, LogEvent.completed);
   }
 
   static String? validateProviderSettings(Map<String, String> values) {

@@ -1,7 +1,7 @@
+import '../app_log.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'stt_result.dart';
 import 'wav_audio.dart';
@@ -112,8 +112,11 @@ class NckuSegmentedStt implements ProgressSttService, JobSttService {
       if (!_jobs.containsKey(path)) {
         final audio = WavAudio.parse(await File(path).readAsBytes());
         _jobs[path] = audio.split().map(_Segment.new).toList();
-        debugPrint(
-          '[NCKU STT] ${audio.seconds.toStringAsFixed(1)} 秒，${audio.pcm.length} bytes，${_jobs[path]!.length} 段',
+        AppLog.instance.record(
+          LogArea.stt,
+          LogEvent.started,
+          bytes: audio.pcm.length,
+          total: _jobs[path]!.length,
         );
       }
       final segments = _jobs[path]!;
@@ -146,8 +149,12 @@ class NckuSegmentedStt implements ProgressSttService, JobSttService {
       return text.isEmpty ? null : text;
     } on SttException {
       rethrow;
-    } on FormatException catch (error) {
-      debugPrint('[NCKU STT] 音檔驗證失敗：${error.message}');
+    } on FormatException {
+      AppLog.instance.record(
+        LogArea.stt,
+        LogEvent.failed,
+        detail: 'invalidAudio',
+      );
       throw const SttException(SttErrorKind.invalidAudio, '錄音格式不正確或音檔不完整。');
     } catch (_) {
       throw const SttException(SttErrorKind.network, '無法讀取或傳送錄音，請重試。');
@@ -175,8 +182,12 @@ class NckuSegmentedStt implements ProgressSttService, JobSttService {
             body: body,
           )
           .timeout(timeout);
-      debugPrint(
-        '[NCKU STT] 請求 ${utf8.encode(body).length} bytes，HTTP ${response.statusCode}，${watch.elapsedMilliseconds} ms',
+      AppLog.instance.record(
+        LogArea.stt,
+        LogEvent.requestCompleted,
+        bytes: utf8.encode(body).length,
+        statusCode: response.statusCode,
+        durationMs: watch.elapsedMilliseconds,
       );
       if (response.statusCode == 413 ||
           (response.statusCode >= 400 &&

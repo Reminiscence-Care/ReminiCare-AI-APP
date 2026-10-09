@@ -110,6 +110,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
+        actions: const [SizedBox(width: 72)],
         backgroundColor: Colors.white,
         elevation: 1,
         centerTitle: true,
@@ -307,6 +308,7 @@ class MemoryDetailScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.grey[200],
       appBar: AppBar(
+        actions: const [SizedBox(width: 72)],
         backgroundColor: Colors.grey[200],
         elevation: 0,
         leading: IconButton(

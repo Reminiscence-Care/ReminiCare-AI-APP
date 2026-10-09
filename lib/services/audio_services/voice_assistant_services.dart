@@ -1,3 +1,4 @@
+import '../app_log.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -193,14 +194,33 @@ class VoiceAssistantManager {
         for (final language in languages) {
           for (final text in texts) {
             if (getCancelled()) return PlaybackOutcome.cancelled;
+            AppLog.instance.record(
+              LogArea.tts,
+              LogEvent.started,
+              detail: language == '台語' ? 'tw' : 'zh',
+            );
             final path = await Future.any<String?>([
               _cache.resolve(text, language),
               cancellation.future.then((_) => null),
             ]);
             if (getCancelled()) return PlaybackOutcome.cancelled;
-            if (path == null) return PlaybackOutcome.failed;
+            if (path == null) {
+              AppLog.instance.record(LogArea.tts, LogEvent.failed);
+              return PlaybackOutcome.failed;
+            }
             onPlayingLanguageChanged?.call(language);
+            final playbackWatch = Stopwatch()..start();
             final outcome = await _playback.play(path);
+            AppLog.instance.record(
+              LogArea.tts,
+              outcome == PlaybackOutcome.completed
+                  ? LogEvent.completed
+                  : outcome == PlaybackOutcome.cancelled
+                  ? LogEvent.cancelled
+                  : LogEvent.failed,
+              durationMs: playbackWatch.elapsedMilliseconds,
+              detail: language == '台語' ? 'tw' : 'zh',
+            );
             if (outcome != PlaybackOutcome.completed) return outcome;
             if (partGapMs > 0) {
               await Future.any([

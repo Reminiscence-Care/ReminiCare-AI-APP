@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -81,10 +82,11 @@ class _HomeScreenState extends State<HomeScreen> {
     var llm = ReminiCareConfig.getValue('selectedLlmProvider');
     var image = ReminiCareConfig.getValue('selectedImageProvider');
     var speech = ReminiCareConfig.getValue('selectedSpeechProvider');
+    var fixedFlow = ReminiCareConfig.debugFixedFlow;
     var saving = false;
     String? validationError;
 
-    await showDialog<void>(
+    final route = DialogRoute<void>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => StatefulBuilder(
@@ -148,6 +150,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (kDebugMode)
+                      SwitchListTile(
+                        key: const ValueKey('debug-fixed-flow'),
+                        title: const Text('固定測試流程'),
+                        subtitle: const Text('固定四個主題與問題；下次進入回憶流程生效。'),
+                        value: fixedFlow,
+                        onChanged: saving
+                            ? null
+                            : (value) =>
+                                  setDialogState(() => fixedFlow = value),
+                      ),
                     _ProviderDropdown(
                       label: '語言模型',
                       value: llm,
@@ -227,6 +240,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         final values = {
                           for (final entry in controllers.entries)
                             entry.key: entry.value.text,
+                          if (kDebugMode)
+                            ReminiCareConfig.debugFlowKey: fixedFlow.toString(),
                           'selectedLlmProvider': llm,
                           'selectedImageProvider': image,
                           'selectedSpeechProvider': speech,
@@ -263,6 +278,9 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       ),
     );
+    await Navigator.of(context, rootNavigator: true).push(route);
+    // Keep text controllers alive until the dialog exit transition unmounts.
+    await route.completed;
     for (final controller in controllers.values) {
       controller.dispose();
     }
@@ -289,6 +307,7 @@ class _HomeScreenState extends State<HomeScreen> {
           icon: const Icon(Icons.settings_outlined),
           tooltip: '設定',
         ),
+        const SizedBox(width: 72),
       ],
     ),
     body: Center(

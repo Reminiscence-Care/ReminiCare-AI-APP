@@ -1,3 +1,4 @@
+import '../services/app_log.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -68,7 +69,7 @@ class _TtsCacheScreenState extends State<TtsCacheScreen> {
         _cacheMetadata = {};
       }
     } catch (e) {
-      debugPrint("讀取快取失敗: $e");
+      AppLog.instance.record(LogArea.cache, LogEvent.failed);
     } finally {
       if (mounted) {
         setState(() {
@@ -95,7 +96,7 @@ class _TtsCacheScreenState extends State<TtsCacheScreen> {
       try {
         await _audioPlayer.play(DeviceFileSource(path));
       } catch (e) {
-        debugPrint("播放失敗: $e");
+        AppLog.instance.record(LogArea.cache, LogEvent.failed);
         if (!mounted) return;
         setState(() => _playingKey = null);
         ScaffoldMessenger.of(
@@ -171,7 +172,7 @@ class _TtsCacheScreenState extends State<TtsCacheScreen> {
         throw Exception("API 回傳空資料");
       }
     } catch (e) {
-      debugPrint("重新生成失敗: $e");
+      AppLog.instance.record(LogArea.cache, LogEvent.failed);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -197,7 +198,7 @@ class _TtsCacheScreenState extends State<TtsCacheScreen> {
       final file = File(data['path']);
       if (file.existsSync()) file.deleteSync();
     } catch (e) {
-      debugPrint("刪除實體檔案失敗: $e");
+      AppLog.instance.record(LogArea.cache, LogEvent.failed);
     }
 
     setState(() {
@@ -343,6 +344,7 @@ class _TtsCacheScreenState extends State<TtsCacheScreen> {
                 ),
               ),
             ),
+          const SizedBox(width: 72),
         ],
       ),
       body: _isLoading

@@ -143,6 +143,7 @@ class TopicSelectionStage extends StatelessWidget {
                   itemBuilder: (_, index) {
                     final topic = controller.topics[index];
                     return _TopicCard(
+                      key: ValueKey('topic-${topic.topicId}'),
                       topic: topic,
                       onTap: () => controller.selectTopic(topic),
                     );
@@ -234,11 +235,13 @@ class IntroductionStage extends StatelessWidget {
               alignment: WrapAlignment.center,
               children: [
                 _RoundAction(
+                  key: const ValueKey('next-participant'),
                   label: '下一位',
                   icon: Icons.group_add_rounded,
                   onPressed: controller.addNextParticipant,
                 ),
                 _RoundAction(
+                  key: const ValueKey('finish-introduction'),
                   label: '開始聊天',
                   icon: Icons.chat_bubble_rounded,
                   onPressed: controller.finishIntroduction,
@@ -247,6 +250,7 @@ class IntroductionStage extends StatelessWidget {
             )
           else
             _RoundAction(
+              key: const ValueKey('record-introduction'),
               label: state == IntroductionState.recording
                   ? '說完了'
                   : (controller.canRetryTranscription ? '重新錄音' : '開始介紹'),
@@ -349,6 +353,7 @@ class QuestionStage extends StatelessWidget {
           ),
         const SizedBox(height: 16),
         _RoundAction(
+          key: const ValueKey('record-answer'),
           label: controller.isRecording
               ? '說完了'
               : (controller.canRetryTranscription ? '重新錄音' : '開始說'),
@@ -427,11 +432,13 @@ class EvaluationStage extends StatelessWidget {
               alignment: WrapAlignment.center,
               children: [
                 _RoundAction(
+                  key: const ValueKey('like'),
                   label: '像',
                   icon: Icons.thumb_up_alt_rounded,
                   onPressed: controller.chooseLike,
                 ),
                 _RoundAction(
+                  key: const ValueKey('dislike'),
                   label: '不太像',
                   icon: Icons.tune_rounded,
                   onPressed: controller.chooseDislike,
@@ -496,6 +503,7 @@ class RevisionStage extends StatelessWidget {
           ),
         const SizedBox(height: 16),
         _RoundAction(
+          key: const ValueKey('record-revision'),
           label: controller.isRecording
               ? '說完了'
               : (controller.canRetryTranscription ? '重新錄音' : '開始說'),
@@ -571,6 +579,7 @@ class SummaryStage extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           _PillButton(
+            key: const ValueKey('save-memory'),
             label: controller.isSaving ? '保存中…' : '保存今天的回憶',
             onPressed: () async {
               if (await controller.saveMemory()) onDone();
@@ -588,7 +597,7 @@ class SummaryStage extends StatelessWidget {
 }
 
 class _TopicCard extends StatelessWidget {
-  const _TopicCard({required this.topic, required this.onTap});
+  const _TopicCard({super.key, required this.topic, required this.onTap});
   final ReminiscenceTopic topic;
   final VoidCallback onTap;
   @override
@@ -912,6 +921,7 @@ class _LanguageSelector extends StatelessWidget {
 
 class _RoundAction extends StatelessWidget {
   const _RoundAction({
+    super.key,
     required this.label,
     required this.icon,
     required this.onPressed,
@@ -952,7 +962,7 @@ class _RoundAction extends StatelessWidget {
 }
 
 class _PillButton extends StatelessWidget {
-  const _PillButton({required this.label, required this.onPressed});
+  const _PillButton({super.key, required this.label, required this.onPressed});
   final String label;
   final FutureOr<void> Function() onPressed;
   @override

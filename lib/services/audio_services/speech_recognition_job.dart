@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
+import '../app_log.dart';
 import 'stt_result.dart';
 
 class SpeechProgress {
@@ -23,25 +23,44 @@ class SpeechRecognitionJob {
   Future<SttResult> get result => _result ??= _start();
   Future<SttResult> _start() async {
     final watch = Stopwatch()..start();
+    AppLog.instance.record(LogArea.stt, LogEvent.started, operationId: id);
+    SttResult? observed;
     try {
       if (isCancelled) return await _cancelled.future;
-      return await Future.any([
+      observed = await Future.any<SttResult>([
         run((complete, total) {
           if (!isCancelled && !_progress.isClosed) {
             _progress.add(SpeechProgress(complete, total));
+            AppLog.instance.record(
+              LogArea.stt,
+              LogEvent.progress,
+              operationId: id,
+              complete: complete,
+              total: total,
+            );
           }
         }),
         _cancelled.future,
       ]);
+      return observed;
     } catch (error) {
-      return SttResult(
+      observed = SttResult(
         error: error is SttException
             ? error
             : const SttException(SttErrorKind.network, '語音辨識失敗，請重試。'),
       );
+      return observed;
     } finally {
-      debugPrint(
-        '[STT] job=$id elapsedMs=${watch.elapsedMilliseconds} cancelled=$isCancelled',
+      AppLog.instance.record(
+        LogArea.stt,
+        isCancelled
+            ? LogEvent.cancelled
+            : observed?.error != null
+            ? LogEvent.failed
+            : LogEvent.completed,
+        operationId: id,
+        durationMs: watch.elapsedMilliseconds,
+        detail: observed?.error?.kind.name,
       );
       await _progress.close();
     }

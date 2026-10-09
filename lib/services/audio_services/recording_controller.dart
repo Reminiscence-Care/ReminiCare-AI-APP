@@ -1,6 +1,6 @@
+import '../app_log.dart';
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'audio_ports.dart';
 import 'speech_pause_detector.dart';
 import 'stt_result.dart';
@@ -57,6 +57,12 @@ class RecordingController {
   }
 
   void _state(RecordingState value) {
+    AppLog.instance.record(
+      LogArea.recording,
+      value == RecordingState.failed ? LogEvent.failed : LogEvent.stageChanged,
+      operationId: _epoch,
+      detail: value.name,
+    );
     state = value;
     onState?.call(value);
   }
@@ -198,8 +204,12 @@ class RecordingController {
       _path = null;
       if (path != null && !await File(path).exists()) path = null;
       final result = RecordingResult(path, reason, _clock.elapsed);
-      debugPrint(
-        '[Recording] operation=$_epoch durationMs=${result.duration.inMilliseconds} reason=${reason.name} threshold=$thresholdDb',
+      AppLog.instance.record(
+        LogArea.recording,
+        LogEvent.recordingStopped,
+        operationId: _epoch,
+        durationMs: result.duration.inMilliseconds,
+        detail: reason.name,
       );
       _state(RecordingState.completed);
       if (reason == RecordingStopReason.cancelled) {

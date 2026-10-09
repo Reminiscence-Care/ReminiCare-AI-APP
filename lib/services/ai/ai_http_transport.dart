@@ -1,3 +1,4 @@
+import '../app_log.dart';
 import 'dart:async';
 import 'package:http/http.dart' as http;
 
@@ -7,7 +8,13 @@ abstract interface class CancelableAiWork {
 
 /// Each request can release its connection without closing a shared client.
 class AiHttpTransport implements CancelableAiWork {
-  AiHttpTransport(this.client, {required this.timeout});
+  AiHttpTransport(
+    this.client, {
+    required this.timeout,
+    this.logArea = LogArea.ai,
+  });
+  final LogArea logArea;
+  static int _nextId = 0;
   final http.Client client;
   final Duration timeout;
   final Set<Completer<void>> _active = {};
@@ -23,6 +30,9 @@ class AiHttpTransport implements CancelableAiWork {
     Map<String, String>? headers,
     Object? body,
   }) async {
+    final id = ++_nextId;
+    final watch = Stopwatch()..start();
+    AppLog.instance.record(logArea, LogEvent.requestStarted, operationId: id);
     final aborted = Completer<void>();
     _active.add(aborted);
     final request = http.AbortableRequest(
@@ -39,7 +49,7 @@ class AiHttpTransport implements CancelableAiWork {
       request.bodyFields = body;
     }
     try {
-      return await client
+      final response = await client
           .send(request)
           .then(http.Response.fromStream)
           .timeout(
@@ -49,6 +59,28 @@ class AiHttpTransport implements CancelableAiWork {
               throw TimeoutException('AI request timeout');
             },
           );
+      AppLog.instance.record(
+        logArea,
+        LogEvent.requestCompleted,
+        operationId: id,
+        durationMs: watch.elapsedMilliseconds,
+        statusCode: response.statusCode,
+        bytes: response.bodyBytes.length,
+      );
+      return response;
+    } catch (error) {
+      AppLog.instance.record(
+        logArea,
+        LogEvent.requestFailed,
+        operationId: id,
+        durationMs: watch.elapsedMilliseconds,
+        detail: error is TimeoutException
+            ? 'timeout'
+            : error is http.RequestAbortedException
+            ? 'cancelled'
+            : 'network',
+      );
+      rethrow;
     } finally {
       _active.remove(aborted);
     }

@@ -1,3 +1,4 @@
+import '../app_log.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -84,15 +85,27 @@ class NckuSpeechService
   @override
   Future<Uint8List?> generateSpeech(String text, String language) async {
     if (kIsWeb) {
-      debugPrint("[NCKU TTS] 瀏覽器 Web 安全限制不支援直接通訊。");
+      AppLog.instance.record(
+        LogArea.tts,
+        LogEvent.failed,
+        detail: 'unsupportedCapability',
+      );
       return null;
     }
     if (text.isEmpty) {
-      debugPrint("[NCKU TTS] ❌ 傳入的文字不能為空");
+      AppLog.instance.record(
+        LogArea.tts,
+        LogEvent.failed,
+        detail: 'invalidInput',
+      );
       return null;
     }
     if (text.contains('@@@')) {
-      debugPrint("[NCKU TTS] ❌ 傳入的文字不能含有分隔符 '@@@'");
+      AppLog.instance.record(
+        LogArea.tts,
+        LogEvent.failed,
+        detail: 'invalidInput',
+      );
       return null;
     }
 
@@ -100,7 +113,8 @@ class NckuSpeechService
     final String speaker = (language == "台語") ? "M04" : "4793";
     final String token = ReminiCareConfig.nckuTtsToken;
 
-    debugPrint("[NCKU TTS] 正在建立與 VITS-TCP Server 的連線: $_ttsHost:$_ttsPort");
+    final watch = Stopwatch()..start();
+    AppLog.instance.record(LogArea.tts, LogEvent.started, detail: langCode);
 
     Socket? socket;
     try {
@@ -138,12 +152,21 @@ class NckuSpeechService
               final String base64Wav = response["bytes"] ?? "";
               final Uint8List wavBytes = base64Decode(base64Wav);
 
-              debugPrint("✅ [NCKU TTS 成功] 語音合成流加載完成。");
+              AppLog.instance.record(
+                LogArea.tts,
+                LogEvent.completed,
+                bytes: wavBytes.length,
+                durationMs: watch.elapsedMilliseconds,
+                detail: langCode,
+              );
               if (!completer.isCompleted) completer.complete(wavBytes);
             } else {
-              final String error =
-                  response["message"] ?? response["Message"] ?? "Unknown Error";
-              debugPrint("❌ [NCKU TTS 伺服器錯誤]: $error");
+              AppLog.instance.record(
+                LogArea.tts,
+                LogEvent.failed,
+                durationMs: watch.elapsedMilliseconds,
+                detail: 'server',
+              );
               if (!completer.isCompleted) completer.complete(null);
             }
           } catch (e) {
@@ -163,7 +186,12 @@ class NckuSpeechService
 
       return audioData;
     } catch (e) {
-      debugPrint("❌ [NCKU TTS 致命錯誤]: $e");
+      AppLog.instance.record(
+        LogArea.tts,
+        LogEvent.failed,
+        durationMs: watch.elapsedMilliseconds,
+        detail: e is TimeoutException ? 'timeout' : 'network',
+      );
       return null;
     } finally {
       socket?.destroy();

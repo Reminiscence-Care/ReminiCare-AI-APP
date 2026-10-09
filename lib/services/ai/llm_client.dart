@@ -1,3 +1,4 @@
+import '../app_log.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -26,6 +27,7 @@ class OpenAiCompatibleLlmClient implements LlmClient, CancelableAiWork {
   }) : _http = AiHttpTransport(
          httpClient ?? http.Client(),
          timeout: config.timeout,
+         logArea: LogArea.llm,
        );
 
   final LlmProviderConfig config;

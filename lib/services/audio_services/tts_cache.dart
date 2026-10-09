@@ -1,3 +1,4 @@
+import '../app_log.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -52,6 +53,11 @@ class TtsCache {
       });
       _writes = touch.catchError((Object _) {});
       await touch;
+      AppLog.instance.record(
+        LogArea.tts,
+        LogEvent.cacheHit,
+        detail: language == '台語' ? 'tw' : 'zh',
+      );
       return existing['path'] as String;
     }
     final audio = await service

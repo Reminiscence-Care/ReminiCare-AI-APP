@@ -1,3 +1,4 @@
+import '../../../services/app_log.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -21,6 +22,7 @@ import '../../../services/image_gen_api_service.dart';
 import '../../../services/remini_care_config.dart';
 import '../../../services/audio_services/stt_result.dart';
 import '../../../services/topic_catalog.dart';
+import '../../../services/debug_flow.dart';
 
 enum LifeStage {
   topicLoading,
@@ -43,11 +45,20 @@ class LifeScreenController extends ChangeNotifier {
     ISTTService? sttService,
     VoiceAssistantManager Function()? voiceFactory,
     MemoryRepository? memoryRepository,
+    bool? debugFixedFlow,
+    DebugAudioSource? debugAudioSource,
   }) : _injectedAi = aiService,
        _injectedImage = imageService,
        _injectedStt = sttService,
        _voiceFactory = voiceFactory,
+       _debugOverride = debugFixedFlow,
+       _debugAudioSource = debugAudioSource,
        _memories = memoryRepository ?? MemoryRepository();
+  final bool? _debugOverride;
+  final DebugAudioSource? _debugAudioSource;
+  bool _debugFixedFlow = false;
+  bool _debugModeLocked = false;
+  bool get debugFixedFlow => _debugFixedFlow;
   final VoiceAssistantManager Function()? _voiceFactory;
   final MemoryRepository _memories;
   String? _memoryId;
@@ -200,6 +211,12 @@ class LifeScreenController extends ChangeNotifier {
     try {
       await ReminiCareConfig.loadConfig();
       if (_disposed || _closed) return;
+      if (!_debugModeLocked) {
+        _debugFixedFlow = ReminiCareConfig.resolveDebugFixedFlow(
+          _debugOverride,
+        );
+        _debugModeLocked = true;
+      }
       _ai = _injectedAi ?? ApiServices().reminiscenceAi;
       _image = _injectedImage ?? ApiServices().image;
       _stt = _injectedStt ?? ApiServices().stt;
@@ -227,9 +244,12 @@ class LifeScreenController extends ChangeNotifier {
     _notify();
     final catalog = await TopicCatalog.load();
     if (!_isCurrent(requestSession)) return;
-    _topics = catalog.pickFour(excluding: previousIds);
+    _topics = _debugFixedFlow
+        ? DebugFlow.topics(catalog)
+        : catalog.pickFour(excluding: previousIds);
     _stage = LifeStage.topicSelection;
     _notify();
+    if (_debugFixedFlow) return;
     final originalTopics = _topics;
     try {
       final enriched = await _ai.questionsForTopics(originalTopics);
@@ -254,11 +274,22 @@ class LifeScreenController extends ChangeNotifier {
     _stage = LifeStage.introduction;
     _introductionState = IntroductionState.ready;
     _notify();
-    unawaited(_play('請大家介紹自己'));
+    unawaited(_play('請大家介紹自己', bothLanguages: true));
   }
 
   Future<void> startIntroductionRecording() async {
-    if (_busy || _introductionState == IntroductionState.recording) return;
+    if (_disposed ||
+        _closed ||
+        _stage != LifeStage.introduction ||
+        _busy ||
+        _introductionState == IntroductionState.recording) {
+      return;
+    }
+    if (_debugFixedFlow && _debugAudioSource != null) {
+      _introductionRevision++;
+      await _submitDebugAudio(DebugAudioSlot.introduction);
+      return;
+    }
     _introductionRevision++;
     if (await _startRecording()) {
       _introductionState = IntroductionState.recording;
@@ -327,6 +358,12 @@ class LifeScreenController extends ChangeNotifier {
   Future<void> startAnswerRecording() async {
     if (_busy || _stage != LifeStage.question) return;
     _transcript = '';
+    if (_debugFixedFlow && _debugAudioSource != null) {
+      await _submitDebugAudio(
+        _hasExtension ? DebugAudioSlot.extension : DebugAudioSlot.answer,
+      );
+      return;
+    }
     await _startRecording();
     _notify();
   }
@@ -344,10 +381,12 @@ class LifeScreenController extends ChangeNotifier {
     final requestSession = _session;
     _errorMessage = null;
     try {
-      final question = await _ai.generateExtendedQuestion(
-        _currentQuestion,
-        memoryTranscript,
-      );
+      final question = _debugFixedFlow
+          ? _selectedTopic!.followUpQuestion
+          : await _ai.generateExtendedQuestion(
+              _currentQuestion,
+              memoryTranscript,
+            );
       if (!_isCurrent(requestSession)) return;
       _currentQuestion = question;
     } catch (_) {
@@ -371,6 +410,10 @@ class LifeScreenController extends ChangeNotifier {
   Future<void> startRevisionRecording() async {
     if (_busy || _stage != LifeStage.revisionRecording) return;
     _transcript = '';
+    if (_debugFixedFlow && _debugAudioSource != null) {
+      await _submitDebugAudio(DebugAudioSlot.revision);
+      return;
+    }
     await _startRecording();
     _notify();
   }
@@ -399,6 +442,8 @@ class LifeScreenController extends ChangeNotifier {
     if (_saving || _saved || _disposed || _stage != LifeStage.summary) {
       return _saved;
     }
+    final saveWatch = Stopwatch()..start();
+    AppLog.instance.record(LogArea.history, LogEvent.saving);
     _saving = true;
     _errorMessage = null;
     _notify();
@@ -419,8 +464,18 @@ class LifeScreenController extends ChangeNotifier {
       };
       await _memories.save(_memoryId ??= _memories.newId(), data);
       _saved = true;
+      AppLog.instance.record(
+        LogArea.history,
+        LogEvent.saved,
+        durationMs: saveWatch.elapsedMilliseconds,
+      );
       return true;
     } catch (_) {
+      AppLog.instance.record(
+        LogArea.history,
+        LogEvent.failed,
+        durationMs: saveWatch.elapsedMilliseconds,
+      );
       _errorMessage = '回憶保存失敗，請重試。';
       return false;
     } finally {
@@ -441,6 +496,44 @@ class LifeScreenController extends ChangeNotifier {
     await _clearPendingAudio();
     if (_sessionImages.isNotEmpty) {
       await _memories.discardImages(_sessionImages);
+    }
+  }
+
+  Future<void> _submitDebugAudio(DebugAudioSlot slot) async {
+    if (_disposed || _closed || _busy || _isTranscribing || _isRecording) {
+      return;
+    }
+    _busy = true;
+    _errorMessage = null;
+    final session = _session;
+    String? copy;
+    _notify();
+    try {
+      await _stopAllAudio();
+      if (!_isCurrent(session)) return;
+      await _clearPendingAudio();
+      if (!_isCurrent(session)) return;
+      _lastText = '';
+      _interrupted = false;
+      _audioWarning = null;
+      copy = await _debugAudioSource!.take(slot);
+      if (!_isCurrent(session)) {
+        await File(copy).delete();
+        return;
+      }
+      _pendingAudio = [copy];
+      _busy = false;
+      await retryTranscription();
+    } catch (error) {
+      if (!_isCurrent(session)) return;
+      _errorMessage = error is DebugAudioException
+          ? error.message
+          : '測試音檔處理失敗。';
+    } finally {
+      if (_isCurrent(session)) {
+        _busy = false;
+        _notify();
+      }
     }
   }
 
@@ -876,8 +969,42 @@ class LifeScreenController extends ChangeNotifier {
     if (image is CancelableAiWork) (image as CancelableAiWork).cancelPending();
   }
 
+  LifeStage? _loggedStage;
+  String? _loggedError;
+  String? _loggedWarning;
   void _notify() {
-    if (!_disposed) notifyListeners();
+    if (_disposed) return;
+    if (_stage != _loggedStage) {
+      _loggedStage = _stage;
+      AppLog.instance.record(
+        LogArea.flow,
+        LogEvent.stageChanged,
+        operationId: _session,
+        detail: _stage.name,
+      );
+    }
+    if (_errorMessage != _loggedError) {
+      _loggedError = _errorMessage;
+      if (_errorMessage != null) {
+        AppLog.instance.record(
+          LogArea.flow,
+          LogEvent.failed,
+          operationId: _session,
+          detail: _stage.name,
+        );
+      }
+    }
+    if (_audioWarning != _loggedWarning) {
+      _loggedWarning = _audioWarning;
+      if (_audioWarning != null) {
+        AppLog.instance.record(
+          LogArea.flow,
+          LogEvent.warning,
+          operationId: _session,
+        );
+      }
+    }
+    notifyListeners();
   }
 
   @override

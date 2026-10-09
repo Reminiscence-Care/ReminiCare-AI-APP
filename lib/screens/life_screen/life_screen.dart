@@ -6,7 +6,8 @@ import 'controllers/life_screen_controller.dart';
 import 'widgets/stage_views.dart';
 
 class LifeScreen extends StatefulWidget {
-  const LifeScreen({super.key});
+  const LifeScreen({super.key, this.controllerFactory});
+  final LifeScreenController Function()? controllerFactory;
 
   @override
   State<LifeScreen> createState() => _LifeScreenState();
@@ -19,7 +20,8 @@ class _LifeScreenState extends State<LifeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _controller = LifeScreenController()..addListener(_refresh);
+    _controller = (widget.controllerFactory?.call() ?? LifeScreenController())
+      ..addListener(_refresh);
     _controller.initialize();
   }
 
@@ -58,6 +60,10 @@ class _LifeScreenState extends State<LifeScreen> with WidgetsBindingObserver {
       },
       child: Scaffold(
         appBar: AppBar(
+          actions: const [SizedBox(width: 72)],
+          title: _controller.debugFixedFlow
+              ? const Text('固定測試流程', key: ValueKey('debug-flow-banner'))
+              : null,
           backgroundColor: Colors.white,
           surfaceTintColor: Colors.white,
           leading: IconButton(

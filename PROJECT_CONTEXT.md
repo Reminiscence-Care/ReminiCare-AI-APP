@@ -1,6 +1,6 @@
 # ReminiCare 專案脈絡
 
-最後整理：2026-10-08。供 Claude、Codex 與其他協作者的新 session 快速理解；工作規則見 `AGENTS.md`，動態進度見 `docs/AI_HANDOFF.md`，操作見 README。使用通用檔名，不另維護各 AI 的專案脈絡副本。
+最後整理：2026-10-09。供 Claude、Codex 與其他協作者的新 session 快速理解；工作規則見 `AGENTS.md`，動態進度見 `docs/AI_HANDOFF.md`，操作見 README。使用通用檔名，不另維護各 AI 的專案脈絡副本。
 
 ## 產品與使用方式
 
@@ -47,6 +47,22 @@ https://www.figma.com/design/xdo6JkgtKqZG6D8ssO7UOU/Renee-Ong-s-team-library--Co
 - 曾嘗試 Openverse＋雲端 Vision 選圖，但相關度和速度不理想，已移除；不要把它當待完成方案恢復。
 - 姓氏辨識有同音字限制，因此保留人工確認／常用姓氏／手動輸入；未指定稱謂使用「長輩」。
 
+### App 內執行紀錄
+
+- `AppLog` 是共用的有界記憶體紀錄器（最近 500 筆），只接受固定事件／領域、白名單 detail 與數字指標，debug 終端同步輸出；不攔截任意 print 或保存私人內容。
+- `MaterialApp.builder` 的 `AppLogOverlay` 包住 root Navigator，按鈕跨頁面與 dialog 可用；現有 AppBar 保留右側空間。查看 Log 使用獨立路由，返回保留原頁面與流程。
+- `AppLogScreen` 即時顯示本地時間、相對時間、事件／進度／耗時，支援複製與清除；只在查看時維持更新計時器。
+- 接入 recording state／stop、STT job／分段 HTTP、TTS cache／播放、AI HTTP、Controller 階段／錯誤／保存與設定。任意 Provider 錯誤訊息改為固定錯誤種類，避免內容或憑證進入紀錄。
+- 自我介紹入口和問題階段一致使用台語→中文的取消式播放序列；不變更音訊互斥或取消協調。
+
+### 固定測試流程（debug-only）
+
+- 設定偏好 `DEBUG_FIXED_FLOW` 預設 false；Controller 初始化時鎖定，CLI 可用建構參數覆寫而不寫回偏好。所有來源皆受 `kDebugMode` 限制，release／profile 不啟用。
+- 固定題組 street／grocery／market／railway，沿用 catalog 的問題與圖片，跳過主題問題生成與動態追問；其他真實服務照原設定執行。
+- `DebugAudioSource` 只在固定模式注入時生效，按既有錄音按鈕消耗 introduction／answer／extension／revision 樣本；副本進既有 STT job 與重試，原檔不交給刪除流程。
+- Windows integration test 從 CLI 清單注入音檔，以正式 Widget keys 走多人自介、分享、修圖、延伸及保存。固定 1366×1024 邏輯布局；不增加音檔匯入 UI，不處理 Windows resize。
+- `LocalImageStore.directory` 與 `MemoryRepository(directory, migrateLegacy: false)` 支援隔離驗收資料，不污染正式圖片／回憶或移除舊歷史偏好。啟動操作與清單格式見 README；live 測試仍需當次授權。
+
 ### 音訊與辨識
 
 - PCM16、16kHz、mono WAV；解析 fmt/data chunks，不假設固定 44-byte header。
@@ -70,6 +86,12 @@ https://www.figma.com/design/xdo6JkgtKqZG6D8ssO7UOU/Renee-Ong-s-team-library--Co
 - 裝置 Documents 下 `reminicare_memories/` 保存紀錄，`reminicare_images/` 管理圖片；舊 `chat_memories` 先備份至 `legacy-backup.json` 再遷移。清理需檢查所有引用。
 - 設定以快照提交，安全儲存失敗有補償回復；秘密放 secure storage，非敏感值放 SharedPreferences。`.env` 僅 debug 補入記憶體。
 - TTS cache key 包含 Provider／端點／聲音／語言／文字，避免切換服務還播舊音。
+
+## 驗收判準與本批交付
+
+固定模式、CLI 音檔、全介面 Log 與雙語自介已實作；本批提交同時包含規則、操作與交接文件。自動驗證為 analyze／98 tests／Windows debug build；先前真實 Windows 音檔流程通過，雙語自介聽感與 iPad 硬體仍未驗收。
+
+使用者接受 STT 一般誤字，字元相似度只作參考，不是 pass/fail 門檻。驗收看固定問題、關鍵內容、明顯漏句／重複、人工稱呼確認、可恢復處理與保存。真實驗收發現 3 種圖片內容留下 9 個檔案，引用有效；Windows 路徑比較／多處引用複製是待診斷方向，尚未修正。
 
 ## 已知限制與不在範圍內的事
 

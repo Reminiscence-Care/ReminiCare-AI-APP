@@ -7,9 +7,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// One JSON file per memory; invalid records do not hide valid records.
 class MemoryRepository {
-  MemoryRepository({Future<Directory> Function()? directory})
-    : _directory = directory ?? getApplicationDocumentsDirectory;
+  MemoryRepository({
+    Future<Directory> Function()? directory,
+    this.migrateLegacy = true,
+  }) : _directory = directory ?? getApplicationDocumentsDirectory;
   final Future<Directory> Function() _directory;
+  final bool migrateLegacy;
   static final _queues = <String, Future<void>>{};
   String newId() =>
       '${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32).toRadixString(16)}';
@@ -81,7 +84,9 @@ class MemoryRepository {
     final marker = File('${directory.path}/migration.complete');
     if (await marker.exists()) return;
     final prefs = await SharedPreferences.getInstance();
-    final legacy = prefs.getStringList('chat_memories') ?? [];
+    final legacy = migrateLegacy
+        ? prefs.getStringList('chat_memories') ?? []
+        : <String>[];
     final backup = File('${directory.path}/legacy-backup.json');
     if (!await backup.exists()) await _atomic(backup, legacy);
     for (var i = 0; i < legacy.length; i++) {
@@ -99,7 +104,7 @@ class MemoryRepository {
     }
     await marker.writeAsString('2', flush: true);
     // The backup retains every legacy string, including malformed rows.
-    await prefs.remove('chat_memories');
+    if (migrateLegacy) await prefs.remove('chat_memories');
   }
 
   Future<List<Map<String, dynamic>>> _read(Directory root) async {

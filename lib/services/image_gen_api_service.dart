@@ -1,3 +1,4 @@
+import 'app_log.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -89,6 +90,9 @@ PreparedImage _prepareImageBytes(Uint8List bytes) {
 }
 
 class LocalImageStore {
+  LocalImageStore({Future<Directory> Function()? directory})
+    : _directory = directory ?? getApplicationDocumentsDirectory;
+  final Future<Directory> Function() _directory;
   Future<String> save(Uint8List bytes, {required String prefix}) async {
     if (kIsWeb) {
       throw const AiServiceException(
@@ -96,7 +100,7 @@ class LocalImageStore {
         'Web 版未設定安全圖片代理。',
       );
     }
-    final root = await getApplicationDocumentsDirectory();
+    final root = await _directory();
     final directory = Directory(
       '${root.path}${Platform.pathSeparator}reminicare_images',
     );
@@ -121,6 +125,7 @@ class OpenAiCompatibleImageClient
   }) : _http = AiHttpTransport(
          httpClient ?? http.Client(),
          timeout: config.timeout,
+         logArea: LogArea.image,
        ),
        _store = store ?? LocalImageStore();
 
@@ -311,6 +316,7 @@ class CloudflareWorkerImageClient
   }) : _http = AiHttpTransport(
          httpClient ?? http.Client(),
          timeout: config.timeout,
+         logArea: LogArea.image,
        ),
        _store = store ?? LocalImageStore(),
        _preprocessor = preprocessor ?? const ImageInputPreprocessor();
