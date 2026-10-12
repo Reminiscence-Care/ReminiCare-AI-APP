@@ -353,7 +353,7 @@ class YatingSttService implements ISTTService, JobSttService {
                 full += '$current，';
                 current = '';
               }
-              if (pipe['asr_state'] == 'asr_eof' && !finished.isCompleted) {
+              if (pipe['asr_eof'] == true && !finished.isCompleted) {
                 finished.complete(partial());
               }
             }

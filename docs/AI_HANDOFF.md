@@ -1,8 +1,42 @@
 # AI 工作交接
 
-最後更新：2026-10-09。這是目前進度摘要，不是自動啟動工作的授權；接手後以使用者最新要求及實際 Git 狀態為準。
+最後更新：2026-10-12。這是目前進度摘要，不是自動啟動工作的授權；接手後以使用者最新要求及實際 Git 狀態為準。
 
-## 最新：文件同步與提交交付
+## 最新：10 月 12 日修正提交交付
+
+使用者已授權提交並推送雅婷 EOF 修正與首頁平板版面調整，包含測試、README、PROJECT_CONTEXT 與交接文件。分支維持 `codex/figma-ui-2026-10-02`，提交前基準 `70a0a85`；提交／推送結果以實際 Git HEAD 與 remote 核對。下列「未 commit／push」為各實作輪結束時的歷史狀態。
+
+最近功能驗證：analyze 無問題、105 tests 通過、Windows debug build 成功。交付輪僅檢查 diff／提交內容；未重新呼叫真實服務，未部署 Worker，未納入本機錄音或憑證。
+
+## 前輪：首頁平板首屏操作區調整
+
+2026-10-12 使用者回報平板首頁插畫與標題過大，開始回憶按鈕需下滑才可見。已縮小首頁標題尺度，插畫依剩餘高度限制且完整顯示；開始按鈕移至 SafeArea 底部獨立操作區，放大字體時上方內容仍可捲動。
+
+- 新增 6 項首頁回歸：1180×820、1024×768 平板橫向、820×1180 直向、390×844 手機及平板 1.5／手機 2 倍文字。包含上下安全區、按鈕完整可見／可點擊／最小高度；一般文字確認內容無需捲動。
+- 本輪 analyze 無問題、完整 105 tests 通過；Windows debug build 成功、diff 檢查通過。未實際部署至 iPad 或驗收硬體畫面。
+- README 操作說明同步。保留前輪雅婷 EOF 修正；未呼叫真實 API、commit、push 或部署。
+
+## 前輪：雅婷 STT 完成訊號修正
+
+2026-10-12 使用者授權修正前輪診斷問題。已將完成判斷改為 `pipe['asr_eof'] == true`，不再把 `asr_eof` 當作 asr_state 值。保留原送音速度、完成期限、取消與部分結果失敗處理；未額外修改服務設定。
+
+- Fake 回應改為先送 `asr_final: true` 的完整句，再送獨立 `asr_eof: true`；新增 false EOF 與錯誤 state 不可完成的案例。修改程式前兩項回歸確認失敗，修正後完整 99 tests 通過。
+- 本輪實際驗證：`flutter analyze` 無問題、`flutter test --reporter expanded` 99 tests 通過、`flutter build windows --debug` 成功、diff 檢查通過。
+- README／PROJECT_CONTEXT 已釐清 EOF 欄位契約。未呼叫真實雅婷服務或讀取金鑰，未驗收真實錄音／iPad 硬體；使用者須重新啟動或 hot restart App 後驗收。
+- 未 commit、push 或部署；分支維持 `codex/figma-ui-2026-10-02`、HEAD `70a0a85`。
+
+## 前輪：雅婷 STT 完成訊號診斷（當時尚未修正）
+
+2026-10-12 使用者切換雅婷後，自介錄音約 8.8 秒，STT 約 39.4 秒後回報未完整結束。本輪僅診斷；開始時分支 `codex/figma-ui-2026-10-02`、HEAD `70a0a85`，工作目錄乾淨。
+
+- 已確認 API 回應解析錯誤：`speech_services.dart` 判斷 `pipe['asr_state'] == 'asr_eof'`，但官方文件將 `asr_eof` 列為獨立欄位，官方 SDK 使用 `pipe['asr_eof']` 的真值判定。現有 `speech_jobs_test.dart` fake 同樣使用錯誤的 asr_state 格式，未驗證真實協定。
+- 39.4 秒符合接近即時傳送約 8.8 秒錄音，再等待 30 秒 EOF 的時序；這是推論，本輪未取得該次服務事件，不能排除斷線等其他因素。
+- token endpoint、key header、pipeline、ready 後傳送 PCM16／16kHz／mono、2000-byte chunks 與空 binary EOF 的實作方式符合官方文件；未讀取金鑰或呼叫真實服務。
+- 待後續授權修正完成欄位及契約測試；保留部分結果不可當完整成功的原則。可補白名單 ready／傳送完成／EOF／關閉／完成期限事件，避免保存回應本文或逐字稿。
+- 本輪只更新本交接文件，未修改程式、執行 Flutter 測試／build、commit、push 或部署。
+- 來源：[雅婷串流文件](https://developer.yating.tw/zh-TW/doc/asr-ASR%20%E5%8D%B3%E6%99%82%E8%AA%9E%E9%9F%B3%E8%BD%89%E6%96%87%E5%AD%97)、[官方 SDK 完成判斷](https://github.com/TaiwanAILabs-Yating/asr-sdk-python/blob/main/ailabs_asr/clients/WebSocketClient.py)。
+
+## 前輪：文件同步與提交交付
 
 2026-10-09 使用者明確授權將本批改動更新至 AGENTS／README／PROJECT_CONTEXT／本檔，再提交並推送。此文件所在的功能提交包含固定模式、CLI 真實音檔、全介面 Log、雙語自介、回歸測試與驗收紀錄；提交／推送是否完成以實際 Git HEAD、remote 與本輪回覆核對，不以歷史段落的「未提交」認定現況。
 

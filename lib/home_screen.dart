@@ -310,31 +310,57 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(width: 72),
       ],
     ),
-    body: Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          children: [
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(31),
-                child: Image.asset(
-                  'assets/images/life_home.png',
-                  fit: BoxFit.cover,
+    body: SafeArea(
+      child: Column(
+        children: [
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) => Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 16,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: 560,
+                          maxHeight: (constraints.maxHeight * 0.62).clamp(
+                            120.0,
+                            360.0,
+                          ),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(31),
+                          child: Image.asset(
+                            'assets/images/life_home.png',
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        '一起聊聊以前的生活',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: ReminiCareBreakpoints.isPhone(context)
+                              ? 32
+                              : 44,
+                          height: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-            const SizedBox(height: 30),
-            Text(
-              '一起聊聊以前的生活',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: ReminiCareBreakpoints.titleSize(context),
-              ),
-            ),
-            const SizedBox(height: 28),
-            FilledButton(
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+            child: FilledButton(
+              key: const ValueKey('home-start'),
               onPressed: _ready ? _start : (_loadError != null ? _load : null),
               style: FilledButton.styleFrom(
                 backgroundColor: ReminiCareTheme.yellow,
@@ -346,14 +372,15 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               child: Text(
                 _ready ? '開始回憶' : (_loadError ?? '載入設定中…'),
+                textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.w600,
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     ),
   );

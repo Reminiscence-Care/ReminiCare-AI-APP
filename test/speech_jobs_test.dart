@@ -13,6 +13,7 @@ class FakeChannel implements YatingChannel {
   FakeChannel({
     this.eof = true,
     this.malformed = false,
+    this.invalidEofState = false,
     this.delay = Duration.zero,
   }) {
     events = StreamController<dynamic>(
@@ -24,6 +25,7 @@ class FakeChannel implements YatingChannel {
   late final StreamController<dynamic> events;
   final bool eof;
   final bool malformed;
+  final bool invalidEofState;
   final Duration delay;
   Timer? timer;
   bool closed = false;
@@ -37,13 +39,14 @@ class FakeChannel implements YatingChannel {
         return;
       }
       events.add('{"pipe":{"asr_sentence":"partial"}}');
+      if (invalidEofState) {
+        events.add('{"pipe":{"asr_eof":false,"asr_state":"asr_eof"}}');
+      }
       if (eof) {
-        timer = Timer(
-          delay,
-          () => events.add(
-            '{"pipe":{"asr_sentence":"complete","asr_state":"asr_eof"}}',
-          ),
-        );
+        timer = Timer(delay, () {
+          events.add('{"pipe":{"asr_sentence":"complete","asr_final":true}}');
+          events.add('{"pipe":{"asr_eof":true}}');
+        });
       }
     }
   }
@@ -154,6 +157,24 @@ void main() {
     'Yating completion deadline preserves partial result as an error',
     () async {
       final channel = FakeChannel(eof: false);
+      await expectLater(
+        yating(
+          channel,
+          timeout: const Duration(milliseconds: 30),
+        ).transcribe(path),
+        throwsA(
+          isA<SttException>()
+              .having((e) => e.kind, 'kind', SttErrorKind.incomplete)
+              .having((e) => e.partialText, 'partial', 'partial'),
+        ),
+      );
+      expect(channel.closed, isTrue);
+    },
+  );
+  test(
+    'Yating false EOF and unrelated state cannot complete recognition',
+    () async {
+      final channel = FakeChannel(eof: false, invalidEofState: true);
       await expectLater(
         yating(
           channel,
