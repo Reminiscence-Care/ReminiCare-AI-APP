@@ -178,6 +178,7 @@ void main() {
   Future<LifeScreenController> create({
     bool? fixed = true,
     DebugAudioSource? audio,
+    bool initialize = true,
   }) async {
     final c = LifeScreenController(
       debugFixedFlow: fixed,
@@ -192,7 +193,7 @@ void main() {
       ),
     );
     controller = c;
-    await c.initialize();
+    if (initialize) await c.initialize();
     return c;
   }
 
@@ -435,12 +436,28 @@ void main() {
       await tester.runAsync(() async {
         final audio = source();
         audio.files[DebugAudioSlot.introduction]!.add(original.path);
-        c = await create(audio: audio);
+        c = await create(audio: audio, initialize: false);
+        // LifeScreen owns initialization and disposal, including failed tests.
+        controller = null;
+        addTearDown(() async {
+          await tester.runAsync(() async {
+            await tester.pumpWidget(const SizedBox.shrink());
+            await voice.close();
+          });
+        });
         await tester.pumpWidget(
           MaterialApp(home: LifeScreen(controllerFactory: () => c)),
         );
-        await ReminiCareConfig.loadConfig();
+        final initialization = Stopwatch()..start();
+        while (c.stage != LifeStage.topicSelection) {
+          if (c.errorMessage != null ||
+              initialization.elapsed > const Duration(seconds: 5)) {
+            fail('Fake UI initialization did not complete');
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+        }
       });
+      expect(tester.takeException(), isNull);
       await tester.pumpAndSettle();
       Future<void> tap(String key, bool Function() ready) async {
         final finder = find.byKey(ValueKey(key));
@@ -458,6 +475,7 @@ void main() {
             await Future<void>.delayed(const Duration(milliseconds: 5));
           }
         });
+        expect(tester.takeException(), isNull);
         await tester.pumpAndSettle();
       }
 

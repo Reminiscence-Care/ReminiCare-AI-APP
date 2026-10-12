@@ -2,7 +2,15 @@
 
 最後更新：2026-10-12。這是目前進度摘要，不是自動啟動工作的授權；接手後以使用者最新要求及實際 Git 狀態為準。
 
-## 最新：10 月 12 日修正提交交付
+## 最新：Linux CI 固定流程測試競態修正
+
+2026-10-12 提交 `ba43ece` 的 [Project checks run 38224419112](https://github.com/Reminiscence-Care/ReminiCare-AI-APP/actions/runs/38224419112) 在 Ubuntu Flutter test 階段失敗（103 通過、2 失敗）；iOS 與 Worker job 成功。Windows 本機先前 105 tests 成功不能代表 Linux CI 成功。
+
+- 固定音檔 Widget 測試由 helper 初始化 Controller 後，LifeScreen 又初始化一次；第二次非同步抽題在 CI 較慢，覆蓋已進入的自介畫面。測試失敗後共用 teardown 又 dispose 畫面所擁有的 Controller，下一項設定測試因重複釋放再失敗。
+- 僅修測試：Widget 案例由 LifeScreen 初始化一次，明確等待 topicSelection；由畫面負責 dispose，註冊失敗時也會卸載畫面的清理；runAsync 錯誤立即檢查，避免後续斷言掩蓋原始問題。
+- 本輪本機 analyze 無問題、固定流程 14 tests 及完整 105 tests 通過；未變更正式 App／Worker，未重跑平台 build 或真實服務。推送後須核對新 CI，結果以遠端 run 為準。
+
+## 前輪：10 月 12 日修正提交交付
 
 使用者已授權提交並推送雅婷 EOF 修正與首頁平板版面調整，包含測試、README、PROJECT_CONTEXT 與交接文件。分支維持 `codex/figma-ui-2026-10-02`，提交前基準 `70a0a85`；提交／推送結果以實際 Git HEAD 與 remote 核對。下列「未 commit／push」為各實作輪結束時的歷史狀態。
 
