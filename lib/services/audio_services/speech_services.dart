@@ -675,8 +675,33 @@ class YatingTtsService implements ITTSService {
           return _addWavHeader(rawPcm);
         }
       }
+      AppLog.instance.record(
+        LogArea.tts,
+        LogEvent.requestFailed,
+        statusCode: response.statusCode,
+        bytes: response.bodyBytes.length,
+        detail: switch (response.statusCode) {
+          401 || 403 => 'authentication',
+          402 => 'billing',
+          429 => 'rateLimit',
+          >= 500 => 'server',
+          _ => 'invalidResponse',
+        },
+      );
+      return null;
+    } on TimeoutException {
+      AppLog.instance.record(
+        LogArea.tts,
+        LogEvent.requestFailed,
+        detail: 'timeout',
+      );
       return null;
     } catch (e) {
+      AppLog.instance.record(
+        LogArea.tts,
+        LogEvent.requestFailed,
+        detail: 'network',
+      );
       return null;
     }
   }

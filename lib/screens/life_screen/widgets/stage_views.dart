@@ -409,53 +409,53 @@ class EvaluationStage extends StatelessWidget {
     final compact =
         MediaQuery.sizeOf(context).width < ReminiCareBreakpoints.tablet;
     final question = controller.hasExtension ? '這樣像嗎？' : '這張照片像您的回憶嗎？';
-    final content = <Widget>[
-      Expanded(child: _MemoryImage(path: controller.currentImagePath)),
-      SizedBox(width: compact ? 0 : 46, height: compact ? 24 : 0),
-      Expanded(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+    final controls = Column(
+      mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _LanguageSelector(controller: controller),
+        const SizedBox(height: 32),
+        Text(
+          question,
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: ReminiCareBreakpoints.titleSize(context)),
+        ),
+        const SizedBox(height: 46),
+        Wrap(
+          spacing: 24,
+          runSpacing: 18,
+          alignment: WrapAlignment.center,
           children: [
-            _LanguageSelector(controller: controller),
-            const SizedBox(height: 32),
-            Text(
-              question,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: ReminiCareBreakpoints.titleSize(context),
-              ),
+            _RoundAction(
+              key: const ValueKey('like'),
+              label: '像',
+              icon: Icons.thumb_up_alt_rounded,
+              onPressed: controller.chooseLike,
             ),
-            const SizedBox(height: 46),
-            Wrap(
-              spacing: 24,
-              runSpacing: 18,
-              alignment: WrapAlignment.center,
-              children: [
-                _RoundAction(
-                  key: const ValueKey('like'),
-                  label: '像',
-                  icon: Icons.thumb_up_alt_rounded,
-                  onPressed: controller.chooseLike,
-                ),
-                _RoundAction(
-                  key: const ValueKey('dislike'),
-                  label: '不太像',
-                  icon: Icons.tune_rounded,
-                  onPressed: controller.chooseDislike,
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            TextButton(
-              onPressed: controller.finishSession,
-              child: const Text(
-                '不想繼續聊',
-                style: TextStyle(fontSize: 22, color: ReminiCareTheme.muted),
-              ),
+            _RoundAction(
+              key: const ValueKey('dislike'),
+              label: '不太像',
+              icon: Icons.tune_rounded,
+              onPressed: controller.chooseDislike,
             ),
           ],
         ),
-      ),
+        const SizedBox(height: 18),
+        TextButton(
+          onPressed: controller.finishSession,
+          child: const Text(
+            '不想繼續聊',
+            style: TextStyle(fontSize: 22, color: ReminiCareTheme.muted),
+          ),
+        ),
+      ],
+    );
+    // Stacked layouts give the controls their natural height and the image
+    // the rest; an even split overflowed the controls in narrow windows.
+    final content = <Widget>[
+      Expanded(child: _MemoryImage(path: controller.currentImagePath)),
+      SizedBox(width: compact ? 0 : 46, height: compact ? 24 : 0),
+      compact ? controls : Expanded(child: controls),
     ];
     return _StagePadding(
       child: compact ? Column(children: content) : Row(children: content),

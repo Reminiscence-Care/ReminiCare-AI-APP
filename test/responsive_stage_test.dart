@@ -105,6 +105,42 @@ void main() {
     );
   }
 
+  for (final size in const [
+    Size(1366, 1024),
+    Size(820, 1180),
+    Size(680, 720),
+    Size(390, 844),
+  ]) {
+    testWidgets(
+      'memory evaluation has no overflow at ${size.width}x${size.height}',
+      (tester) async {
+        await tester.binding.setSurfaceSize(size);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final controller = LifeScreenController()
+          ..restoreForTesting(stage: LifeStage.evaluation)
+          ..restoreForTesting(
+            currentImagePath: File('assets/images/life_home.png').absolute.path,
+          );
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: ReminiCareTheme.light,
+            home: Scaffold(
+              body: SafeArea(
+                child: ReminiCareViewport(
+                  child: EvaluationStage(controller: controller),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        expect(find.text('不想繼續聊'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        controller.dispose();
+      },
+    );
+  }
+
   testWidgets('memory evaluation preserves the complete source image', (
     tester,
   ) async {
