@@ -95,6 +95,22 @@ https://www.figma.com/design/xdo6JkgtKqZG6D8ssO7UOU/Renee-Ong-s-team-library--Co
 
 使用者接受 STT 一般誤字，字元相似度只作參考，不是 pass/fail 門檻。驗收看固定問題、關鍵內容、明顯漏句／重複、人工稱呼確認、可恢復處理與保存。真實驗收發現 3 種圖片內容留下 9 個檔案，引用有效；Windows 路徑比較／多處引用複製是待診斷方向，尚未修正。
 
+## 外部語音／LLM 服務狀態
+
+只記實際測過的結果；外部服務會變，使用前以當次實測為準。測試方式與細節見 `docs/AI_HANDOFF.md`。「未重測」代表沒有新證據，不代表故障。
+
+| 服務 | 用途 | 位置 | 狀態 | 最後實測 |
+|---|---|---|---|---|
+| 成大 VITS TTS | 中文、台語主要合成（中文語者 `4793`，台語 `M04`） | `140.116.245.146:9998`，TCP，`10012@@@token@@@語言@@@語者@@@文字EOT`，回 JSON＋base64 WAV | 中文、客語、英文正常；**台語送漢字一律回 `Exception occurred during synthesis.`**，送台羅（調號或無調）正常，數字調失敗。課程 Flutter 範例註明 `tw` 可輸入中文字，判斷為伺服器端台語前處理故障 | 2026-11-06，Python 直連 |
+| 成大舊版 HTS TTS | 台語最後備援 | `140.116.245.157:10012`，TCP，4-byte 長度前綴＋`token@@@文字@@@模型@@@taiwanese`，直接回 WAV | 可輸入漢字，6 句全回 WAV；使用者試聽認為音質差、不準 | 2026-11-06，Python 直連＋使用者試聽 |
+| 成大 STT | 中文／台語辨識（`lang: Chinese & Taiwanese`） | `http://140.116.245.149:5002/proxy` | 一份約 3 秒中文樣本 490 ms 成功；2026-11-06 用合成語音測時稱謂常辨識錯（「陳阿嬤」→「陳拉瑪」），稱呼確認因此被拒、尚未處理；長錄音、真人台語未驗收 | 2026-11-06，macOS App（合成語音） |
+| 雅婷 STT | 預設辨識服務 | `wss://asr.api.yating.tw/ws/v1/` | 修正 `asr_eof` 判斷後，macOS debug 實機辨識成功 | 2026-11-06，macOS App |
+| 雅婷 TTS | 雅婷模式的中文／台語合成（`zh_en_female_1`／`tai_female_1`） | `https://tts.api.yating.tw/v2/speeches/short` | 沒有獨立驗收紀錄；2026-11-06 起失敗會記 HTTP 狀態碼與錯誤種類到 App Log | 未重測 |
+| NVIDIA LLM `deepseek-v4.1-flash` | 預設聊天 LLM | `https://integrate.api.nvidia.com/v1` | 回應極慢：一次 90 秒無首位元組、轉台羅每句 66–75 秒，超過 App 60 秒逾時；開推理時答案只在 `reasoning_content`，App 不讀 | 2026-11-06，Python 直連＋macOS App |
+| OpenAI `gpt-4.1` | 轉台羅預設模型 | `https://api.openai.com/v1` | 每句約 5 秒，台羅 9998 全收；台語用字在測過的 OpenAI 模型中最好，仍有錯字 | 2026-11-06，Python 直連 |
+
+課程另有一組 STT 設定（token 不同、`lang: TA and ZH Medical V1`），App 未使用也未測過。
+
 ## 已知限制與不在範圍內的事
 
 - 成大是外部實驗室服務，使用者無權改服務端；目前 HTTP STT／raw TCP TTS 未加密。保留此風險說明，不要求使用者改伺服器，不將 TLS 當本輪阻塞。現有端點設定只供可用端點變動，不表示 TLS 已部署。

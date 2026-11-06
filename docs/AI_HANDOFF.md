@@ -20,6 +20,7 @@
 - 同日經使用者同意實測真實 LLM：NVIDIA `deepseek-v4.1-flash` 每句 66–75 秒（超過 60 秒逾時），且開推理時答案只在 `reasoning_content`，App 刻意不讀，等於每次失敗；關推理會出現數字調，9998 不收。OpenAI `gpt-4o-mini`／`gpt-4.1-mini`／`gpt-4.1`／`gpt-5-mini` 都在 1–5 秒內回，台羅 9998 全收；台語用字以 gpt-4.1 最好，但仍有錯（例：多久譯錯）。
 - 因此改為獨立轉台羅模型：設定頁「轉台羅使用的語言模型」（OpenAI 建議／Gemini／NVIDIA／跟隨上方）＋「轉台羅模型」欄位，預設 OpenAI gpt-4.1，逾時 25 秒；會顯示所選 Provider 的金鑰欄。快取 key 含轉台羅 Provider／模型。
 - 驗證：analyze 無問題、完整 123 tests 通過。實測只用 Python 腳本照搬 prompt 打真實服務，未在 App 內跑完整備援鏈或實機試聽。
+- 各語音／LLM 服務狀態與最後實測日期已整理成 `PROJECT_CONTEXT.md`「外部語音／LLM 服務狀態」表；之後重測請更新該表。
 - 已提交並推送（rebase 到 macOS 修正 `40dd48d` 之後），以 tag 觸發 unsigned release IPA；以 GitHub Actions／Release 實際結果為準。
 
 ## 前輪：macOS 桌面版可用性修正
