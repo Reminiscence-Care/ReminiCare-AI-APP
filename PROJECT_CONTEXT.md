@@ -49,7 +49,7 @@ https://www.figma.com/design/xdo6JkgtKqZG6D8ssO7UOU/Renee-Ong-s-team-library--Co
 
 ### App 內執行紀錄
 
-- `AppLog` 是共用的有界記憶體紀錄器（最近 500 筆），只接受固定事件／領域、白名單 detail 與數字指標，debug 終端同步輸出；不攔截任意 print 或保存私人內容。
+- `AppLog` 是共用的有界記憶體紀錄器（最近 500 筆），只接受固定事件／領域、白名單 detail 與數字指標，debug 終端同步輸出；不攔截任意 print。使用者授權 STT 文字透過專用 recordTranscription 記錄，完整／部分事件分開、單筆最多 16,000 個 Unicode 字元，超出明示截短。Controller 在 session 有效後才記錄，取消或過期結果不顯示；複製也包含文字，不持久化或寫入匿名驗收報告。
 - `MaterialApp.builder` 的 `AppLogOverlay` 包住 root Navigator，按鈕跨頁面與 dialog 可用；現有 AppBar 保留右側空間。查看 Log 使用獨立路由，返回保留原頁面與流程。
 - `AppLogScreen` 即時顯示本地時間、相對時間、事件／進度／耗時，支援複製與清除；只在查看時維持更新計時器。
 - 接入 recording state／stop、STT job／分段 HTTP、TTS cache／播放、AI HTTP、Controller 階段／錯誤／保存與設定。任意 Provider 錯誤訊息改為固定錯誤種類，避免內容或憑證進入紀錄。

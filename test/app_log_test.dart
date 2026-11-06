@@ -5,6 +5,49 @@ import 'package:remini_care_ai_app/screens/app_log_screen.dart';
 
 void main() {
   test(
+    'STT text appears identically in console and exported app log',
+    () async {
+      final lines = <String>[];
+      final originalPrint = debugPrint;
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) lines.add(message);
+      };
+      addTearDown(() => debugPrint = originalPrint);
+      final log = AppLog();
+      log.recordTranscription('測試辨識\n第二句', operationId: 7);
+      log.recordTranscription('測試部分文字', operationId: 8, partial: true);
+      expect(lines, log.entries.map((entry) => entry.line).toList());
+      expect(log.exportText(), contains('辨識結果'));
+      expect(log.exportText(), contains('部分辨識結果（未完整成功）'));
+      expect(log.entries.first.transcript, '測試辨識\n第二句');
+      expect(log.entries.first.line.split('\n'), hasLength(1));
+      log.clear();
+      expect(log.exportText(), isEmpty);
+      log.dispose();
+      await Future<void>.delayed(Duration.zero);
+    },
+  );
+  test('STT text is bounded without splitting Unicode characters', () async {
+    final log = AppLog(capacity: 1, mirrorToConsole: false);
+    log.recordTranscription(
+      '😀' * (AppLog.maxTranscriptRunes + 1),
+      operationId: 1,
+    );
+    expect(
+      log.entries.single.transcript!.runes.length,
+      AppLog.maxTranscriptRunes,
+    );
+    expect(log.entries.single.transcriptTruncated, isTrue);
+    expect(log.exportText(), contains('文字已截短'));
+    log.recordTranscription('', operationId: 2);
+    expect(log.entries.single.operationId, 2);
+    expect(log.entries.single.transcript, isEmpty);
+    log.dispose();
+    log.recordTranscription('disposed result', operationId: 3);
+    expect(log.entries.single.operationId, 2);
+    await Future<void>.delayed(Duration.zero);
+  });
+  test(
     'bounded entries preserve time and only known diagnostic details',
     () async {
       final log = AppLog(capacity: 2, mirrorToConsole: false);
@@ -62,8 +105,10 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('執行紀錄'), findsOneWidget);
         log.record(LogArea.flow, LogEvent.stageChanged, detail: 'introduction');
+        log.recordTranscription('畫面測試辨識文字', operationId: 4);
         await tester.pumpAndSettle();
         expect(find.textContaining('自我介紹'), findsWidgets);
+        expect(find.textContaining('畫面測試辨識文字'), findsOneWidget);
         await tester.tap(find.byKey(const ValueKey('clear-app-log')));
         await tester.pumpAndSettle();
         expect(find.text('尚無執行紀錄'), findsOneWidget);

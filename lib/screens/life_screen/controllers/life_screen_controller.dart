@@ -712,7 +712,21 @@ class LifeScreenController extends ChangeNotifier {
       await subscription.cancel();
       if (identical(_jobProgress, subscription)) _jobProgress = null;
       if (identical(_activeJob, job)) _activeJob = null;
-      if (result.error != null) throw result.error!;
+      if (!_isCurrent(requestSession)) {
+        throw const SttException(SttErrorKind.cancelled, '已取消辨識。');
+      }
+      final error = result.error;
+      if (error == null) {
+        AppLog.instance.recordTranscription(result.text, operationId: job.id);
+      } else if (error.kind != SttErrorKind.cancelled &&
+          error.partialText.isNotEmpty) {
+        AppLog.instance.recordTranscription(
+          error.partialText,
+          operationId: job.id,
+          partial: true,
+        );
+      }
+      if (error != null) throw error;
       if (!result.isSilent) parts.add(result.text.trim());
     }
     return parts.join('，');

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 enum LogArea {
@@ -32,6 +33,8 @@ enum LogEvent {
   saved,
   cleared,
   frameworkError,
+  transcription,
+  partialTranscription,
 }
 
 class AppLogEntry {
@@ -48,6 +51,8 @@ class AppLogEntry {
     this.total,
     this.statusCode,
     this.detail,
+    this.transcript,
+    this.transcriptTruncated = false,
   });
   final int id;
   final DateTime time;
@@ -56,6 +61,8 @@ class AppLogEntry {
   final LogEvent event;
   final int? operationId, durationMs, bytes, complete, total, statusCode;
   final String? detail;
+  final String? transcript;
+  final bool transcriptTruncated;
   bool get isError =>
       event == LogEvent.failed ||
       event == LogEvent.requestFailed ||
@@ -79,6 +86,8 @@ class AppLogEntry {
       LogEvent.saved => '保存完成',
       LogEvent.cleared => '清理完成',
       LogEvent.frameworkError => '介面錯誤',
+      LogEvent.transcription => '辨識結果',
+      LogEvent.partialTranscription => '部分辨識結果（未完整成功）',
     };
     return '$label${detail == null ? '' : '・${AppLog.detailLabels[detail] ?? detail}'}';
   }
@@ -94,17 +103,20 @@ class AppLogEntry {
       if (bytes != null) '大小=$bytes bytes',
       if (complete != null && total != null) '進度=$complete/$total',
       if (statusCode != null) 'HTTP=$statusCode',
+      if (transcript != null) '文字=${jsonEncode(transcript)}',
+      if (transcriptTruncated) '文字已截短',
     ];
     return '$stamp (+$seconds 秒) [${area.name.toUpperCase()}] $message${metrics.isEmpty ? '' : '  ${metrics.join('  ')}'}';
   }
 }
 
 /// In-memory diagnostics. Free-form messages, URLs, payloads and exceptions are
-/// deliberately not accepted: callers can only record numeric metrics and known tags.
+/// deliberately not accepted. STT text has a dedicated bounded recording method.
 class AppLog extends ChangeNotifier {
   AppLog({this.capacity = 500, this.mirrorToConsole = true})
     : assert(capacity > 0);
   static final instance = AppLog();
+  static const maxTranscriptRunes = 16000;
   final int capacity;
   final bool mirrorToConsole;
   final _clock = Stopwatch()..start();
@@ -185,6 +197,33 @@ class AppLog extends ChangeNotifier {
           ? detail
           : 'unexpected',
     );
+    _append(entry);
+  }
+
+  /// Only recognized speech is accepted here, never prompts or raw responses.
+  void recordTranscription(
+    String text, {
+    required int operationId,
+    bool partial = false,
+  }) {
+    if (_disposed) return;
+    final runes = text.runes.take(maxTranscriptRunes + 1).toList();
+    final truncated = runes.length > maxTranscriptRunes;
+    _append(
+      AppLogEntry(
+        id: ++_nextId,
+        time: DateTime.now(),
+        elapsed: elapsed,
+        area: LogArea.stt,
+        event: partial ? LogEvent.partialTranscription : LogEvent.transcription,
+        operationId: operationId,
+        transcript: String.fromCharCodes(runes.take(maxTranscriptRunes)),
+        transcriptTruncated: truncated,
+      ),
+    );
+  }
+
+  void _append(AppLogEntry entry) {
     _entries.add(entry);
     if (_entries.length > capacity) _entries.removeAt(0);
     if (mirrorToConsole && kDebugMode) debugPrint(entry.line);

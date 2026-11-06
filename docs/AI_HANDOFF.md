@@ -16,13 +16,23 @@
 - iOS／macOS CocoaPods 整合檔（Podfile、Podfile.lock、Runner pbxproj）一併提交。`pubspec.lock` 僅為本機 Flutter SDK 帶動的測試相關套件升級，未納入提交。
 - 本輪 analyze 僅既有 `ncku_segmented_stt.dart:198` 警告、完整 106 tests 通過。未驗證 Android 與 iPad 實機。
 
+## 前輪：STT 辨識文字加入終端與 App Log
+
+2026-10-12 使用者明確要求可查看辨識文字，已新增專用 STT 完整／部分文字事件；自介、原分享、延伸與修圖在同一 Controller 辨識入口記錄。App Log 一般版可看，debug 同步到 flutter run 終端；複製紀錄也包含文字。
+
+- session 有效後才記錄，取消與過期結果不記錄；未完整成功的部分文字只供診斷，不改變辨識失敗／不可繼續流程的行為。
+- 沿用最近 500 筆記憶體記錄，清除／重啟移除 App 紀錄；終端既有輸出不會隨 App 清除。單筆最多 16,000 個 Unicode 字元，超出明示截短，換行以 JSON escaping 保持單筆輸出。未攔截任意 print 或 Provider 原始回應，不寫入匿名驗收報告。
+- 使用者當次要求優先於旧版逐字稿禁記規則；AGENTS、README、PROJECT_CONTEXT 已同步明確例外，其他憑證／真實錄音／Git／交接資料限制保留。
+- 本輪實際驗證：analyze 無問題、完整 107 tests 通過、Windows debug build 成功、diff 檢查通過；新增終端／App 輸出一致與 Unicode 限制測試，補部分結果／重試／過期結果與畫面可見性回歸。全為 synthetic／fake，未呼叫真實服務或驗收 iPad 硬體。
+- 實作輪結束時未 commit；之後與台語 TTS 備援一起提交，rebase 到 macOS 修正之後。
+
 ## 前輪：Linux CI 固定流程測試競態修正
 
 2026-10-12 提交 `ba43ece` 的 [Project checks run 38224419112](https://github.com/Reminiscence-Care/ReminiCare-AI-APP/actions/runs/38224419112) 在 Ubuntu Flutter test 階段失敗（103 通過、2 失敗）；iOS 與 Worker job 成功。Windows 本機先前 105 tests 成功不能代表 Linux CI 成功。
 
 - 固定音檔 Widget 測試由 helper 初始化 Controller 後，LifeScreen 又初始化一次；第二次非同步抽題在 CI 較慢，覆蓋已進入的自介畫面。測試失敗後共用 teardown 又 dispose 畫面所擁有的 Controller，下一項設定測試因重複釋放再失敗。
 - 僅修測試：Widget 案例由 LifeScreen 初始化一次，明確等待 topicSelection；由畫面負責 dispose，註冊失敗時也會卸載畫面的清理；runAsync 錯誤立即檢查，避免後续斷言掩蓋原始問題。
-- 本輪本機 analyze 無問題、固定流程 14 tests 及完整 105 tests 通過；未變更正式 App／Worker，未重跑平台 build 或真實服務。推送後須核對新 CI，結果以遠端 run 為準。
+- 本輪本機 analyze 無問題、固定流程 14 tests 及完整 105 tests 通過；未變更正式 App／Worker，未重跑平台 build 或真實服務。修正提交 `249cdad` 的 [Project checks run 38225409616](https://github.com/Reminiscence-Care/ReminiCare-AI-APP/actions/runs/38225409616) 已核對全部成功（Flutter analyze／test／Android build、iOS build、Worker）。
 
 ## 前輪：10 月 12 日修正提交交付
 

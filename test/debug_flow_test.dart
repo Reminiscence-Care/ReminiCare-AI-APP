@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:remini_care_ai_app/home_screen.dart';
+import 'package:remini_care_ai_app/services/app_log.dart';
 import 'package:remini_care_ai_app/screens/life_screen/life_screen.dart';
 import 'package:remini_care_ai_app/screens/life_screen/controllers/life_screen_controller.dart';
 import 'package:remini_care_ai_app/services/ai/ai_models.dart';
@@ -52,7 +53,13 @@ class _Stt implements ISTTService {
   @override
   Future<String?> transcribe(String path) async {
     paths.add(path);
-    if (fail) throw const SttException(SttErrorKind.timeout, '測試逾時');
+    if (fail) {
+      throw const SttException(
+        SttErrorKind.timeout,
+        '測試逾時',
+        partialText: '測試部分辨識',
+      );
+    }
     return gate?.future ?? Future.value('我姓陳，測試回憶');
   }
 }
@@ -142,6 +149,7 @@ void main() {
   late VoiceAssistantManager voice;
   LifeScreenController? controller;
   setUp(() async {
+    AppLog.instance.clear();
     SharedPreferences.setMockInitialValues({
       'secure_storage_migration_v1': true,
     });
@@ -281,6 +289,13 @@ void main() {
       expect(recorder.starts, 0);
       expect(playback.stops, greaterThan(0));
       expect(c.canRetryTranscription, isTrue);
+      expect(
+        AppLog.instance.entries
+            .where((e) => e.event == LogEvent.partialTranscription)
+            .single
+            .transcript,
+        '測試部分辨識',
+      );
       final copy = stt.paths.single;
       expect(copy, isNot(original.path));
       expect(await File(copy).exists(), isTrue);
@@ -288,6 +303,13 @@ void main() {
       await c.retryTranscription();
       expect(stt.paths, [copy, copy]);
       expect(c.stage, LifeStage.evaluation);
+      expect(
+        AppLog.instance.entries
+            .where((e) => e.event == LogEvent.transcription)
+            .single
+            .transcript,
+        '我姓陳，測試回憶',
+      );
       expect(await File(copy).exists(), isFalse);
       expect(await original.exists(), isTrue);
       expect(c.turns, hasLength(1));
@@ -348,6 +370,7 @@ void main() {
     await c.leave();
     stt.gate!.complete('old result');
     await first;
+    expect(AppLog.instance.entries.where((e) => e.transcript != null), isEmpty);
     expect(c.turns, isEmpty);
     expect(images.calls, 0);
     expect(await original.exists(), isTrue);

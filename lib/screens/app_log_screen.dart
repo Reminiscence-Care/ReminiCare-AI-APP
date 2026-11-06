@@ -136,7 +136,7 @@ class _AppLogScreenState extends State<AppLogScreen> {
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: Text(
-                '只記錄本次執行的事件與耗時；重新啟動後清空。',
+                '包含語音辨識文字；複製紀錄也會包含文字。重新啟動後清空。',
                 style: TextStyle(fontSize: 17),
               ),
             ),
