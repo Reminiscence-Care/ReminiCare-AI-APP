@@ -122,6 +122,47 @@ void main() {
     expect(() => WavAudio.parse(bytes), throwsFormatException);
   });
 
+  Uint8List macOsRecording(Uint8List pcm, {int subFormat = 1}) {
+    // Layout observed from record_macos (AVFoundation): JUNK + extensible fmt.
+    final builder = BytesBuilder();
+    final header = ByteData(104);
+    header.setUint32(4, 96 + pcm.length, Endian.little);
+    header.setUint32(16, 28, Endian.little);
+    header.setUint32(52, 40, Endian.little);
+    header.setUint16(56, 0xFFFE, Endian.little);
+    header.setUint16(58, 1, Endian.little);
+    header.setUint32(60, 16000, Endian.little);
+    header.setUint32(64, 32000, Endian.little);
+    header.setUint16(68, 2, Endian.little);
+    header.setUint16(70, 16, Endian.little);
+    header.setUint16(72, 22, Endian.little);
+    header.setUint16(74, 16, Endian.little);
+    header.setUint32(76, 4, Endian.little);
+    header.setUint32(100, pcm.length, Endian.little);
+    final bytes = header.buffer.asUint8List();
+    bytes.setRange(0, 4, 'RIFF'.codeUnits);
+    bytes.setRange(8, 16, 'WAVEJUNK'.codeUnits);
+    bytes.setRange(48, 52, 'fmt '.codeUnits);
+    bytes.setRange(80, 96, [
+      subFormat, 0, 0, 0, 0, 0, 0x10, 0, //
+      0x80, 0, 0, 0xaa, 0, 0x38, 0x9b, 0x71,
+    ]);
+    bytes.setRange(96, 100, 'data'.codeUnits);
+    builder
+      ..add(bytes)
+      ..add(pcm);
+    return builder.takeBytes();
+  }
+
+  test('macOS extensible PCM header parses; non-PCM sub-format rejected', () {
+    final pcm = Uint8List.fromList(List.generate(32000, (i) => i % 251));
+    expect(WavAudio.parse(macOsRecording(pcm)).pcm, pcm);
+    expect(
+      () => WavAudio.parse(macOsRecording(pcm, subFormat: 3)),
+      throwsFormatException,
+    );
+  });
+
   final retainedSample = Platform.environment['REMINICARE_WAV_SAMPLE'];
   if (retainedSample != null) {
     test(

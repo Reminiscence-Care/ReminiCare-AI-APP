@@ -29,6 +29,8 @@ class VoiceAssistantManager {
           createPath ??
           () async {
             final root = await getTemporaryDirectory();
+            // The macOS sandbox does not create Caches/<bundle id> up front.
+            await root.create(recursive: true);
             return '${root.path}/reminicare_chat_smart_${DateTime.now().microsecondsSinceEpoch}.wav';
           },
       activate: activate ?? _activate,

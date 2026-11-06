@@ -1,8 +1,20 @@
 # AI 工作交接
 
-最後更新：2026-10-12。這是目前進度摘要，不是自動啟動工作的授權；接手後以使用者最新要求及實際 Git 狀態為準。
+最後更新：2026-11-06。這是目前進度摘要，不是自動啟動工作的授權；接手後以使用者最新要求及實際 Git 狀態為準。
 
-## 最新：Linux CI 固定流程測試競態修正
+## 最新：macOS 桌面版可用性修正
+
+2026-11-06 使用者在 MacBook Air 以 macOS 版實測，依序回報設定儲存失敗、無法啟動麥克風、停止錄音失敗、STT「音檔格式錯誤」。逐項以實機 debug 輸出／系統記錄確認原因後修正：
+
+- 設定儲存：ad-hoc 簽章缺 Data Protection Keychain 權限（-34018）。`FlutterSecureStorage` 加 `MacOsOptions(useDataProtectionKeyChain: false)`，只影響 macOS。
+- 麥克風：macOS Info.plist 補 `NSMicrophoneUsageDescription`，兩份 entitlements 補 `com.apple.security.device.audio-input`。
+- 停止錄音逾時：sandbox 內 `getTemporaryDirectory()`（`Library/Caches/<bundle id>`）不存在，原生錄音無法寫檔且永不回報完成。錄音路徑建立前先 `create(recursive: true)`。中途嘗試的串流錄音繞道已撤回。
+- Keychain 每次重編都要求密碼：macOS Runner 改用 Team `SK5K4DW8WG`、`Apple Development` 簽章，使簽章跨重編穩定；首次需對各項目按「永遠允許」。
+- STT 格式錯誤：AVFoundation 寫出 `WAVE_FORMAT_EXTENSIBLE`（0xFFFE＋JUNK chunk），內容為 16kHz mono 16-bit PCM。`WavAudio.parse` 僅在 sub-format GUID 為 PCM 且有效位元 16 時接受，並新增回歸測試。
+- 實機（macOS debug）已驗證：設定儲存、錄音／停止、雅婷 STT 成功、LLM 稱呼解析回應 200。NVIDIA `deepseek-ai/deepseek-v4.1-flash` 當日 90 秒無首位元組（經使用者授權以極短請求測試；key 有效），使用者改用其他 LLM 設定後成功；未修改 Provider 預設。
+- 本輪 analyze 僅既有 `ncku_segmented_stt.dart:198` 警告、完整 106 tests 通過。未驗證 iOS／Android 實機；`project.pbxproj` 內使用者既有 CocoaPods 改動、`pubspec.lock`、macOS Podfile 與 iOS swiftpm 目錄未納入提交。
+
+## 前輪：Linux CI 固定流程測試競態修正
 
 2026-10-12 提交 `ba43ece` 的 [Project checks run 38224419112](https://github.com/Reminiscence-Care/ReminiCare-AI-APP/actions/runs/38224419112) 在 Ubuntu Flutter test 階段失敗（103 通過、2 失敗）；iOS 與 Worker job 成功。Windows 本機先前 105 tests 成功不能代表 Linux CI 成功。
 

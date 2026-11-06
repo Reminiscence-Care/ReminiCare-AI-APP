@@ -10,6 +10,9 @@ import 'config_field.dart';
 abstract final class ReminiCareConfig {
   static const _secureStorage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    // Ad-hoc signed macOS builds lack the keychain-access-groups entitlement
+    // required by the Data Protection keychain (errSecMissingEntitlement).
+    mOptions: MacOsOptions(useDataProtectionKeyChain: false),
   );
   static const _migrationMarker = 'secure_storage_migration_v1';
   static final Map<String, String> _configs = {};

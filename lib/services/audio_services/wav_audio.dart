@@ -5,6 +5,10 @@ class WavAudio {
   WavAudio(this.pcm);
   final Uint8List pcm;
   static const bytesPerSecond = 32000;
+  static const _pcmSubFormat = [
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, //
+    0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71,
+  ];
   double get seconds => pcm.length / bytesPerSecond;
 
   factory WavAudio.parse(Uint8List bytes) {
@@ -26,8 +30,19 @@ class WavAudio {
       if (id == 'fmt ') {
         if (size < 16) throw const FormatException('WAV 格式不完整');
         final data = ByteData.sublistView(bytes, start, start + size);
+        final tag = data.getUint16(0, Endian.little);
+        // macOS AVFoundation writes WAVE_FORMAT_EXTENSIBLE; accept it only
+        // when its sub-format GUID is plain PCM with 16 valid bits.
+        final isPcm =
+            tag == 1 ||
+            (tag == 0xFFFE &&
+                size >= 40 &&
+                data.getUint16(16, Endian.little) >= 22 &&
+                data.getUint16(18, Endian.little) == 16 &&
+                List.generate(16, (i) => bytes[start + 24 + i]).join(',') ==
+                    _pcmSubFormat.join(','));
         validFormat =
-            data.getUint16(0, Endian.little) == 1 &&
+            isPcm &&
             data.getUint16(2, Endian.little) == 1 &&
             data.getUint32(4, Endian.little) == 16000 &&
             data.getUint16(14, Endian.little) == 16;
