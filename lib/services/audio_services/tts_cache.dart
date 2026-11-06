@@ -18,6 +18,9 @@ class TtsCache {
   static const indexKey = 'tts_audio_cache_index_v1';
   static const maximumBytes = 100 * 1024 * 1024;
 
+  /// 需大於 NckuSpeechService 台語備援鏈的總時限（140 秒）。
+  static const generateTimeout = Duration(seconds: 150);
+
   Future<String?> resolve(String text, String language) {
     final key = jsonEncode([identity, language, text]);
     return _pending.putIfAbsent(
@@ -62,7 +65,7 @@ class TtsCache {
     }
     final audio = await service
         .generateSpeech(text, language)
-        .timeout(const Duration(seconds: 65));
+        .timeout(generateTimeout);
     if (audio == null || audio.isEmpty || audio.length > maximumBytes) {
       return null;
     }

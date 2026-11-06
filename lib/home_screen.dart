@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'services/api_services.dart';
+import 'services/audio_services/taiwanese_tts_fallback.dart';
 import 'services/remini_care_config.dart';
 import 'theme/remini_care_theme.dart';
 
@@ -82,6 +83,12 @@ class _HomeScreenState extends State<HomeScreen> {
     var llm = ReminiCareConfig.getValue('selectedLlmProvider');
     var image = ReminiCareConfig.getValue('selectedImageProvider');
     var speech = ReminiCareConfig.getValue('selectedSpeechProvider');
+    var twFallback = TaiwaneseTtsFallback.parse(
+      ReminiCareConfig.getValue(TaiwaneseTtsFallback.configKey),
+    ).id;
+    var taiLoProvider = TaiLoModelSettings.parseProvider(
+      ReminiCareConfig.getValue(TaiLoModelSettings.providerKey),
+    );
     var fixedFlow = ReminiCareConfig.debugFixedFlow;
     var saving = false;
     String? validationError;
@@ -113,6 +120,20 @@ class _HomeScreenState extends State<HomeScreen> {
             if (speech == 'ncku') ...{
               'NCKU_TTS_TOKEN',
               'NCKU_STT_TOKEN',
+              if (TaiwaneseTtsFallback.parse(twFallback).usesLlm) ...{
+                TaiLoModelSettings.modelKey,
+                switch (taiLoProvider) {
+                  'openai' => 'OPENAI_API_KEY',
+                  'gemini' => 'GEMINI_API_KEY',
+                  'nvidia' => 'NVIDIA_API_KEY',
+                  _ => switch (llm) {
+                    'openai' => 'OPENAI_API_KEY',
+                    'gemini' => 'GEMINI_API_KEY',
+                    'custom' => 'CUSTOM_LLM_API_KEY',
+                    _ => 'NVIDIA_API_KEY',
+                  },
+                },
+              },
             } else
               'YATING_API_KEY',
             'VOICE_MAX_RECORD_LIMIT',
@@ -192,6 +213,32 @@ class _HomeScreenState extends State<HomeScreen> {
                       onChanged: (value) =>
                           setDialogState(() => speech = value),
                     ),
+                    if (speech == 'ncku') ...[
+                      _ProviderDropdown(
+                        label: '台語語音備援',
+                        value: twFallback,
+                        options: {
+                          for (final mode in TaiwaneseTtsFallback.values)
+                            mode.id: mode.label,
+                        },
+                        onChanged: (value) =>
+                            setDialogState(() => twFallback = value),
+                      ),
+                      if (TaiwaneseTtsFallback.parse(twFallback).usesLlm)
+                        _ProviderDropdown(
+                          label: '轉台羅使用的語言模型',
+                          value: taiLoProvider,
+                          options: TaiLoModelSettings.providers,
+                          onChanged: (value) =>
+                              setDialogState(() => taiLoProvider = value),
+                        ),
+                      const _ProviderInfo(
+                        label: '台語',
+                        value:
+                            '成大台語伺服器無法直接念漢字時，先用上方選的模型轉成台羅再合成（OpenAI 預設 gpt-4.1）；'
+                            '仍失敗才改用音質較差的舊伺服器。',
+                      ),
+                    ],
                     const Divider(height: 34),
                     for (final field in ReminiCareConfig.fields.where(
                       (f) => visibleKeys.contains(f.apiKey),
@@ -245,6 +292,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           'selectedLlmProvider': llm,
                           'selectedImageProvider': image,
                           'selectedSpeechProvider': speech,
+                          TaiwaneseTtsFallback.configKey: twFallback,
+                          TaiLoModelSettings.providerKey: taiLoProvider,
                         };
                         final error = ReminiCareConfig.validateProviderSettings(
                           values,

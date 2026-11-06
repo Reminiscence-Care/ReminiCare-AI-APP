@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'audio_services/taiwanese_tts_fallback.dart';
 import 'config_field.dart';
 
 abstract final class ReminiCareConfig {
@@ -75,6 +76,12 @@ abstract final class ReminiCareConfig {
       isSecure: false,
       hasDefaultValue: true,
       defaultValue: 'false',
+    ),
+    ConfigField(
+      apiKey: TaiLoModelSettings.modelKey,
+      displayName: '轉台羅模型（留白用預設）',
+      hintText: 'gpt-4.1',
+      isSecure: false,
     ),
     ConfigField(
       apiKey: 'VOICE_INTRO_SILENCE_SECONDS',
@@ -251,7 +258,10 @@ abstract final class ReminiCareConfig {
   static String get ttsCacheIdentity =>
       '${getValue('selectedSpeechProvider')}|'
       '${getValue('NCKU_TTS_HOST')}|${getValue('NCKU_TTS_PORT')}|'
-      'tw:M04|zh:4793|yating:tw=tai_female_1,zh=zh_en_female_1';
+      'tw:M04|zh:4793|yating:tw=tai_female_1,zh=zh_en_female_1|'
+      'tw-fallback:${TaiwaneseTtsFallback.parse(getValue(TaiwaneseTtsFallback.configKey)).id}|'
+      'tailo:${TaiLoModelSettings.parseProvider(getValue(TaiLoModelSettings.providerKey))}/'
+      '${getValue(TaiLoModelSettings.modelKey).trim()}';
 
   static Future<void> loadConfig() => _serialize(_loadConfig);
   static Future<void> _loadConfig() async {
@@ -275,6 +285,12 @@ abstract final class ReminiCareConfig {
         prefs.getString('selectedSpeechProvider') ?? 'yating';
     snapshot['selectedImageProvider'] =
         prefs.getString('selectedImageProvider') ?? 'cloudflare';
+    snapshot[TaiLoModelSettings.providerKey] = TaiLoModelSettings.parseProvider(
+      prefs.getString(TaiLoModelSettings.providerKey),
+    );
+    snapshot[TaiwaneseTtsFallback.configKey] = TaiwaneseTtsFallback.parse(
+      prefs.getString(TaiwaneseTtsFallback.configKey),
+    ).id;
     if (kDebugMode && !kIsWeb) await _readDebugEnv(snapshot);
     _configs
       ..clear()

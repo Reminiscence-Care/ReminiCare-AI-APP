@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:remini_care_ai_app/services/remini_care_config.dart';
 import 'ncku_segmented_stt.dart';
 import 'stt_result.dart';
+import 'taiwanese_tts_fallback.dart';
 import 'wav_audio.dart';
 import 'speech_recognition_job.dart';
 
@@ -64,13 +65,54 @@ class NckuSpeechService
       _segmented.onProgress = value;
   @override
   void forget(String path) => _segmented.forget(path);
-  final String _ttsHost = ReminiCareConfig.getValue('NCKU_TTS_HOST').isEmpty
-      ? '140.116.245.146'
-      : ReminiCareConfig.getValue('NCKU_TTS_HOST');
-  final int _ttsPort =
-      int.tryParse(ReminiCareConfig.getValue('NCKU_TTS_PORT')) ?? 9998;
+  NckuSpeechService({
+    TaiLoConverter? taiLoConverter,
+    LegacyTaiwaneseTts? legacyTaiwanese,
+    TaiwaneseTtsFallback? taiwaneseFallback,
+    String? ttsHost,
+    int? ttsPort,
+    bool? ttsTls,
+    String Function()? ttsToken,
+    Duration totalTtsBudget = defaultTotalTtsBudget,
+  }) : _taiLo = taiLoConverter,
+       _fallback =
+           taiwaneseFallback ??
+           TaiwaneseTtsFallback.parse(
+             ReminiCareConfig.getValue(TaiwaneseTtsFallback.configKey),
+           ),
+       _ttsHost =
+           ttsHost ??
+           (ReminiCareConfig.getValue('NCKU_TTS_HOST').isEmpty
+               ? '140.116.245.146'
+               : ReminiCareConfig.getValue('NCKU_TTS_HOST')),
+       _ttsPort =
+           ttsPort ??
+           int.tryParse(ReminiCareConfig.getValue('NCKU_TTS_PORT')) ??
+           9998,
+       _ttsTls = ttsTls ?? ReminiCareConfig.getValue('NCKU_TTS_TLS') == 'true',
+       _ttsToken = ttsToken ?? (() => ReminiCareConfig.nckuTtsToken),
+       _totalTtsBudget = totalTtsBudget,
+       _legacyOverride = legacyTaiwanese;
+
+  /// 台語備援最多依序打三個服務；總時限需小於 TtsCache 的外層逾時。
+  static const defaultTotalTtsBudget = Duration(seconds: 140);
+
+  /// 9998 拒絕漢字後，這段時間內台語漢字直接走備援，不再白打一次。
+  static const hanziRejectionMemory = Duration(minutes: 10);
+
+  final TaiLoConverter? _taiLo;
+  final TaiwaneseTtsFallback _fallback;
+  final String _ttsHost;
+  final int _ttsPort;
+  final bool _ttsTls;
+  final String Function() _ttsToken;
+  final Duration _totalTtsBudget;
+  final LegacyTaiwaneseTts? _legacyOverride;
+  late final LegacyTaiwaneseTts _legacy =
+      _legacyOverride ?? NckuLegacyTaiwaneseTts(token: _ttsToken);
   final String _ttsEndOfTransmission = 'EOT';
   final String _ttsApiId = '10012';
+  DateTime? _hanziRejectedAt;
 
   /// 一、成大自研語音辨識服務 (STT)
   @override
@@ -92,7 +134,7 @@ class NckuSpeechService
       );
       return null;
     }
-    if (text.isEmpty) {
+    if (text.isEmpty || text.contains('@@@')) {
       AppLog.instance.record(
         LogArea.tts,
         LogEvent.failed,
@@ -100,91 +142,103 @@ class NckuSpeechService
       );
       return null;
     }
-    if (text.contains('@@@')) {
-      AppLog.instance.record(
-        LogArea.tts,
-        LogEvent.failed,
-        detail: 'invalidInput',
-      );
-      return null;
+    final clock = Stopwatch()..start();
+    Duration remaining() => _totalTtsBudget - clock.elapsed;
+
+    if (language != '台語') {
+      return (await _synthesizeVits(text, 'zh', '4793', remaining())).audio;
     }
 
-    final String langCode = (language == "台語") ? "tw" : "zh";
-    final String speaker = (language == "台語") ? "M04" : "4793";
-    final String token = ReminiCareConfig.nckuTtsToken;
+    // 1. 9998 直接送原文；伺服器修好後這一步就會成功。
+    final hasHan = containsHan(text);
+    final rejectedAt = _hanziRejectedAt;
+    final skipDirect =
+        hasHan &&
+        _fallback != TaiwaneseTtsFallback.off &&
+        rejectedAt != null &&
+        DateTime.now().difference(rejectedAt) < hanziRejectionMemory;
+    var vitsReachable = true;
+    if (!skipDirect) {
+      final direct = await _synthesizeVits(text, 'tw', 'M04', remaining());
+      if (direct.audio != null) {
+        if (hasHan) _hanziRejectedAt = null;
+        return direct.audio;
+      }
+      if (direct.rejected && hasHan) _hanziRejectedAt = DateTime.now();
+      vitsReachable = direct.rejected;
+    }
+    if (_fallback == TaiwaneseTtsFallback.off) return null;
 
+    // 2. LLM 轉台羅後再送 9998；9998 連不上時這一步沒有意義。
+    final converter = _taiLo;
+    if (_fallback.usesLlm && hasHan && vitsReachable && converter != null) {
+      final tailo = await _convertToTaiLo(converter, text, remaining());
+      if (tailo != null && remaining() > Duration.zero) {
+        final retry = await _synthesizeVits(
+          tailo,
+          'tw',
+          'M04',
+          remaining(),
+          startDetail: 'tailo',
+        );
+        if (retry.audio != null) return retry.audio;
+      }
+    }
+
+    // 3. 舊版 10012 伺服器：接受漢字，但音質與正確度較差。
+    if (_fallback.usesLegacy && remaining() > Duration.zero) {
+      return _synthesizeLegacy(text, remaining());
+    }
+    return null;
+  }
+
+  Future<String?> _convertToTaiLo(
+    TaiLoConverter converter,
+    String text,
+    Duration timeout,
+  ) async {
+    if (timeout <= Duration.zero) return null;
     final watch = Stopwatch()..start();
-    AppLog.instance.record(LogArea.tts, LogEvent.started, detail: langCode);
-
-    Socket? socket;
+    AppLog.instance.record(LogArea.tts, LogEvent.warning, detail: 'tailo');
     try {
-      final connector = ReminiCareConfig.getValue('NCKU_TTS_TLS') == 'true'
-          ? SecureSocket.connect
-          : Socket.connect;
-      socket = await connector(
-        _ttsHost,
-        _ttsPort,
-        timeout: const Duration(seconds: 5),
+      final tailo = await converter.toTaiLo(text, timeout: timeout);
+      if (tailo == null) {
+        AppLog.instance.record(
+          LogArea.tts,
+          LogEvent.failed,
+          durationMs: watch.elapsedMilliseconds,
+          detail: 'invalidResponse',
+        );
+      }
+      return tailo;
+    } catch (e) {
+      AppLog.instance.record(
+        LogArea.tts,
+        LogEvent.failed,
+        durationMs: watch.elapsedMilliseconds,
+        detail: e is TimeoutException ? 'timeout' : 'invalidResponse',
       );
-      final String message =
-          "$_ttsApiId@@@$token@@@$langCode@@@$speaker@@@$text$_ttsEndOfTransmission";
+      return null;
+    }
+  }
 
-      socket.add(utf8.encode(message));
-      await socket.flush();
-
-      final List<int> responseBytes = [];
-      final Completer<Uint8List?> completer = Completer<Uint8List?>();
-
-      socket.listen(
-        (chunk) => responseBytes.addAll(chunk),
-        onDone: () {
-          try {
-            final String resultString = utf8.decode(responseBytes);
-            if (resultString.isEmpty) {
-              if (!completer.isCompleted) completer.complete(null);
-              return;
-            }
-
-            final Map<String, dynamic> response =
-                jsonDecode(resultString) as Map<String, dynamic>;
-
-            if (response["status"] == true) {
-              final String base64Wav = response["bytes"] ?? "";
-              final Uint8List wavBytes = base64Decode(base64Wav);
-
-              AppLog.instance.record(
-                LogArea.tts,
-                LogEvent.completed,
-                bytes: wavBytes.length,
-                durationMs: watch.elapsedMilliseconds,
-                detail: langCode,
-              );
-              if (!completer.isCompleted) completer.complete(wavBytes);
-            } else {
-              AppLog.instance.record(
-                LogArea.tts,
-                LogEvent.failed,
-                durationMs: watch.elapsedMilliseconds,
-                detail: 'server',
-              );
-              if (!completer.isCompleted) completer.complete(null);
-            }
-          } catch (e) {
-            if (!completer.isCompleted) completer.completeError(e);
-          }
-        },
-        onError: (e) {
-          if (!completer.isCompleted) completer.completeError(e);
-        },
-        cancelOnError: true,
+  Future<Uint8List?> _synthesizeLegacy(String text, Duration timeout) async {
+    final watch = Stopwatch()..start();
+    AppLog.instance.record(
+      LogArea.tts,
+      LogEvent.warning,
+      detail: 'legacyServer',
+    );
+    try {
+      final audio = await _legacy.synthesize(text, timeout: timeout);
+      AppLog.instance.record(
+        LogArea.tts,
+        audio == null ? LogEvent.failed : LogEvent.completed,
+        bytes: audio?.length,
+        durationMs: watch.elapsedMilliseconds,
+        detail: audio == null ? 'invalidResponse' : 'legacyServer',
       );
-
-      final Uint8List? audioData = await completer.future.timeout(
-        const Duration(seconds: 60),
-        onTimeout: () => throw TimeoutException('成大 TTS 伺服器接收超時'),
-      );
-
-      return audioData;
+      return audio;
     } catch (e) {
       AppLog.instance.record(
         LogArea.tts,
@@ -193,10 +247,113 @@ class NckuSpeechService
         detail: e is TimeoutException ? 'timeout' : 'network',
       );
       return null;
+    }
+  }
+
+  Future<_VitsOutcome> _synthesizeVits(
+    String text,
+    String langCode,
+    String speaker,
+    Duration timeout, {
+    String? startDetail,
+  }) async {
+    final watch = Stopwatch()..start();
+    AppLog.instance.record(
+      LogArea.tts,
+      LogEvent.started,
+      detail: startDetail ?? langCode,
+    );
+    if (timeout <= Duration.zero) {
+      AppLog.instance.record(LogArea.tts, LogEvent.failed, detail: 'timeout');
+      return const _VitsOutcome();
+    }
+
+    Socket? socket;
+    try {
+      final connector = _ttsTls ? SecureSocket.connect : Socket.connect;
+      socket = await connector(
+        _ttsHost,
+        _ttsPort,
+        timeout: const Duration(seconds: 5),
+      );
+      final String message =
+          "$_ttsApiId@@@${_ttsToken()}@@@$langCode@@@$speaker@@@$text$_ttsEndOfTransmission";
+
+      socket.add(utf8.encode(message));
+      await socket.flush();
+
+      final List<int> responseBytes = [];
+      await socket
+          .forEach(responseBytes.addAll)
+          .timeout(
+            timeout,
+            onTimeout: () => throw TimeoutException('成大 TTS 伺服器接收超時'),
+          );
+
+      final String resultString = utf8.decode(responseBytes);
+      if (resultString.isEmpty) {
+        AppLog.instance.record(
+          LogArea.tts,
+          LogEvent.failed,
+          durationMs: watch.elapsedMilliseconds,
+          detail: 'invalidResponse',
+        );
+        return const _VitsOutcome();
+      }
+      final Map<String, dynamic> response =
+          jsonDecode(resultString) as Map<String, dynamic>;
+
+      if (response["status"] == true) {
+        final Uint8List wavBytes = base64Decode(response["bytes"] ?? "");
+        if (wavBytes.isEmpty) {
+          AppLog.instance.record(
+            LogArea.tts,
+            LogEvent.failed,
+            durationMs: watch.elapsedMilliseconds,
+            detail: 'invalidResponse',
+          );
+          return const _VitsOutcome();
+        }
+        AppLog.instance.record(
+          LogArea.tts,
+          LogEvent.completed,
+          bytes: wavBytes.length,
+          durationMs: watch.elapsedMilliseconds,
+          detail: startDetail ?? langCode,
+        );
+        return _VitsOutcome(audio: wavBytes);
+      }
+      AppLog.instance.record(
+        LogArea.tts,
+        LogEvent.failed,
+        durationMs: watch.elapsedMilliseconds,
+        detail: 'server',
+      );
+      return const _VitsOutcome(rejected: true);
+    } catch (e) {
+      AppLog.instance.record(
+        LogArea.tts,
+        LogEvent.failed,
+        durationMs: watch.elapsedMilliseconds,
+        detail: e is TimeoutException
+            ? 'timeout'
+            : e is FormatException
+            ? 'invalidResponse'
+            : 'network',
+      );
+      return const _VitsOutcome();
     } finally {
       socket?.destroy();
     }
   }
+}
+
+class _VitsOutcome {
+  const _VitsOutcome({this.audio, this.rejected = false});
+  final Uint8List? audio;
+
+  /// 伺服器有回應但拒絕合成（status=false），代表 9998 本身可連線。
+  final bool rejected;
 }
 
 // =========================================================================

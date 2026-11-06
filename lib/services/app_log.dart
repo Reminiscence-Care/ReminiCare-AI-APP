@@ -166,6 +166,8 @@ class AppLog extends ChangeNotifier {
     'noSpeech': '尚未開口',
     'disposed': '結束流程',
     'invalidInput': '輸入格式錯誤',
+    'tailo': '台語備援：LLM 轉台羅',
+    'legacyServer': '台語備援：舊伺服器',
   };
   void record(
     LogArea area,

@@ -29,6 +29,7 @@ https://www.figma.com/design/xdo6JkgtKqZG6D8ssO7UOU/Renee-Ong-s-team-library--Co
 | STT job／錯誤 | `lib/services/audio_services/speech_recognition_job.dart`、`stt_result.dart` |
 | 成大 TTS／雅婷 adapters | `lib/services/audio_services/speech_services.dart` |
 | TTS 快取 | `lib/services/audio_services/tts_cache.dart` |
+| 成大台語 TTS 備援（LLM 台羅／10012 舊伺服器） | `lib/services/audio_services/taiwanese_tts_fallback.dart` |
 | LLM 傳輸／領域操作 | `lib/services/ai/llm_client.dart`、`reminiscence_ai_service.dart` |
 | JSON／取消／Provider | `lib/services/ai/provider_response_parser.dart`、`ai_http_transport.dart`、`provider_registry.dart` |
 | 圖片生成／改圖／本地保存 | `lib/services/image_gen_api_service.dart` |
@@ -86,6 +87,7 @@ https://www.figma.com/design/xdo6JkgtKqZG6D8ssO7UOU/Renee-Ong-s-team-library--Co
 - 裝置 Documents 下 `reminicare_memories/` 保存紀錄，`reminicare_images/` 管理圖片；舊 `chat_memories` 先備份至 `legacy-backup.json` 再遷移。清理需檢查所有引用。
 - 設定以快照提交，安全儲存失敗有補償回復；秘密放 secure storage，非敏感值放 SharedPreferences。`.env` 僅 debug 補入記憶體。
 - TTS cache key 包含 Provider／端點／聲音／語言／文字，避免切換服務還播舊音。
+- 2026-11-06 使用者決定：成大 9998 台語拒收漢字時，依設定的備援模式改送 LLM 轉出的台羅，再不行用 10012 舊 HTS 伺服器。主要路徑仍先試 9998 原文，伺服器修好即自動恢復；轉台羅用獨立設定的模型（`TAILO_LLM_PROVIDER`／`TAILO_LLM_MODEL`，預設 OpenAI gpt-4.1、逾時 25 秒），不共用聊天 LLM 的 60 秒逾時；只有語音服務選成大時生效，雅婷不受影響。台語備援總時限 140 秒，TtsCache 外層逾時 150 秒。
 
 ## 驗收判準與本批交付
 

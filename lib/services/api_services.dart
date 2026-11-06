@@ -3,6 +3,7 @@ import 'ai/llm_client.dart';
 import 'ai/provider_registry.dart';
 import 'ai/reminiscence_ai_service.dart';
 import 'audio_services/speech_services.dart';
+import 'audio_services/taiwanese_tts_fallback.dart';
 import 'image_gen_api_service.dart';
 import 'remini_care_config.dart';
 
@@ -73,11 +74,27 @@ class ApiServices {
     if (cached != null) return cached;
     final ITTSService service =
         ReminiCareConfig.getValue('selectedSpeechProvider') == 'ncku'
-        ? NckuSpeechService()
+        ? NckuSpeechService(taiLoConverter: _taiLoConverter())
         : YatingSpeechService();
     _tts = service;
     return service;
   }
+
+  /// 9998 台語拒收漢字時用來轉台羅的專用模型；未設定金鑰就跳過這一步。
+  TaiLoConverter? _taiLoConverter() {
+    final config = taiLoLlmConfig();
+    final apiKey = ReminiCareConfig.getValue(config.apiKeyReference);
+    if (apiKey.trim().isEmpty) return null;
+    return LlmTaiLoConverter(
+      OpenAiCompatibleLlmClient(config: config, apiKey: apiKey),
+    );
+  }
+
+  LlmProviderConfig taiLoLlmConfig() => TaiLoModelSettings.resolve(
+    provider: ReminiCareConfig.getValue(TaiLoModelSettings.providerKey),
+    model: ReminiCareConfig.getValue(TaiLoModelSettings.modelKey),
+    current: _llmConfig(),
+  );
 
   void _ensureCurrent() {
     if (_builtRevision == ReminiCareConfig.revision) return;

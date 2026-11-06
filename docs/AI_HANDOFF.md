@@ -2,7 +2,18 @@
 
 最後更新：2026-11-06。這是目前進度摘要，不是自動啟動工作的授權；接手後以使用者最新要求及實際 Git 狀態為準。
 
-## 最新：macOS 桌面版可用性修正
+## 最新：成大台語 TTS 備援
+
+2026-11-06 實測成大 9998 的 `tw` 送漢字時，所有語者都回 `Exception occurred during synthesis.`，送台羅則成功；中文、客語、英文正常。課程 Flutter 範例寫的是台語可輸入中文字，所以判斷是伺服器端台語前處理故障。課程樹莓派範例的 `140.116.245.157:10012`（長度前綴協定、直接回 WAV）可吃漢字，但使用者試聽後認為品質差、不準，只當最後備援。
+
+- 新增 `taiwanese_tts_fallback.dart`：備援模式列舉、LLM 轉台羅（JSON `{"tailo":...}`，驗證不含漢字）、10012 client。`NckuSpeechService` 台語依序：9998 原文 → LLM 台羅 → 10012；9998 連不上時跳過 LLM。拒收記憶 10 分鐘。設定頁新增「台語語音備援」下拉（`NCKU_TW_TTS_FALLBACK`，預設 `llm_legacy`）。App Log 新增 `tailo`／`legacyServer` 細節。
+- 本輪驗證：analyze 無問題、完整 121 tests 通過（新增 14 項，用本機 fake socket server 與 fake LLM）。9998／10012 協定行為是先前用 Python 直接打真實伺服器確認的；**尚未用真實 LLM 測試轉出的台羅能否被 9998 接受、念得是否正確**，也沒有在 App 實機試聽。
+- 同日經使用者同意實測真實 LLM：NVIDIA `deepseek-v4.1-flash` 每句 66–75 秒（超過 60 秒逾時），且開推理時答案只在 `reasoning_content`，App 刻意不讀，等於每次失敗；關推理會出現數字調，9998 不收。OpenAI `gpt-4o-mini`／`gpt-4.1-mini`／`gpt-4.1`／`gpt-5-mini` 都在 1–5 秒內回，台羅 9998 全收；台語用字以 gpt-4.1 最好，但仍有錯（例：多久譯錯）。
+- 因此改為獨立轉台羅模型：設定頁「轉台羅使用的語言模型」（OpenAI 建議／Gemini／NVIDIA／跟隨上方）＋「轉台羅模型」欄位，預設 OpenAI gpt-4.1，逾時 25 秒；會顯示所選 Provider 的金鑰欄。快取 key 含轉台羅 Provider／模型。
+- 驗證：analyze 無問題、完整 123 tests 通過。實測只用 Python 腳本照搬 prompt 打真實服務，未在 App 內跑完整備援鏈或實機試聽。
+- 已提交並推送（rebase 到 macOS 修正 `40dd48d` 之後），以 tag 觸發 unsigned release IPA；以 GitHub Actions／Release 實際結果為準。
+
+## 前輪：macOS 桌面版可用性修正
 
 2026-11-06 使用者在 MacBook Air 以 macOS 版實測，依序回報設定儲存失敗、無法啟動麥克風、停止錄音失敗、STT「音檔格式錯誤」。逐項以實機 debug 輸出／系統記錄確認原因後修正：
 
