@@ -12,7 +12,9 @@
 - Keychain 每次重編都要求密碼：macOS Runner 改用 Team `SK5K4DW8WG`、`Apple Development` 簽章，使簽章跨重編穩定；首次需對各項目按「永遠允許」。
 - STT 格式錯誤：AVFoundation 寫出 `WAVE_FORMAT_EXTENSIBLE`（0xFFFE＋JUNK chunk），內容為 16kHz mono 16-bit PCM。`WavAudio.parse` 僅在 sub-format GUID 為 PCM 且有效位元 16 時接受，並新增回歸測試。
 - 實機（macOS debug）已驗證：設定儲存、錄音／停止、雅婷 STT 成功、LLM 稱呼解析回應 200。NVIDIA `deepseek-ai/deepseek-v4.1-flash` 當日 90 秒無首位元組（經使用者授權以極短請求測試；key 有效），使用者改用其他 LLM 設定後成功；未修改 Provider 預設。
-- 本輪 analyze 僅既有 `ncku_segmented_stt.dart:198` 警告、完整 106 tests 通過。未驗證 iOS／Android 實機；`project.pbxproj` 內使用者既有 CocoaPods 改動、`pubspec.lock`、macOS Podfile 與 iOS swiftpm 目錄未納入提交。
+- iOS：本機 Xcode 僅支援 deployment target 15.0 以上，而 `ios/Podfile` 的 `post_install` 將 Pods 強制設為 13.0 導致無法建置；App 本身已是 15.0，改為一致的 15.0，未減少支援裝置。`flutter build ios --no-codesign --debug` 成功，使用者回報已在 iPhone 17 執行。
+- iOS／macOS CocoaPods 整合檔（Podfile、Podfile.lock、Runner pbxproj）一併提交。`pubspec.lock` 僅為本機 Flutter SDK 帶動的測試相關套件升級，未納入提交。
+- 本輪 analyze 僅既有 `ncku_segmented_stt.dart:198` 警告、完整 106 tests 通過。未驗證 Android 與 iPad 實機。
 
 ## 前輪：Linux CI 固定流程測試競態修正
 
