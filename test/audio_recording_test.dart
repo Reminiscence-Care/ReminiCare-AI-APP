@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:remini_care_ai_app/services/app_log.dart';
 import 'package:remini_care_ai_app/services/audio_services/wav_audio.dart';
 import 'package:remini_care_ai_app/services/audio_services/ncku_segmented_stt.dart';
 import 'package:remini_care_ai_app/services/audio_services/stt_result.dart';
@@ -282,6 +283,51 @@ void main() {
       ),
     );
   });
+
+  test('proxy 500 bodies are classified without logging their text', () {
+    const refused =
+        '{"error": "An error occurred: HTTPConnectionPool(host=\'140.116.245.154\', '
+        'port=9001): Max retries exceeded (Caused by NewConnectionError(\'...: '
+        'Failed to establish a new connection: [Errno 111] Connection refused\'))"}';
+    expect(nckuSttErrorDetail(500, refused), 'sttBackendRefused');
+    expect(
+      nckuSttErrorDetail(500, '{"error":"Read timed out. (read timeout=30)"}'),
+      'sttBackendTimeout',
+    );
+    expect(nckuSttErrorDetail(500, '{"error":"boom"}'), 'sttBackendError');
+    expect(nckuSttErrorDetail(502, '<html>Bad Gateway</html>'), 'server');
+    expect(nckuSttErrorDetail(403, ''), 'authentication');
+  });
+
+  test(
+    'backend refused surfaces a server-side message and log entry',
+    () async {
+      final log = AppLog.instance..clear();
+      final service = NckuSegmentedStt(
+        token: () => 'test-token',
+        client: MockClient(
+          (_) async => http.Response(
+            '{"error":"NewConnectionError: Connection refused"}',
+            500,
+          ),
+        ),
+      );
+      await expectLater(
+        service.transcribe(await audioFile(1)),
+        throwsA(
+          isA<SttException>()
+              .having((e) => e.kind, 'kind', SttErrorKind.server)
+              .having((e) => e.message, 'message', contains('伺服器端問題')),
+        ),
+      );
+      final failures = log.entries.where(
+        (e) => e.event == LogEvent.requestFailed,
+      );
+      expect(failures.single.detail, 'sttBackendRefused');
+      expect(failures.single.statusCode, 500);
+      expect(log.exportText(), isNot(contains('Connection refused')));
+    },
+  );
 
   test(
     'catalog has twelve distinct paired assets and avoids previous round',

@@ -14,6 +14,33 @@ class _Segment {
   List<_Segment>? children;
 }
 
+/// 把 5002 proxy 的錯誤回應歸類成 App Log 白名單代碼（不記錄原文）。
+///
+/// 5002 只是轉發，真正辨識在後端；後端掛掉時 proxy 回 500 和
+/// `{"error":"... Connection refused ..."}`。
+String nckuSttErrorDetail(int statusCode, String body) {
+  if (RegExp(
+    r'Connection refused|NewConnectionError|Failed to establish',
+    caseSensitive: false,
+  ).hasMatch(body)) {
+    return 'sttBackendRefused';
+  }
+  if (RegExp(
+    r'Read ?timed ?out|ReadTimeout|ConnectTimeout|timed out',
+    caseSensitive: false,
+  ).hasMatch(body)) {
+    return 'sttBackendTimeout';
+  }
+  if (RegExp(r'"error"\s*:').hasMatch(body)) return 'sttBackendError';
+  return switch (statusCode) {
+    401 || 403 => 'authentication',
+    413 => 'payloadTooLarge',
+    429 => 'rateLimit',
+    >= 500 => 'server',
+    _ => 'invalidResponse',
+  };
+}
+
 class NckuSegmentedStt implements ProgressSttService, JobSttService {
   NckuSegmentedStt({
     http.Client? client,
@@ -204,7 +231,19 @@ class NckuSegmentedStt implements ProgressSttService, JobSttService {
         );
       }
       if (response.statusCode != 200) {
-        throw const SttException(SttErrorKind.server, '成大語音辨識服務暫時失敗，請重試。');
+        final detail = nckuSttErrorDetail(response.statusCode, response.body);
+        AppLog.instance.record(
+          LogArea.stt,
+          LogEvent.requestFailed,
+          statusCode: response.statusCode,
+          durationMs: watch.elapsedMilliseconds,
+          detail: detail,
+        );
+        throw SttException(SttErrorKind.server, switch (detail) {
+          'sttBackendRefused' => '成大語音辨識伺服器目前連不上（伺服器端問題），請稍後再試或改用雅婷。',
+          'sttBackendTimeout' => '成大語音辨識伺服器回應逾時（伺服器端問題），請稍後再試。',
+          _ => '成大語音辨識服務暫時失敗，請重試。',
+        });
       }
       final decoded = jsonDecode(utf8.decode(response.bodyBytes));
       if (decoded is! Map || decoded['sentence'] is! String) {
@@ -216,14 +255,26 @@ class NckuSegmentedStt implements ProgressSttService, JobSttService {
       final text = (decoded['sentence'] as String).trim();
       return segment.text = text == '<{silent}>' ? '' : text;
     } on TimeoutException {
+      _logRequestFailure('timeout', watch);
       throw const SttException(SttErrorKind.timeout, '語音辨識逾時，請重試。');
     } on SttException {
       rethrow;
     } on FormatException {
+      _logRequestFailure('invalidResponse', watch);
       throw const SttException(SttErrorKind.invalidResponse, '成大 STT 回傳格式不正確。');
     } catch (_) {
+      if (!_cancelled) _logRequestFailure('network', watch);
       throw const SttException(SttErrorKind.network, '語音辨識連線失敗，請重試。');
     }
+  }
+
+  void _logRequestFailure(String detail, Stopwatch watch) {
+    AppLog.instance.record(
+      LogArea.stt,
+      LogEvent.requestFailed,
+      durationMs: watch.elapsedMilliseconds,
+      detail: detail,
+    );
   }
 
   Future<String> _subdivide(_Segment segment) async {

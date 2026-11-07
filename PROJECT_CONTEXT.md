@@ -103,7 +103,7 @@ https://www.figma.com/design/xdo6JkgtKqZG6D8ssO7UOU/Renee-Ong-s-team-library--Co
 |---|---|---|---|---|
 | 成大 VITS TTS | 中文、台語主要合成（中文語者 `4793`，台語 `M04`） | `140.116.245.146:9998`，TCP，`10012@@@token@@@語言@@@語者@@@文字EOT`，回 JSON＋base64 WAV | 中文、客語、英文正常；**台語送漢字一律回 `Exception occurred during synthesis.`**，送台羅（調號或無調）正常，數字調失敗。課程 Flutter 範例註明 `tw` 可輸入中文字，判斷為伺服器端台語前處理故障 | 2026-11-06，Python 直連 |
 | 成大舊版 HTS TTS | 台語最後備援 | `140.116.245.157:10012`，TCP，4-byte 長度前綴＋`token@@@文字@@@模型@@@taiwanese`，直接回 WAV | 可輸入漢字，6 句全回 WAV；使用者試聽認為音質差、不準 | 2026-11-06，Python 直連＋使用者試聽 |
-| 成大 STT | 中文／台語辨識（`lang: Chinese & Taiwanese`） | `http://140.116.245.149:5002/proxy` | 一份約 3 秒中文樣本 490 ms 成功；2026-11-06 用合成語音測時稱謂常辨識錯（「陳阿嬤」→「陳拉瑪」），稱呼確認因此被拒、尚未處理；長錄音、真人台語未驗收 | 2026-11-06，macOS App（合成語音） |
+| 成大 STT | 中文／台語辨識（`lang: Chinese & Taiwanese`） | `http://140.116.245.149:5002/proxy` | 一份約 3 秒中文樣本 490 ms 成功；2026-11-06 用合成語音測時稱謂常辨識錯（「陳阿嬤」→「陳拉瑪」），稱呼確認因此被拒、尚未處理；2026-11-07 iPad 多次 HTTP 500，直接打 proxy 得知是它後面的辨識後端 `140.116.245.154:9001` 拒絕連線（伺服器端問題，時好時壞，也有卡住 39–80 秒才回的情況），App Log 現在會標成「後端辨識伺服器拒絕連線／逾時」；長錄音、真人台語未驗收 | 2026-11-07，直接打 proxy |
 | 雅婷 STT | 預設辨識服務 | `wss://asr.api.yating.tw/ws/v1/` | 修正 `asr_eof` 判斷後，macOS debug 實機辨識成功 | 2026-11-06，macOS App |
 | 雅婷 TTS | 雅婷模式的中文／台語合成（`zh_en_female_1`／`tai_female_1`） | `https://tts.api.yating.tw/v2/speeches/short` | 沒有獨立驗收紀錄；2026-11-06 起失敗會記 HTTP 狀態碼與錯誤種類到 App Log | 未重測 |
 | NVIDIA LLM `deepseek-v4.1-flash` | 預設聊天 LLM | `https://integrate.api.nvidia.com/v1` | 回應極慢：一次 90 秒無首位元組、轉台羅每句 66–75 秒，超過 App 60 秒逾時；開推理時答案只在 `reasoning_content`，App 不讀 | 2026-11-06，Python 直連＋macOS App |

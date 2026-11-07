@@ -168,6 +168,10 @@ class AppLog extends ChangeNotifier {
     'invalidInput': '輸入格式錯誤',
     'tailo': '台語備援：LLM 轉台羅',
     'legacyServer': '台語備援：舊伺服器',
+    'tailoSkipped': '台語備援：未設定轉台羅模型的 API Key，略過 LLM',
+    'sttBackendRefused': '成大 STT 後端辨識伺服器拒絕連線（伺服器端問題）',
+    'sttBackendTimeout': '成大 STT 後端辨識伺服器逾時（伺服器端問題）',
+    'sttBackendError': '成大 STT 後端回報錯誤',
   };
   void record(
     LogArea area,

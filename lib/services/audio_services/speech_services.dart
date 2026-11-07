@@ -171,6 +171,13 @@ class NckuSpeechService
 
     // 2. LLM 轉台羅後再送 9998；9998 連不上時這一步沒有意義。
     final converter = _taiLo;
+    if (_fallback.usesLlm && hasHan && vitsReachable && converter == null) {
+      AppLog.instance.record(
+        LogArea.tts,
+        LogEvent.warning,
+        detail: 'tailoSkipped',
+      );
+    }
     if (_fallback.usesLlm && hasHan && vitsReachable && converter != null) {
       final tailo = await _convertToTaiLo(converter, text, remaining());
       if (tailo != null && remaining() > Duration.zero) {

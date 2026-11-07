@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remini_care_ai_app/services/ai/ai_models.dart';
 import 'package:remini_care_ai_app/services/ai/llm_client.dart';
+import 'package:remini_care_ai_app/services/app_log.dart';
 import 'package:remini_care_ai_app/services/audio_services/speech_services.dart';
 import 'package:remini_care_ai_app/services/audio_services/taiwanese_tts_fallback.dart';
 
@@ -157,9 +158,11 @@ void main() {
   });
 
   test('no LLM configured: goes straight to the legacy server', () async {
+    final log = AppLog.instance..clear();
     final legacy = _FakeLegacy();
     final audio = await service(legacy: legacy).generateSpeech('你好', '台語');
     expect(_decode(audio), 'LEGACY:你好');
+    expect(log.entries.map((e) => e.detail), contains('tailoSkipped'));
   });
 
   test('llmOnly mode never calls the legacy server', () async {
